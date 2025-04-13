@@ -4,6 +4,7 @@ FROM dolfinx/dolfinx:stable
 RUN pip install --no-cache-dir \
     numpy \
     matplotlib \
+    meshio \
     pyvista \
     jupyterlab \
     flake8 \

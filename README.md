@@ -1,21 +1,23 @@
 # Linear Stability Analysis Framework (Work in Progress)
 
-The goal of this project is to build a general framework for performing linear stability and adjoint-based analysis of 2D/3D flows (like the cylinder wake), based on matrix/eigenvalue methods.
+This project aims to provide a general framework for performing linear stability and adjoint-based analysis of 2D and 3D flows (e.g., cylinder wake), utilizing matrix and eigenvalue methods.
 
-Right now, only a few example problems are available (Poisson and Navier-Stokes).
-You can run them via VS Code using:
+Currently, only a limited set of example problems is available (Poisson and Navier-Stokes).
+These serve as smoke tests to verify the environment setup.
 
-- F1 → “Run Task” → select "Run module" or "Run module with MPI (4 cores)"
-- You’ll be prompted to enter the module name (default is `TestProjects`)
+Execution within VS Code is supported via:
 
-More features and generalization will come as the framework evolves.
+- F1 → “Run Task” → Select "Run module" or "Run module with MPI (4 cores)"
+- A prompt will request the module name (default is `TestProjects`)
+
+Additional features and broader generalization are planned as the framework develops.
 
 ## Running in Docker
 
-This project is configured to run inside a VS Code DevContainer.
-When you open the project in VS Code, you should see a prompt to reopen it in the container.
-This environment comes pre-installed with FEniCSx and all necessary tools.
+The project is configured for execution inside a VS Code DevContainer.
+Upon opening the project in VS Code, a prompt should appear offering to reopen it within the container.
+This environment includes FEniCSx and all required tools pre-installed.
 
-If you're not using the container, make sure you have a working `dolfinx` environment and update the tasks accordingly.
+If the container is not used, ensure a valid `dolfinx` environment is present and update the task definitions accordingly.
 
 Further documentation regarding how to set up the environment is a WIP.
