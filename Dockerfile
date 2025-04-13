@@ -12,4 +12,5 @@ RUN pip install --no-cache-dir \
     isort \
     mypy \
     scipy \
+    pytest \
     pandas
