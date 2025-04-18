@@ -1,6 +1,4 @@
-"""LSA-FW mesh plotter.
-
-First draft.
+"""LSA-FW Meshing plotter.
 
 Provides basic interactive or static visualization of meshes using PyVista.
 Supports both 2D and 3D mesh rendering.

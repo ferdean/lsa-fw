@@ -100,37 +100,39 @@ class Mesher:
         _ = mesh.generate()
         return mesh
 
-    def generate(self) -> dmesh.Mesh:
+    def generate(self, comm: MPI.Intercomm = _COMM) -> dmesh.Mesh:
         """Generate the mesh according to shape."""
         match self._shape:
             case Shape.UNIT_INTERVAL:
-                self._mesh = dmesh.create_unit_interval(_COMM, self._n[0], np.float64)
+                self._mesh = dmesh.create_unit_interval(comm, self._n[0], np.float64)
 
             case Shape.UNIT_SQUARE:
                 self._mesh = dmesh.create_unit_square(
-                    _COMM, self._n[0], self._n[1], self._cell_type
+                    comm, self._n[0], self._n[1], self._cell_type
                 )
 
             case Shape.UNIT_CUBE:
                 self._mesh = dmesh.create_unit_cube(
-                    _COMM, self._n[0], self._n[1], self._n[2], self._cell_type
+                    comm, self._n[0], self._n[1], self._n[2], self._cell_type
                 )
 
             case Shape.BOX:
-                self._mesh = self._create_box()
+                self._mesh = self._create_box(comm)
 
             case Shape.CUSTOM_XDMF:
-                self._mesh = self._read_custom_xdmf()
+                self._mesh = self._read_custom_xdmf(comm)
 
             case Shape.CUSTOM_MSH:
-                self._mesh = self._read_custom_msh()
+                self._mesh = self._read_custom_msh(comm)
 
             case _:
                 assert_never(self._shape)
 
         return self._mesh
 
-    def export(self, path: pathlib.Path, format: Format) -> None:
+    def export(
+        self, path: pathlib.Path, format: Format, comm: MPI.Intercomm = _COMM
+    ) -> None:
         """Export the generated mesh to the given file.
 
         XDMF is generally preferred over GMSH for exporting FEniCSx meshes
@@ -146,11 +148,11 @@ class Mesher:
 
         match format:
             case Format.XDMF:
-                with dio.XDMFFile(_COMM, str(path), "w") as file:
+                with dio.XDMFFile(comm, str(path), "w") as file:
                     file.write_mesh(self.mesh)
 
             case Format.VTK:
-                with dio.VTKFile(_COMM, str(path), "w") as vtk_file:
+                with dio.VTKFile(comm, str(path), "w") as vtk_file:
                     vtk_file.write_mesh(self.mesh)
 
             case Format.GMSH:
@@ -184,7 +186,7 @@ class Mesher:
             self.mesh, self.mesh.topology.dim - 1, facets, values
         )
 
-    def _create_box(self) -> dmesh.Mesh:
+    def _create_box(self, comm: MPI.Intercomm) -> dmesh.Mesh:
         create_fn = {
             2: dmesh.create_rectangle,
             3: dmesh.create_box,
@@ -194,15 +196,15 @@ class Mesher:
             raise ValueError("BOX shape requires 2 or 3 dimensions.")
 
         return create_fn(
-            _COMM,
+            comm,
             [self._domain[0], self._domain[1]],
             list(self._n),
             self._cell_type,
             dtype=np.float64,
         )
 
-    def _read_custom_xdmf(self) -> dmesh.Mesh:
-        with dio.XDMFFile(_COMM, str(self._custom_file), "r") as xdmf:
+    def _read_custom_xdmf(self, comm: MPI.Intercomm) -> dmesh.Mesh:
+        with dio.XDMFFile(comm, str(self._custom_file), "r") as xdmf:
             try:
                 mesh = xdmf.read_mesh(name="mesh")
             except Exception as e:
@@ -220,10 +222,10 @@ class Mesher:
 
         return mesh
 
-    def _read_custom_msh(self) -> dmesh.Mesh:
+    def _read_custom_msh(self, comm: MPI.Intercomm) -> dmesh.Mesh:
         if not self._custom_file or not self._custom_file.exists():
             raise FileNotFoundError(f"Mesh file not found: {self._custom_file}")
         mesh, self._cell_tags, self._facet_tags = gmshio.read_from_msh(
-            str(self._custom_file), _COMM, gdim=self._gdim
+            str(self._custom_file), comm, gdim=self._gdim
         )
         return mesh
