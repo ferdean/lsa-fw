@@ -1,4 +1,4 @@
-"""Utilities for meshing."""
+"""Utilities for LSA-FW Meshing."""
 
 from dolfinx.mesh import CellType
 from enum import Enum, auto, StrEnum
@@ -69,4 +69,13 @@ class Format(StrEnum):
     GMSH = auto()
     """Exported as GMSH model."""
     VTK = auto()
-    """Exported as VTK (requires `meshio`)."""
+    """Exported as VTK."""
+
+
+class Geometry(StrEnum):
+    """Supported geometries."""
+
+    CYLINDER_FLOW = auto()
+    """Cylinder flow geometry."""
+    STEP_FLOW = auto()
+    """Step flow geometry."""

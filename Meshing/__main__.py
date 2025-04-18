@@ -1,4 +1,4 @@
-"""Main entry point for LSA-FW mesh."""
+"""Main entry point for LSA-FW Meshing."""
 
 from .cli import main
 
