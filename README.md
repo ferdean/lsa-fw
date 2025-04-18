@@ -21,12 +21,12 @@ LSA-FW is modular by design.
 Current features include:
 
 - Core Modules
-  - Sparse eigenvalue computations for stability and adjoint problems
-  - Base flow construction and diagnostics
+  - Sparse eigenvalue computations for stability and adjoint problems (planned)
+  - Base flow construction and diagnostics (planned)
   - Automatic differentiation support (planned)
 
 - Infrastructure
-  - Modular mesh generation & import/export (via [Meshing Module](models/meshing.md))
+  - Modular mesh generation and import/export (via [Meshing Module](models/meshing.md))
   - CLI-based experiment runners
   - Support for parameter files (e.g. `.json`)
 
@@ -68,6 +68,6 @@ See [Meshing module](./doc/models/meshing.md) for full usage.
 
 Documentation is organized into the following folders:
 
-- [arch](./doc/arc/_index.md): System setup, Docker, architecture diagrams.
+- [arch](./doc/arch/_index.md): System setup, Docker, architecture diagrams.
 - [models](./doc/models/_index.md): Module-level documentation (e.g., meshing).
 - [ref](./doc/ref/): Theory notes and cited papers.
