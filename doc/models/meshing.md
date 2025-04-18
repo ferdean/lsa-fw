@@ -139,6 +139,10 @@ python -m Meshing -p generate \
     --format xdmf
 ```
 
+![Mesh generation example](assets/meshing-example_box.svg)
+
+---
+
 Import a GMSH-generated `.msh` mesh and convert it to VTK for visualization:
 
 ```bash
@@ -149,6 +153,8 @@ python -m Meshing import \
     --format vtk \
 ```
 
+---
+
 Generate (and plot) a 2D cylinder flow mesh from a JSON configuration file with local refinement, and export it as XDMF:
 
 ```bash
@@ -158,6 +164,8 @@ python -m Meshing -p benchmark \
     --export cylinder.xdmf \
     --format xdmf \
 ```
+
+![Mesh generation example from geometry](assets/meshing-example_cylinder.svg)
 
 ## Design/Implementation Notes
 

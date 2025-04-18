@@ -39,10 +39,10 @@ def plot_mesh(
     mode: PlotMode = PlotMode.INTERACTIVE,
     show_edges: bool = True,
     color: str = "white",
-    background: str = "black",
+    background: str = "transparent",
     window_size: tuple[int, int] = (800, 600),
     screenshot_path: Path | None = None,
-    tags: MeshTags | None = None
+    tags: MeshTags | None = None,
 ) -> None:
     """Render the given mesh using PyVista.
 
@@ -58,23 +58,23 @@ def plot_mesh(
     """
     if not screenshot_path and mode is not PlotMode.INTERACTIVE:
         logger.warning(
-            "Mesh plot was neither shown nor saved (non-interactive mode and no screenshot_path)."
+            "Non-interactive mode with no export: nothing will be displayed or saved."
         )
+        return
 
     topology, cell_types, points = vtk_mesh(mesh)
-
     grid = pv.UnstructuredGrid(topology, cell_types, points)
 
-    plotter = pv.Plotter(window_size=window_size)
-    plotter.set_background(background)
-    plotter.add_mesh(grid, show_edges=show_edges, color=color)
+    plotter = pv.Plotter(window_size=window_size, off_screen=bool(screenshot_path))
+
+    transparent_background = background == "transparent"
 
     if tags is not None:
-        tag_values = np.zeros(grid.n_cells, dtype=np.int32)
-        tag_values[tags.indices] = tags.values
+        scalars = np.zeros(grid.n_cells, dtype=np.int32)
+        scalars[tags.indices] = tags.values
         plotter.add_mesh(
             grid,
-            scalars=tag_values,
+            scalars=scalars,
             show_edges=show_edges,
             cmap="viridis",
             scalar_bar_args={"title": "Tags"},
@@ -82,8 +82,21 @@ def plot_mesh(
     else:
         plotter.add_mesh(grid, show_edges=show_edges, color=color)
 
-    if screenshot_path:
-        plotter.screenshot(str(screenshot_path))
+    match (
+        export_format := screenshot_path.suffix.lower() if screenshot_path else None
+    ):
+        case ".svg":
+            plotter.save_graphic(str(screenshot_path))
+            logger.info("Exported mesh to SVG: %s", screenshot_path)
+        case ".png":
+            plotter.screenshot(
+                str(screenshot_path), transparent_background=transparent_background
+            )
+            logger.info("Saved mesh screenshot: %s", screenshot_path)
+        case None:
+            pass  # No export requested
+        case _:
+            raise ValueError(f"Unsupported export format: '{export_format}'")
 
     if mode is PlotMode.INTERACTIVE:
         plotter.show()
