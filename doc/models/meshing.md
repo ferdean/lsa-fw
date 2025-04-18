@@ -35,10 +35,10 @@ Mesher(shape: Shape, n: tuple[int], cell_type: iCellType, domain: Optional[tuple
 
 - `generate() -> Mesh`: Procedurally generate the mesh.
 - `export(path: Path, format: Format)`: Export the mesh to disk.
-- `mesh: Mesh`: Property that returns the generated mesh.
+- `mesh -> Mesh`: Property that returns the generated mesh.
 - `from_file(path: Path, shape: Shape, gdim: int) -> Mesher`: Alternative constructor for `.msh` or `.xdmf` imports.
 
-#### Supported Shaoes
+#### Supported Shapes
 
 - `unit_interval`, `unit_square`, `unit_cube`, `box`, `custom_msh`, `custom_xdmf`.
 
