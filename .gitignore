@@ -9,3 +9,5 @@ tests.py
 *.vtu
 *.vtk
 *.pvtu
+!tests/FEM/test_data/test_mesh.h5
+!tests/FEM/test_data/test_mesh.xdmf

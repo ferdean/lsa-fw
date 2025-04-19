@@ -1,6 +1,7 @@
 # LSA-FW Models Index
 
 - [Meshing](meshing.md): Mesh generation, import/export, CFD benchmark geometries.
+- [FEM](fem.md): Function spaces, boundary conditions, matrix assembly.
 - ...
 
 ---

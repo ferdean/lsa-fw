@@ -1,6 +1,7 @@
 """Utilities for LSA-FW Meshing."""
 
-from dolfinx.mesh import CellType
+from dolfinx.mesh import CellType as DolfinxCellType
+from basix import CellType as BasixCellType
 from enum import Enum, auto, StrEnum
 from typing import Self
 
@@ -24,12 +25,16 @@ class iCellType(Enum):
     PRISM = -6
     HEXAHEDRON = -8
 
-    def to_dolfinx(self) -> CellType:
+    def to_dolfinx(self) -> DolfinxCellType:
         """Convert internal type to dolfinx CellType."""
-        return CellType(self.value)
+        return DolfinxCellType(self.value)
+
+    def to_basix(self) -> BasixCellType:
+        """Convert internal type to basix CellType."""
+        return BasixCellType[self.to_dolfinx().name.lower()]
 
     @classmethod
-    def from_dolfinx(cls, cell_type: CellType) -> Self:
+    def from_dolfinx(cls, cell_type: DolfinxCellType) -> Self:
         """Create internal type from a dolfinx CellType."""
         return cls(cell_type.value)
 
