@@ -70,7 +70,7 @@ $$
 The Sobolev space $H^1(\Omega)$ is defined as
 
 $$
-H^1(\Omega) = \left\{ u \in L^2(\Omega) \;\big|\; \frac{\partial u}{\partial x_i} \in L^2(\Omega) \;\; \text{for all } i = 1, \ldots, d \right\}
+H^1(\Omega) = \left\lbrace u \in L^2(\Omega) \;\big|\; \frac{\partial u}{\partial x_i} \in L^2(\Omega) \;\; \text{for all } i = 1, \ldots, d \right\rbrace
 $$
 
 This space consists of functions that are square-integrable over $\Omega$, along with their first-order weak partial derivatives, which must also be square-integrable.
@@ -103,7 +103,7 @@ This space is usually the go-to for incompressible Navier–Stokes flows, as vec
 For certain problems — especially those involving conservation of fluxes across interfaces (e.g., Darcy flow or mixed formulations of incompressible flow), the divergence-conforming space can be used, defined as
 
 $$
-H(\text{div}; \Omega) = \left\{ \mathbf{v} \in [L^2(\Omega)]^d \,\middle|\, \nabla \cdot \mathbf{v} \in L^2(\Omega) \right\}.
+H(\text{div}; \Omega) = \left\lbrace \mathbf{v} \in [L^2(\Omega)]^d \,\middle|\, \nabla \cdot \mathbf{v} \in L^2(\Omega) \right\rbrace.
 $$
 
 While conservation of mass is a feature of many PDEs — including the Navier–Stokes equations — not all formulations or discretizations require explicit divergence-conforming spaces.
@@ -167,14 +167,6 @@ These enrichments do not affect inter-element continuity but improve approximati
 In mixed formulations, bubble functions are used in the MINI element to ensure inf-sup stability.
 
 The inf-sup condition (also known as the LBB condition) is necessary to guarantee well-posedness of saddle-point problems involving velocity and pressure.
-It reads
-
-$$
-\inf_{q_h \in Q_h} \sup_{\mathbf{v}_h \in V_h} \frac{(\nabla \cdot \mathbf{v}_h, q_h)}{\|\mathbf{v}_h\|_{H^1} \|q_h\|_{L^2}} \geq \beta > 0,
-$$
-
-for some mesh-independent constant $\beta$.
-
 The interpretation of this condition is that it ensures that the pressure space is not "too large" compared to the velocity space.
 
 The MINI element then uses
@@ -208,7 +200,7 @@ Each pairing must be carefully chosen based on the governing equations, regulari
 
 ## Boundary Conditions
 
-Let $ \partial\Omega = \Gamma_D \cup \Gamma_N \cup \Gamma_R $ be a partition into Dirichlet, Neumann, and Robin boundaries.
+Let $\partial\Omega = \Gamma_D \cup \Gamma_N \cup \Gamma_R$ be a partition into Dirichlet, Neumann, and Robin boundaries.
 
 ### Dirichlet Conditions
 
