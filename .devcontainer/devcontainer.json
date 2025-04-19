@@ -15,5 +15,6 @@
       ]
     }
   },
-  "remoteUser": "root"
+  "remoteUser": "root",
+  "postCreateCommand": "ln -sf .cspell/.cspell.json .cspell.json"
 }

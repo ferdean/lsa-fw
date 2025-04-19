@@ -1,0 +1,25 @@
+{
+    "version": "0.2",
+    "language": "en",
+    "dictionaries": [
+        "Custom Words"
+    ],
+    "dictionaryDefinitions": [
+        {
+            "name": "Custom Words",
+            "path": "./.cspell/custom-dict.txt",
+            "addWords": true
+        }
+    ],
+    "enableFiletypes": [
+        "markdown"
+    ],
+    "languageSettings": [
+        {
+            "languageId": "markdown",
+            "dictionaries": [
+                "Custom Words"
+            ]
+        }
+    ]
+}

@@ -23,5 +23,4 @@
   "python.testing.pytestArgs": [
     "tests"
   ],
-  "cSpell.configFile": "./.cspell/cspell.json"
 }
