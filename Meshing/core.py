@@ -9,7 +9,7 @@ import dolfinx.mesh as dmesh
 import dolfinx.io as dio
 from dolfinx.io import gmshio
 from dolfinx.mesh import MeshTags
-from dolfinx.mesh import locate_entities_boundary, meshtags
+from dolfinx.mesh import locate_entities_boundary, meshtags, compute_midpoints
 
 from .utils import Format, Shape, iCellType
 
@@ -174,17 +174,29 @@ class Mesher:
         This method allows for custom marker logic, such as:
           `mesher.mark_boundary_facets(lambda x: 1 if x[0] < 1e-12 else 2)`
         """
-        facets = locate_entities_boundary(
-            self.mesh,
-            self.mesh.topology.dim - 1,
-            lambda x: np.full(x.shape[1], True),
+        facet_dim = self.mesh.topology.dim - 1
+
+        # Identify unique exterior facets
+        facets = np.unique(
+            locate_entities_boundary(
+                self.mesh, facet_dim, lambda x: np.full(x.shape[1], True)
+            )
         )
-        values = np.array(
-            [marker_fn(self.mesh.geometry.x[:, i]) for i in facets], dtype=np.int32
-        )
-        self._facet_tags = meshtags(
-            self.mesh, self.mesh.topology.dim - 1, facets, values
-        )
+        if len(facets) == 0:
+            raise RuntimeError("No boundary facets found.")
+
+        # Compute midpoint of each facet
+        midpoints = compute_midpoints(self.mesh, facet_dim, facets)
+        if len(midpoints) != len(facets):
+            raise RuntimeError("Mismatch between facets and midpoints count.")
+
+        # Generate integer markers from user-defined function
+        try:
+            markers = np.array([marker_fn(p) for p in midpoints], dtype=np.int32)
+        except Exception as e:
+            raise RuntimeError(f"Failed to evaluate marker function: {e}")
+
+        self._facet_tags = meshtags(self.mesh, facet_dim, facets, markers)
 
     def _create_box(self, comm: MPI.Intercomm) -> dmesh.Mesh:
         create_fn = {

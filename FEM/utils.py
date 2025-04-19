@@ -1,7 +1,10 @@
 """LSA-FW FEM utilities."""
 
 from enum import Enum, auto
+
 from basix import ElementFamily as DolfinxElementFamily
+from dolfinx.mesh import Mesh, MeshTags
+from ufl import Measure  # type: ignore[import-untyped]
 
 
 class iElementFamily(Enum):
@@ -58,6 +61,18 @@ class iElementFamily(Enum):
             raise ValueError(
                 f"Unknown element family '{name}'. Valid options: {list(cls.__members__.keys())}"
             )
+
+
+class iMeasure:
+    """Helper for constructing tagged facet measures."""
+
+    @staticmethod
+    def ds(mesh: Mesh, tags: MeshTags, name: str = "ds") -> Measure:
+        return Measure(name, domain=mesh, subdomain_data=tags)
+
+    @staticmethod
+    def dS(mesh: Mesh, tags: MeshTags, name: str = "dS") -> Measure:
+        return Measure(name, domain=mesh, subdomain_data=tags)
 
 
 _MAP_TO_DOLFINX: dict[iElementFamily, DolfinxElementFamily] = {

@@ -1,3 +1,5 @@
+"""Unit tests for FEM.spaces module."""
+
 import pytest
 from dolfinx.fem import FunctionSpace
 from dolfinx.mesh import Mesh
