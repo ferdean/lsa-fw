@@ -10,7 +10,8 @@
         "ms-python.black-formatter",
         "ms-python.flake8",
         "matangover.mypy",
-        "ms-vscode.cpptools"
+        "ms-vscode.cpptools",
+        "streetsidesoftware.code-spell-checker"
       ]
     }
   },
