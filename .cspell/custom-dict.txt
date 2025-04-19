@@ -1,7 +1,11 @@
+atleast
 basix
 Brezzi
 Crouzeix
+dfem
+dirichletbc
 dmesh
+dofs
 dolfinx
 functionals
 functionspace
@@ -26,6 +30,7 @@ Navier
 ndarray
 Nédélec
 Neumann
+newaxis
 posedness
 Raviart
 REGGE
