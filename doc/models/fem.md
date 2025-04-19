@@ -70,7 +70,7 @@ $$
 The Sobolev space $H^1(\Omega)$ is defined as
 
 $$
-H^1(\Omega) = \left\{ u \in L^2(\Omega) \,\middle|\, \frac{\partial u}{\partial x_i} \in L^2(\Omega) \quad \forall \quad i = 1, \cdots, d \right\}.
+H^1(\Omega) = \left\{ u \in L^2(\Omega) \;\big|\; \frac{\partial u}{\partial x_i} \in L^2(\Omega) \quad \forall i = 1, \ldots, d \right\}.
 $$
 
 This space consists of functions that are square-integrable over $\Omega$, along with their first-order weak partial derivatives, which must also be square-integrable.
