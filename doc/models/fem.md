@@ -115,9 +115,9 @@ Finite element spaces $V_h \subset V$ are constructed as global piece-wise polyn
 
 Each finite element is defined via $\left(K, P_K, \Sigma_K \right)$, where
 
-- $ K \subset \mathbb{R}^d $ is a reference element,
-- $ P_K $ is a polynomial space,
-- $\Sigma_K $ is a set of degrees of freedom, represented by linearly independent functionals on $P_K $.
+- $K \subset \mathbb{R}^d$ is a reference element,
+- $P_K$ is a polynomial space,
+- $\Sigma_K$ is a set of degrees of freedom, represented by linearly independent functionals on $P_K$.
 
 Each $\sigma \in \Sigma_K$ can be thought of as a rule that extracts a certain piece of information from a function — for example, evaluation at a node, an average over a face, or the value of a normal derivative.
 
@@ -127,11 +127,11 @@ $$
 p \mapsto (\sigma(p))_{\sigma \in \Sigma_K}
 $$
 
-is a linear isomorphism from $P_K$ to $\mathbb{R}^{\#\Sigma_K}$.
+is a linear isomorphism from $P_K$ to $\mathbb{R}^{|\Sigma_K|}$.
 That means that
 
 - every function $p \in P_K$ is uniquely determined by its values under the functionals in $\Sigma_K$, and
-- every tuple of real numbers $(c_\sigma)_{\sigma \in \Sigma_K}$ corresponds to a unique function $p \in P_K$ such that $\sigma(p) = c_\sigma$.
+- every tuple of real numbers $(c_{\sigma \in \Sigma_K})$ corresponds to a unique function $p \in P_K$ such that $\sigma(p) = c_\sigma$.
 
 This property is called unisolvence.
 It ensures that interpolation is well-defined: given a set of target values $(c_\sigma)$, there exists a unique polynomial in $P_K$ that matches these values at the associated DOFs.
