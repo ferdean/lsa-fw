@@ -1,3 +1,10 @@
+functionals
 Lipschitz
 mathbb
+mathbf
+mathcal
+Navier
+Neumann
+posedness
 Sobolev
+unisolvence
