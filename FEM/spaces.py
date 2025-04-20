@@ -5,6 +5,7 @@ such as those for velocity and pressure fields.
 """
 
 from dataclasses import dataclass
+from functools import cached_property
 from enum import Enum, auto
 from dolfinx.fem import functionspace, FunctionSpace
 import dolfinx.mesh as dmesh
@@ -19,7 +20,7 @@ from .utils import iElementFamily
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class FunctionSpaces:
     """Container for function spaces used in the Navier-Stokes solver."""
 
@@ -27,6 +28,13 @@ class FunctionSpaces:
     """Velocity function space."""
     pressure: FunctionSpace
     """Pressure function space."""
+
+    @cached_property
+    def quad_degree(self, offset: int = 1) -> int:
+        """Get quadrature degree."""
+        v_deg = self.velocity.ufl_element().degree
+        p_deg = self.pressure.ufl_element().degree
+        return max(v_deg, p_deg) + offset
 
 
 class FunctionSpaceType(Enum):
