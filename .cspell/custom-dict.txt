@@ -2,6 +2,7 @@ atleast
 basix
 Brezzi
 Crouzeix
+dataclass
 dfem
 dirichletbc
 dmesh
