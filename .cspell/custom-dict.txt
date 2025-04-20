@@ -1,6 +1,8 @@
 atleast
 basix
+bmatrix
 Brezzi
+conv
 Crouzeix
 dataclass
 dfem
@@ -8,6 +10,9 @@ dirichletbc
 dmesh
 dofs
 dolfinx
+eigenanalysis
+eigenproblems
+Frobenius
 functionals
 functionspace
 Galerkin
@@ -19,6 +24,7 @@ Herrman
 Herrmann
 Intercomm
 Isoparametric
+linearizing
 Lipschitz
 Marini
 mathbb
@@ -32,9 +38,12 @@ ndarray
 Nédélec
 Neumann
 newaxis
+nullspace
+petsc
 posedness
 Raviart
 REGGE
 Sobolev
 unisolvence
+visc
 XDMF
