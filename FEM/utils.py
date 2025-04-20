@@ -1,6 +1,8 @@
 """LSA-FW FEM utilities."""
 
 from enum import Enum, auto
+from typing import Self
+from pathlib import Path
 
 from basix import ElementFamily as DolfinxElementFamily
 from dolfinx.mesh import Mesh, MeshTags
@@ -49,12 +51,12 @@ class iElementFamily(Enum):
         return _MAP_TO_DOLFINX[self]
 
     @classmethod
-    def from_dolfinx(cls, family: DolfinxElementFamily) -> "iElementFamily":
+    def from_dolfinx(cls, family: DolfinxElementFamily) -> Self:
         """Convert from Dolfinx ElementFamily to internal enum."""
         return _MAP_FROM_DOLFINX[family]
 
     @classmethod
-    def from_string(cls, name: str) -> "iElementFamily":
+    def from_string(cls, name: str) -> Self:
         """Create from string (case-insensitive)."""
         try:
             return cls[name.upper()]
@@ -87,17 +89,60 @@ class iPETScMatrix:
         """Initialize PETSc matrix wrapper."""
         self._mat = mat
 
+    @classmethod
+    def from_nested(cls, blocks: list[list[PETSc.Mat | None]]) -> Self:
+        """Create a nested PETSc matrix from a list of blocks and wrap it as an iPETScMatrix.
+
+        The input is a list of lists representing a block matrix structure.
+        Each inner list corresponds to a block row, and its elements correspond to block columns.
+        PETSc.Mat instances are used where sub-blocks exist, and `None` is used for empty blocks.
+
+        Example:
+
+            nested = iPETScMatrix.from_nested([
+                [A, G],
+                [D, None],
+            ])
+
+        This builds the nested matrix:
+            [ A   G  ]
+            [ D   0  ]
+        """
+        mat = PETSc.Mat().createNest(blocks)
+        mat.assemble()
+        return cls(mat)
+
     def __str__(self) -> str:
         return f"iPETScMatrix(shape={self.shape}, nnz={self.nonzero_entries})"
 
-    def print(self) -> None:
-        """Print the matrix."""
-        self._mat.view()
+    def __add__(self, other: object) -> Self:
+        """Perform matrix addition."""
+        if not isinstance(other, iPETScMatrix):
+            raise NotImplementedError(f"Cannot add iPETScMatrix with {type(other)}")
+        if self.shape != other.shape:
+            raise ValueError(
+                f"Incompatible matrix shapes: {self.shape} vs {other.shape}"
+            )
+
+        result = self._mat.duplicate(copy=True)
+        result.axpy(1.0, other.raw)
+        return iPETScMatrix(result)
+
+    def __radd__(self, other: object) -> Self:
+        """Perform matrix addition from the right."""
+        return self.__add__(other)
 
     @property
     def raw(self) -> PETSc.Mat:
         """Return the underlying PETSc matrix."""
         return self._mat
+
+    @property
+    def T(self) -> Self:
+        """Return the transpose of the matrix."""
+        transposed = PETSc.Mat().createTranspose(self._mat)
+        transposed.assemble()
+        return iPETScMatrix(transposed)
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -109,6 +154,11 @@ class iPETScMatrix:
         return self._mat.getInfo()["nz_used"]
 
     @property
+    def norm(self) -> float:
+        """Return the Frobenius norm of the matrix."""
+        return self._mat.norm()
+
+    @property
     def type(self) -> str:
         """Return the PETSc matrix type (e.g., 'aij', 'baij')."""
         return self._mat.getType()
@@ -117,6 +167,22 @@ class iPETScMatrix:
     def is_symmetric(self) -> bool:
         """Check whether the matrix is symmetric."""
         return self._mat.isSymmetric()
+
+    def is_numerically_symmetric(self, tol: float = 1e-10) -> bool:
+        """Check whether the matrix is numerically symmetric.
+
+        This is more robust than `is_symmetric`, which may fail due to rounding errors,
+        reordering, or boundary condition insertions.
+        """
+        diff = self.raw.copy()
+        diff.axpy(
+            -1.0, self.T.raw, structure=PETSc.Mat.Structure.SUBSET_NONZERO_PATTERN
+        )
+        return diff.norm() < tol
+
+    def print(self) -> None:
+        """Print the matrix."""
+        self._mat.view()
 
     def scale(self, alpha: float) -> None:
         """Scale the matrix by a constant factor."""
@@ -138,6 +204,27 @@ class iPETScMatrix:
         """Get column indices and values for a specific row."""
         cols, values = self._mat.getRow(row)
         return cols.tolist(), values.tolist()
+
+    def axpy(self, alpha: float, other: object) -> None:
+        """Perform an AXPY operation: this = alpha * other + this."""
+        if not isinstance(other, iPETScMatrix):
+            raise NotImplementedError(f"Cannot add iPETScMatrix with {type(other)}")
+        if self.shape != other.shape:
+            raise ValueError(
+                f"Incompatible matrix shapes: {self.shape} vs {other.shape}"
+            )
+        self._mat.axpy(
+            alpha,
+            other.raw,
+            structure=PETSc.Mat.Structure.SUBSET_NONZERO_PATTERN,
+        )
+
+    def export(self, path: Path) -> None:
+        """Export the matrix to a binary file."""
+        viewer = PETSc.Viewer().createBinary(
+            path, mode=PETSc.Viewer.Mode.WRITE, comm=self._mat.comm
+        )
+        self._mat.view(viewer)
 
 
 _MAP_TO_DOLFINX: dict[iElementFamily, DolfinxElementFamily] = {
