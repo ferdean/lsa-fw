@@ -5,6 +5,7 @@ from enum import Enum, auto
 from basix import ElementFamily as DolfinxElementFamily
 from dolfinx.mesh import Mesh, MeshTags
 from ufl import Measure  # type: ignore[import-untyped]
+from petsc4py import PETSc
 
 
 class iElementFamily(Enum):
@@ -73,6 +74,70 @@ class iMeasure:
     @staticmethod
     def dS(mesh: Mesh, tags: MeshTags, name: str = "dS") -> Measure:
         return Measure(name, domain=mesh, subdomain_data=tags)
+
+
+class iPETScMatrix:
+    """Minimal wrapper around PETSc matrix to provide a consistent interface.
+
+    Note that this is not a complete wrapper and does not implement all methods or properties of a PETSc matrix.
+    This is intended to be a light-weight typed solution to improve developing experience.
+    """
+
+    def __init__(self, mat: PETSc.Mat) -> None:
+        """Initialize PETSc matrix wrapper."""
+        self._mat = mat
+
+    def __str__(self) -> str:
+        return f"iPETScMatrix(shape={self.shape}, nnz={self.nonzero_entries})"
+
+    def print(self) -> None:
+        """Print the matrix."""
+        self._mat.view()
+
+    @property
+    def raw(self) -> PETSc.Mat:
+        """Return the underlying PETSc matrix."""
+        return self._mat
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return self._mat.getSize()
+
+    @property
+    def nonzero_entries(self) -> int:
+        """Return the number of non-zero entries in the matrix."""
+        return self._mat.getInfo()["nz_used"]
+
+    @property
+    def type(self) -> str:
+        """Return the PETSc matrix type (e.g., 'aij', 'baij')."""
+        return self._mat.getType()
+
+    @property
+    def is_symmetric(self) -> bool:
+        """Check whether the matrix is symmetric."""
+        return self._mat.isSymmetric()
+
+    def scale(self, alpha: float) -> None:
+        """Scale the matrix by a constant factor."""
+        self._mat.scale(alpha)
+
+    def shift(self, alpha: float) -> None:
+        """Shift the diagonal of the matrix by a constant."""
+        self._mat.shift(alpha)
+
+    def zero_all_entries(self) -> None:
+        """Zero all entries in the matrix."""
+        self._mat.zeroEntries()
+
+    def get_value(self, row: int, col: int) -> float:
+        """Get the value at position (row, col)."""
+        return self._mat.getValue(row, col)
+
+    def get_row(self, row: int) -> tuple[list[int], list[float]]:
+        """Get column indices and values for a specific row."""
+        cols, values = self._mat.getRow(row)
+        return cols.tolist(), values.tolist()
 
 
 _MAP_TO_DOLFINX: dict[iElementFamily, DolfinxElementFamily] = {
