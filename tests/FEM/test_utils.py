@@ -1,6 +1,7 @@
 """Tests for FEM.utils module."""
 
 import pytest
+from pathlib import Path
 
 from ufl import TrialFunction, TestFunction, inner, dx
 from petsc4py import PETSc
@@ -113,3 +114,78 @@ def test_type(test_matrix: iPETScMatrix) -> None:
         "sbaij",
         "matfree",
     }  # PETSc matrix types
+
+
+def test_matrix_export(tmp_path: Path) -> None:
+    """Test that iPETScMatrix.export() writes a binary matrix file."""
+    A = PETSc.Mat().createAIJ([4, 4], comm=PETSc.COMM_SELF)
+    A.setUp()
+    A.setValue(1, 1, 3.14)
+    A.assemble()
+
+    wrapped = iPETScMatrix(A)
+    filepath = tmp_path / "exported_matrix.bin"
+    wrapped.export(str(filepath))
+
+    assert filepath.exists()
+    assert filepath.stat().st_size > 0
+
+
+def test_matrix_addition(test_matrix: iPETScMatrix) -> None:
+    """Test that matrix addition creates a new matrix with correct summed values."""
+    A = test_matrix
+    B = test_matrix  # Since immutable, reusing is fine
+    C = A + B
+
+    row, col = 0, 0
+    expected = A.get_value(row, col) + B.get_value(row, col)
+    actual = C.get_value(row, col)
+    assert pytest.approx(actual, abs=1e-10) == expected
+
+
+def test_matrix_invalid_addition(test_matrix: iPETScMatrix) -> None:
+    """Ensure that adding matrices with incompatible shapes raises ValueError."""
+    shape = test_matrix.shape
+    wrong_mat = PETSc.Mat().createAIJ(
+        [shape[0] + 1, shape[1] + 1], comm=PETSc.COMM_SELF
+    )
+    wrong_mat.setUp()
+    wrong_mat.assemble()
+    wrong = iPETScMatrix(wrong_mat)
+
+    with pytest.raises(ValueError, match="Incompatible matrix shapes"):
+        _ = test_matrix + wrong
+
+
+def test_axpy_operation(test_matrix: iPETScMatrix) -> None:
+    """Test that AXPY modifies the target matrix as expected."""
+    A = iPETScMatrix(test_matrix.raw.duplicate(copy=True))
+    B = test_matrix
+    alpha = 2.0
+
+    row, col = 0, 0
+    before = A.get_value(row, col)
+    contribution = alpha * B.get_value(row, col)
+
+    A.axpy(alpha, B)
+
+    after = A.get_value(row, col)
+    assert pytest.approx(after, abs=1e-10) == before + contribution
+
+
+def test_from_nested(test_matrix: iPETScMatrix) -> None:
+    """Test creating a MatNest from two compatible matrices."""
+    A = test_matrix.raw
+    zero = A.duplicate()
+    zero.zeroEntries()
+    zero.assemble()
+
+    nested = iPETScMatrix.from_nested(
+        [
+            [A, zero],
+            [zero, None],
+        ]
+    )
+
+    assert isinstance(nested, iPETScMatrix)
+    assert nested.shape == (2 * A.getSize()[0], 2 * A.getSize()[1])
