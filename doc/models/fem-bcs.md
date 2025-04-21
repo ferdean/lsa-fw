@@ -59,7 +59,7 @@ $$
 
 ## Implementation
 
-The `bcs.py` module provides a clean interface for defining boundary conditions within the LSA-FW.
+The `bcs` module provides a clean interface for defining boundary conditions within the LSA-FW.
 
 Each boundary condition is described using a `BoundaryCondition` object, which specifies
 

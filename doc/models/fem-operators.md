@@ -127,8 +127,8 @@ The resulting algebraic system reads
 
 $$
 \begin{bmatrix}
-    sM + C_1 + C_2 + D & G \\
-    D & 0
+    s\mathbf{M} + \mathbf{C}_1 + \mathbf{C}_2 + \mathbf{B} & \mathbf{G} \\
+    \mathbf{D} & 0
 \end{bmatrix}
 \begin{bmatrix}
     \mathbf{u} \\
@@ -143,3 +143,128 @@ $$
 
 This system arises in both eigenvalue problems (where $s$ is a complex eigenvalue) and time-stepping schemes (where $s = \frac{1}{\Delta t}$ or similar).
 Its saddle-point nature reflects the incompressibility condition and requires appropriate solvers and pre-conditioners for efficient numerical solution.
+
+## Implementation
+
+The `operators` module implement the above defined variational forms through the `VariationalForms` collector and exposes an assembler, `LinearizedNavierStokesAssembler`, to compute their associated [PETSc](https://petsc.org/release/) matrices.
+
+All bilinear forms are implemented as static methods, each returning a variational form suitable for FEniCSx assembly routines.
+
+### Assembler
+
+The `LinearizedNavierStokesAssembler` encapsulates the full operator assembly pipeline for the linearized problem.
+
+The core interface is
+
+```python
+assembler = LinearizedNavierStokesAssembler(
+    base_flow: dolfinx.fem.Function,
+    spaces: FunctionSpaces,
+    re: float,
+    bcs: BoundaryConditions| None
+)
+```
+
+where
+
+- `base_flow` is a dolfinx function in the velocity space, representing $\overline{\mathbf{u}}$,
+- `spaces` is a `FunctionSpaces` container defining velocity and pressure spaces (ref. [fem-spaces](fem-spaces.md)),
+- `re` is the Reynolds number, and
+- `bcs` is an optional `BoundaryConditions` object (ref. [fem-bcs](fem-bcs.md)).
+
+The assembler provides the following key methods:
+
+- `assemble_mass_matrix()` — Velocity mass matrix
+- `assemble_viscous_matrix()` — Viscous (Laplacian) matrix
+- `assemble_convection_matrix()` — Base flow convection operator
+- `assemble_shear_matrix()` — Shear (base flow gradient) operator
+- `assemble_pressure_gradient_matrix()` — Pressure gradient matrix
+- `assemble_divergence_matrix()` — Divergence matrix
+- `assemble_robin_matrix()` — Optional contribution from Robin boundaries
+- `assemble_neumann_rhs(g, ds)` — RHS vector from Neumann boundary data
+
+For the sake of efficiency, all matrices are cached internally on first use.
+The `clear_cache()` method invalidates the cache.
+
+### Discrete System Assembly
+
+#### Full Linear Operator
+
+The `assemble_linear_operator()` method returns the full system operator $A$ as a PETSc nested matrix,
+
+$$
+\mathbf{A} = \begin{bmatrix} \mathbf{A}_{uu} & \mathbf{G} \\ \mathbf{D} & 0 \end{bmatrix},
+$$
+
+where
+
+- $\mathbf{A}_{uu} = \mathbf{B} + \mathbf{C}_1 + \mathbf{C}_2 + \mathbf{R}$ with diffusion, convection, shear, and optional Robin term,
+- $\mathbf{G}$ comes from the pressure gradient, and
+- $\mathbf{D}$ comes from the velocity divergence.
+
+### Eigenvalue System
+
+The `assemble_eigensystem()` returns a pair of matrices `(A, M)` such that
+
+$$
+\mathbf{A} \mathbf{x} = s \mathbf{M} \mathbf{x}, \quad \text{with } \mathbf{x} = \begin{bmatrix} \mathbf{u} \\ p \end{bmatrix},
+$$
+
+where
+
+- $\mathbf{A}$ is the full linear operator, and
+- $\mathbf{M}$ is the block mass matrix, such that
+  $$
+  \mathbf{M} = \begin{bmatrix} \mathbf{M}_u & 0 \\ 0 & 0 \end{bmatrix}
+  $$
+
+The velocity mass matrix $\mathbf{M}_u$ is nonzero, while the pressure block is null.
+
+### Nullspace Handling
+
+The `attach_pressure_nullspace(mat: iPETScMatrix)` method attaches a constant pressure nullspace to a PETSc matrix.
+
+This will be necessary for saddle-point systems where pressure is only defined up to a constant.
+This function ensures Krylov solvers (e.g. MINRES) handle the system correctly.
+
+## Design Notes
+
+- All forms are assembled with DOLFINx's `assemble_matrix` and respect supplied Dirichlet BCs.
+- Block systems are returned as `iPETScMatrix` wrappers over PETSc `MatNest`.
+- Matrices are cached internally; use `clear_cache()` to recompute.
+- Integration with SLEPc is supported via `assemble_eigensystem()`.
+
+## Further Notes
+
+### Parallel Assembly and Matrix Structure
+
+The assembly can be made fully parallel over MPI and leverages PETSc structures to preserve sparsity and block structure.
+
+Benefits include
+
+- memory efficiency, as Zero blocks (e.g., pressure-pressure) are never allocated,
+- modularity, since each block is handled separately, and 
+- preconditioner support, as the design enables `PCFieldSplit` to recognize velocity and pressure fields.
+
+### Using the Assembled Matrices in Eigenvalue Analysis
+
+The assembled `(A, M)` pair from `assemble_eigensystem()` can be directly passed to SLEPc.
+A typical usage pattern looks like:
+
+```python
+from slepc4py import SLEPc
+E = SLEPc.EPS().create(comm)
+E.setOperators(A.raw, M.raw)  # iPETScMatrix wrappers
+E.setProblemType(SLEPc.EPS.ProblemType.GNHEP)
+E.setFromOptions()
+E.solve()
+```
+
+### Using the Assembled Matrices in Time Integration
+
+Instead of eigenvalue analysis, the matrices can be used for time stepping.
+For example, applying implicit Euler:
+
+$$
+(\mathbf{M} - \Delta t \mathbf{A}) \mathbf{u}_{n+1} = \mathbf{M} \mathbf{u}_n.
+$$
