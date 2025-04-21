@@ -1,5 +1,7 @@
+allclose
 atleast
 AXPY
+baij
 basix
 bmatrix
 Brezzi
@@ -28,12 +30,15 @@ Isoparametric
 linearizing
 Lipschitz
 Marini
+matfree
 mathbb
 mathbf
 mathcal
 Mesher
 meshio
 meshtags
+mpiaij
+mult
 Navier
 ndarray
 Nédélec
@@ -44,6 +49,8 @@ petsc
 posedness
 Raviart
 REGGE
+sbaij
+seqaij
 Sobolev
 unisolvence
 visc
