@@ -1,3 +1,4 @@
+addv
 allclose
 atleast
 AXPY
@@ -15,6 +16,8 @@ dofs
 dolfinx
 eigenanalysis
 eigenproblems
+eigensystem
+Ferran
 Frobenius
 functionals
 functionspace
@@ -27,6 +30,7 @@ Herrman
 Herrmann
 Intercomm
 Isoparametric
+Krylov
 linearizing
 Lipschitz
 Marini
@@ -45,6 +49,7 @@ Nédélec
 Neumann
 newaxis
 nullspace
+nullspaces
 petsc
 posedness
 Raviart
@@ -52,6 +57,7 @@ REGGE
 sbaij
 seqaij
 Sobolev
+Submatrix
 unisolvence
 visc
 XDMF

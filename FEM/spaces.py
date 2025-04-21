@@ -36,6 +36,22 @@ class FunctionSpaces:
         p_deg = self.pressure.ufl_element().degree
         return max(v_deg, p_deg) + offset
 
+    @cached_property
+    def velocity_dofs(self) -> tuple[int, int]:
+        """Return (local, global) number of velocity DOFs."""
+        return self._dof_count(self.velocity)
+
+    @cached_property
+    def pressure_dofs(self) -> tuple[int, int]:
+        """Return (local, global) number of pressure DOFs."""
+        return self._dof_count(self.pressure)
+
+    @staticmethod
+    def _dof_count(space: FunctionSpace) -> tuple[int, int]:
+        local = space.dofmap.index_map.size_local * space.dofmap.bs
+        global_ = space.dofmap.index_map.size_global * space.dofmap.bs
+        return local, global_
+
 
 class FunctionSpaceType(Enum):
     """Supported function space types for incompressible Navier-Stokes problems.

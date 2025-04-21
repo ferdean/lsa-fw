@@ -120,6 +120,18 @@ class iPETScMatrix:
         mat.assemble()
         return cls(mat)
 
+    @classmethod
+    def zeros(
+        cls,
+        shape: tuple[int, int],
+        comm: PETSc.Comm = PETSc.COMM_WORLD,
+        nnz: int | None = None,
+    ) -> Self:
+        """Initialize a zero matrix of given size."""
+        mat = PETSc.Mat().createAIJ(shape, nnz=nnz, comm=comm)
+        mat.assemble()
+        return cls(mat)
+
     def __str__(self) -> str:
         return f"iPETScMatrix(shape={self.shape}, nnz={self.nonzero_entries})"
 
@@ -211,6 +223,18 @@ class iPETScMatrix:
         )
         self._mat.assemble()
 
+    def __eq__(self, other: object) -> bool:
+        """Matrix equality."""
+        if not isinstance(other, iPETScMatrix):
+            return NotImplemented
+
+        if self.shape != other.shape:
+            return False
+
+        diff = self.raw.copy()
+        diff.axpy(-1.0, other.raw, structure=PETSc.Mat.Structure.SUBSET_NONZERO_PATTERN)
+        return diff.norm() < 1e-12
+
     @property
     def raw(self) -> PETSc.Mat:
         """Return the underlying PETSc matrix."""
@@ -276,6 +300,18 @@ class iPETScMatrix:
         """Shift the diagonal of the matrix by a constant."""
         self._mat.shift(float(alpha))
 
+    def sub(self, row: int, col: int) -> iPETScMatrix | None:
+        """Return the (row, col)-th submatrix from a nested matrix."""
+        if self.type.lower() != "nest":
+            raise NotImplementedError(
+                "Submatrix access is only available for nested matrices."
+            )
+
+        sub_mat = self._mat.getNestSubMatrix(row, col)
+        if sub_mat is None:
+            return None
+        return iPETScMatrix(sub_mat)
+
     def zero_all_entries(self) -> None:
         """Zero all entries in the matrix."""
         self._mat.zeroEntries()
@@ -321,6 +357,25 @@ class iPETScMatrix:
         aij = self._mat.convert("aij")
         aij.assemble()
         return iPETScMatrix(aij)
+
+    def pin_dof(self, index: int) -> None:
+        """Pin a single DOF by zeroing its row and column and placing a 1 on the diagonal.
+
+        This is commonly used to eliminate nullspaces and ensure compatibility with solvers that do not handle
+        them, e.g., fixing pressure at a point in incompressible flow problems.
+        """
+        self._mat.zeroRowsColumns([index], diag=1.0)
+
+    def attach_nullspace(self, nullspace: PETSc.MatNullSpace) -> None:
+        """Attach an existing PETSc nullspace object to this matrix."""
+        self._mat.setNullSpace(nullspace)
+
+    def get_nullspace(self) -> PETSc.MatNullSpace | None:
+        """Retrieve attached nullspace."""
+        try:
+            return self.raw.getNullSpace()
+        except Exception:
+            return None
 
     def export(self, path: Path) -> None:
         """Export the matrix to a binary file."""
@@ -441,6 +496,18 @@ class iPETScVector:
         """Set a value via direct indexation (i.e., vector[i] = value)."""
         self._vec.setValue(index, float(value), addv=PETSc.InsertMode.INSERT_VALUES)
         self._vec.assemble()
+
+    def __eq__(self, other: object) -> bool:
+        """Vector equality."""
+        if not isinstance(other, iPETScVector):
+            return NotImplemented
+
+        if self.size != other.size:
+            return False
+
+        diff = self.raw.duplicate()
+        diff.waxpy(-1.0, self.raw, other.raw)  # diff = other - self
+        return diff.norm() < 1e-12
 
     @property
     def raw(self) -> PETSc.Vec:

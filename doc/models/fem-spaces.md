@@ -158,7 +158,7 @@ Each pairing must be carefully chosen based on the governing equations, regulari
 
 ## Implementation
 
-The `spaces.py` module provides a unified interface for defining compatible function spaces for incompressible Navier–Stokes problems within LSA-FW.
+The `spaces` module provides a unified interface for defining compatible function spaces for incompressible Navier–Stokes problems within LSA-FW.
 
 Each function space pair is selected via the `FunctionSpaceType` enum and constructed over a given mesh using `basix.ufl.element`.
 The function spaces are returned as a `FunctionSpaces` dataclass that encapsulates

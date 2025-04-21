@@ -9,13 +9,23 @@ from Meshing import Mesher, Shape, iCellType
 
 from FEM.operators import LinearizedNavierStokesAssembler
 from FEM.spaces import FunctionSpaces, define_spaces, FunctionSpaceType
+from FEM.utils import iMeasure
 
 
 @pytest.fixture(scope="module")
-def test_mesh() -> dmesh.Mesh:
+def test_mesher() -> Mesher:
+    """Define test mesher."""
+    mesher = Mesher(
+        shape=Shape.UNIT_INTERVAL, n=(400, 400, 400), cell_type=iCellType.TETRAHEDRON
+    )
+    _ = mesher.generate()
+    return mesher
+
+
+@pytest.fixture(scope="module")
+def test_mesh(test_mesher: Mesher) -> dmesh.Mesh:
     """Define test mesh."""
-    mesher = Mesher(shape=Shape.UNIT_SQUARE, n=(4, 4), cell_type=iCellType.TRIANGLE)
-    return mesher.generate()
+    return test_mesher.mesh
 
 
 @pytest.fixture(scope="module")
@@ -96,18 +106,11 @@ def test_mass_matrix_positive_definite(
     """Verify that the mass matrix is symmetric positive definite."""
     M = test_assembler.assemble_mass_matrix()
 
-    x = (
-        M.raw.createVecRight()
-    )  # TODO: Maybe it makes sense to also define a wrapper for vectors
-    x.setRandom()
-
-    y = M.raw.createVecLeft()
-    M.raw.mult(x, y)
-
-    dot = x.dot(y)
+    x = M.create_vector_right()
+    x.set_random()
 
     assert M.is_numerically_symmetric()
-    assert dot > 0
+    assert x.dot(M @ x) > 0
 
 
 def test_gradient_divergence_adjoints(
@@ -119,3 +122,82 @@ def test_gradient_divergence_adjoints(
 
     D.axpy(-1.0, G.T)  # D - G^T
     assert D.norm < 1e-10
+
+
+def test_robin_matrix_zero_if_none(test_assembler: LinearizedNavierStokesAssembler):
+    """Test that the Robin matrix is zero if no Robin forms are provided."""
+    R = test_assembler.assemble_robin_matrix()
+    assert R.nonzero_entries == 0
+    assert R.norm == 0.0
+
+
+def test_assemble_linear_operator_structure(
+    test_assembler: LinearizedNavierStokesAssembler, test_spaces: FunctionSpaces
+):
+    """Test that the linear operator is a 2x2 block with correct submatrix shapes."""
+    mat = test_assembler.assemble_linear_operator()
+    n_u, _ = test_spaces.velocity_dofs
+    n_p, _ = test_spaces.pressure_dofs
+
+    A_block = mat.sub(0, 0)
+    G_block = mat.sub(0, 1)
+    D_block = mat.sub(1, 0)
+    zero_block = mat.sub(1, 1)
+
+    assert A_block is not None
+    assert G_block is not None
+    assert D_block is not None
+    # PETSc creates an uninitialized submatrix for the zero block. It is not a `None` object, but trying to access
+    # any of its expected properties or methods would raise a runtime error at c++ level (then, a natural check for
+    # .nonzero_entries == 0 or .norm() == 0.0 cannot be done)
+    assert zero_block is not None
+
+    assert mat.shape == (n_u + n_p, n_u + n_p)
+    assert A_block.shape == (n_u, n_u)
+    assert G_block.shape == (n_u, n_p)
+    assert D_block.shape == (n_p, n_u)
+
+
+def test_assemble_eigensystem_properties(
+    test_assembler: LinearizedNavierStokesAssembler,
+):
+    """Test shape and symmetry of eigenvalue system components."""
+    A, M = test_assembler.assemble_eigensystem()
+    assert A.shape == M.shape
+
+    M_v_block = M.sub(0, 0)
+    M_v = test_assembler.assemble_mass_matrix()
+
+    assert M_v_block is not None
+    assert M_v == M_v_block
+
+
+def test_assemble_neumann_rhs_format(
+    test_assembler: LinearizedNavierStokesAssembler,
+    test_spaces: FunctionSpaces,
+    test_mesher: Mesher,
+):
+    """Test assembly of Neumann RHS with dummy function."""
+    test_mesher.mark_boundary_facets(
+        lambda x: 1  # Mark all boundary facets with marker '1'
+    )
+    g = dfem.Function(test_spaces.velocity)
+    g.x.array[:] = 1.0  # Constant vector field
+    ds = iMeasure.ds(test_mesher.mesh, test_mesher.facet_tags)
+
+    rhs = test_assembler.assemble_neumann_rhs(g, ds)
+    n_u, _ = test_spaces.velocity_dofs
+    assert rhs.size == n_u
+
+
+def test_clear_cache(test_assembler: LinearizedNavierStokesAssembler):
+    """Test that clearing the cache causes recomputation."""
+    mat_1 = test_assembler.assemble_viscous_matrix()
+    id_before = mat_1.raw.handle
+
+    test_assembler.clear_cache()
+
+    mat_2 = test_assembler.assemble_viscous_matrix()
+    id_after = mat_2.raw.handle
+
+    assert id_before != id_after  # PETSc handle should change after recomputation
