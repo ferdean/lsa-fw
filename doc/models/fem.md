@@ -59,7 +59,8 @@ It is built on top of FEniCSx and supports modular, extensible finite element fo
 | `spaces.py`        | Function space definitions for velocity and pressure                |
 | `bcs.py`           | Dirichlet, Neumann, and Robin boundary condition specification      |
 | `utils.py`         | Shared helpers and enums                                            |
-| `forms.py` (WIP)   | Weak form assembly of the Navier–Stokes operators                   |
+| `operators.py`     | Weak form assembly of the Navier–Stokes operators                   |
+| `plot.py`          | Utils for matrix (sparsity) visualization                           |
 
 ## Submodules Index
 
