@@ -120,7 +120,7 @@ def define_bcs(
                 interpolator = (
                     cfg.value
                     if callable(cfg.value)
-                    else _wrap_constant_scalar(cfg.value)
+                    else _wrap_constant_vector(cfg.value)
                 )
                 fn.interpolate(interpolator)
 
@@ -172,13 +172,5 @@ def _wrap_constant_vector(
 
     def _interpolator(x: np.ndarray) -> np.ndarray:
         return np.tile(vector, (1, x.shape[1]))  # Shape (dim, n_points)
-
-    return _interpolator
-
-
-def _wrap_constant_scalar(value: float) -> Callable[[np.ndarray], np.ndarray]:
-
-    def _interpolator(x: np.ndarray) -> np.ndarray:
-        return np.full((1, x.shape[1]), float(value))
 
     return _interpolator

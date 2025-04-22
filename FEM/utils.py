@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from enum import Enum, auto
-from typing import Self, overload
+from typing import overload
 from pathlib import Path
 import numpy as np
-from numbers import Number
 
 from basix import ElementFamily as DolfinxElementFamily
 from dolfinx.mesh import Mesh, MeshTags
@@ -55,12 +54,12 @@ class iElementFamily(Enum):
         return _MAP_TO_DOLFINX[self]
 
     @classmethod
-    def from_dolfinx(cls, family: DolfinxElementFamily) -> Self:
+    def from_dolfinx(cls, family: DolfinxElementFamily) -> iElementFamily:
         """Convert from Dolfinx ElementFamily to internal enum."""
         return _MAP_FROM_DOLFINX[family]
 
     @classmethod
-    def from_string(cls, name: str) -> Self:
+    def from_string(cls, name: str) -> iElementFamily:
         """Create from string (case-insensitive)."""
         try:
             return cls[name.upper()]
@@ -98,7 +97,7 @@ class iPETScMatrix:
     @classmethod
     def from_nested(
         cls, blocks: list[list[PETSc.Mat | None]], comm: PETSc.Comm = PETSc.COMM_WORLD
-    ) -> Self:
+    ) -> iPETScMatrix:
         """Create a nested PETSc matrix from a list of blocks and wrap it as an iPETScMatrix.
 
         The input is a list of lists representing a block matrix structure.
@@ -126,7 +125,7 @@ class iPETScMatrix:
         shape: tuple[int, int],
         comm: PETSc.Comm = PETSc.COMM_WORLD,
         nnz: int | None = None,
-    ) -> Self:
+    ) -> iPETScMatrix:
         """Initialize a zero matrix of given size."""
         mat = PETSc.Mat().createAIJ(shape, nnz=nnz, comm=comm)
         mat.assemble()
@@ -135,7 +134,7 @@ class iPETScMatrix:
     def __str__(self) -> str:
         return f"iPETScMatrix(shape={self.shape}, nnz={self.nonzero_entries})"
 
-    def __add__(self, other: object) -> Self:
+    def __add__(self, other: object) -> iPETScMatrix:
         """Perform matrix addition."""
         if not isinstance(other, iPETScMatrix):
             raise NotImplementedError(f"Cannot add iPETScMatrix with {type(other)}")
@@ -148,7 +147,7 @@ class iPETScMatrix:
         result.axpy(1.0, other.raw)
         return iPETScMatrix(result)
 
-    def __radd__(self, other: object) -> Self:
+    def __radd__(self, other: object) -> iPETScMatrix:
         """Perform matrix addition from the right."""
         return self.__add__(other)
 
@@ -156,9 +155,11 @@ class iPETScMatrix:
     def __matmul__(self, other: iPETScVector) -> iPETScVector: ...
 
     @overload
-    def __matmul__(self, other: iPETScMatrix) -> Self: ...
+    def __matmul__(self, other: iPETScMatrix) -> iPETScMatrix: ...
 
-    def __matmul__(self, other: iPETScVector | iPETScMatrix) -> iPETScVector | Self:
+    def __matmul__(
+        self, other: iPETScVector | iPETScMatrix
+    ) -> iPETScVector | iPETScMatrix:
         """Perform matrix-vector or matrix-matrix multiplication."""
         match other:
             case iPETScVector():
@@ -211,7 +212,7 @@ class iPETScMatrix:
             )
         return self.get_value(indices[0], indices[1])
 
-    def __setitem__(self, indices: tuple[int, int], value: Number) -> None:
+    def __setitem__(self, indices: tuple[int, int], value: int | float) -> None:
         """Set a value via direct indexation (i.e., matrix[i, j] = value)."""
         if self.type.lower() == "nest":
             raise NotImplementedError(
@@ -246,7 +247,7 @@ class iPETScMatrix:
         return self._mat.comm
 
     @property
-    def T(self) -> Self:
+    def T(self) -> iPETScMatrix:
         """Return the transpose of the matrix."""
         transposed = PETSc.Mat().createTranspose(self._mat)
         transposed.assemble()
@@ -292,11 +293,11 @@ class iPETScMatrix:
         """Print the matrix."""
         self._mat.view()
 
-    def scale(self, alpha: Number) -> None:
+    def scale(self, alpha: int | float) -> None:
         """Scale the matrix by a constant factor."""
         self._mat.scale(float(alpha))
 
-    def shift(self, alpha: Number) -> None:
+    def shift(self, alpha: int | float) -> None:
         """Shift the diagonal of the matrix by a constant."""
         self._mat.shift(float(alpha))
 
@@ -325,7 +326,7 @@ class iPETScMatrix:
         cols, values = self._mat.getRow(row)
         return cols.tolist(), values.tolist()
 
-    def axpy(self, alpha: Number, other: object) -> None:
+    def axpy(self, alpha: int | float, other: object) -> None:
         """Perform an AXPY operation: this = alpha * other + this."""
         if not isinstance(other, iPETScMatrix):
             raise NotImplementedError(f"Cannot add iPETScMatrix with {type(other)}")
@@ -398,7 +399,7 @@ class iPETScVector:
         self._vec = vec
 
     @classmethod
-    def zeros(cls, size: int, comm: PETSc.Comm = PETSc.COMM_WORLD) -> Self:
+    def zeros(cls, size: int, comm: PETSc.Comm = PETSc.COMM_WORLD) -> iPETScVector:
         """Initialize a zero vector of given size."""
         vec = PETSc.Vec().create(comm=comm)
         vec.setSizes(size)
@@ -407,13 +408,15 @@ class iPETScVector:
         return cls(vec)
 
     @classmethod
-    def from_array(cls, array: np.ndarray, comm: PETSc.Comm = PETSc.COMM_WORLD) -> Self:
+    def from_array(
+        cls, array: np.ndarray, comm: PETSc.Comm = PETSc.COMM_WORLD
+    ) -> iPETScVector:
         """Create a vector from a NumPy array."""
         vec = PETSc.Vec().createWithArray(array, comm=comm)
         vec.setFromOptions()
         return cls(vec)
 
-    def __add__(self, other: object) -> Self:
+    def __add__(self, other: object) -> iPETScVector:
         """Perform vector addition."""
         if not isinstance(other, iPETScVector):
             raise NotImplementedError(f"Cannot add iPETScVector with {type(other)}")
@@ -427,11 +430,11 @@ class iPETScVector:
         result._vec.axpy(1.0, other.raw)
         return result
 
-    def __radd__(self, other: object) -> Self:
+    def __radd__(self, other: object) -> iPETScVector:
         """Perform vector addition from the right."""
         return self.__add__(other)
 
-    def __sub__(self, other: object) -> Self:
+    def __sub__(self, other: object) -> iPETScVector:
         """Perform vector subtraction."""
         if not isinstance(other, iPETScVector):
             raise NotImplementedError(
@@ -448,14 +451,14 @@ class iPETScVector:
         return result
 
     @overload
-    def __mul__(self, other: Number) -> Self: ...
+    def __mul__(self, other: int | float) -> iPETScVector: ...
 
     @overload
     def __mul__(self, other: iPETScVector) -> float: ...
 
-    def __mul__(self, other: Number | iPETScVector) -> Self | float:
+    def __mul__(self, other: int | float | iPETScVector) -> iPETScVector | float:
         """Perform scalar-vector multiplication."""
-        if isinstance(other, Number):
+        if isinstance(other, (int, float)):
             result = self.copy()
             result.scale(other)
             return result
@@ -463,7 +466,7 @@ class iPETScVector:
         if isinstance(other, iPETScVector):
             return self.dot(other)
 
-    def __rmul__(self, alpha: Number) -> Self:
+    def __rmul__(self, alpha: int | float) -> iPETScVector:
         """Perform vector-scalar multiplication"""
         return self.__mul__(alpha)
 
@@ -492,7 +495,7 @@ class iPETScVector:
         """Get a value via direct indexation (i.e., vector[i])."""
         return self._vec.getValue(index)
 
-    def __setitem__(self, index: int, value: Number) -> None:
+    def __setitem__(self, index: int, value: int | float) -> None:
         """Set a value via direct indexation (i.e., vector[i] = value)."""
         self._vec.setValue(index, float(value), addv=PETSc.InsertMode.INSERT_VALUES)
         self._vec.assemble()
@@ -529,7 +532,7 @@ class iPETScVector:
         """Return the 2-norm of the vector."""
         return self._vec.norm()
 
-    def copy(self) -> Self:
+    def copy(self) -> iPETScVector:
         """Create a copy of the vector."""
         return iPETScVector(self._vec.copy())
 
@@ -560,7 +563,7 @@ class iPETScVector:
             rng.setFromOptions()
         self._vec.setRandom(rng)
 
-    def dot(self, other: Self) -> float:
+    def dot(self, other: iPETScVector) -> float:
         """Vector inner product."""
         return self._vec.dot(other.raw)
 
