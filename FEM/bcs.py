@@ -69,8 +69,6 @@ def define_bcs(
     mesh: dmesh.Mesh,
     spaces: FunctionSpaces,
     tags: dmesh.MeshTags,
-    u_trial: ufl.Coefficient,
-    v_test: ufl.TestFunction,
     configs: Sequence[BoundaryCondition],
 ) -> BoundaryConditions:
     """
@@ -88,6 +86,11 @@ def define_bcs(
     geom_dim = mesh.geometry.dim
     ds = iMeasure.ds(mesh, tags)
 
+    V, Q = spaces.velocity, spaces.pressure
+
+    u_trial = ufl.TrialFunction(V)
+    v_test = ufl.TestFunction(V)
+
     velocity_bcs: list[dfem.DirichletBC] = []
     pressure_bcs: list[dfem.DirichletBC] = []
     neumann_forms: list[ufl.Form] = []
@@ -99,7 +102,6 @@ def define_bcs(
 
         match cfg.type:
             case BoundaryConditionType.DIRICHLET_VELOCITY:
-                V = spaces.velocity
                 fn = dfem.Function(V)
 
                 interpolator = (
@@ -113,7 +115,6 @@ def define_bcs(
                 velocity_bcs.append(dfem.dirichletbc(fn, dofs))
 
             case BoundaryConditionType.DIRICHLET_PRESSURE:
-                Q = spaces.pressure
                 fn = dfem.Function(Q)
 
                 interpolator = (
@@ -181,12 +182,3 @@ def _wrap_constant_scalar(value: float) -> Callable[[np.ndarray], np.ndarray]:
         return np.full((1, x.shape[1]), float(value))
 
     return _interpolator
-
-
-def _wrap_ufl_vector(
-    value: float | tuple[float, ...] | Callable,
-) -> ufl.core.expr.Expr:
-    if callable(value):
-        return ufl.as_vector(value(ufl.SpatialCoordinate(None)))  # type: ignore[arg-type]
-    array = np.atleast_1d(value)
-    return ufl.as_vector(array)
