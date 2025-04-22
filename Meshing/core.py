@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 _CUSTOM_FILES: set[Shape] = {Shape.CUSTOM_XDMF, Shape.CUSTOM_MSH}
 """Supported mesh types for import/export."""
-_COMM: MPI.Intercomm = MPI.COMM_WORLD
+_COMM: MPI.Intracomm = MPI.COMM_WORLD
 """Default MPI communicator for parallel processing."""
 
 
@@ -100,7 +100,7 @@ class Mesher:
         _ = mesh.generate()
         return mesh
 
-    def generate(self, comm: MPI.Intercomm = _COMM) -> dmesh.Mesh:
+    def generate(self, comm: MPI.Intracomm = _COMM) -> dmesh.Mesh:
         """Generate the mesh according to shape."""
         match self._shape:
             case Shape.UNIT_INTERVAL:
@@ -131,7 +131,7 @@ class Mesher:
         return self._mesh
 
     def export(
-        self, path: pathlib.Path, format: Format, comm: MPI.Intercomm = _COMM
+        self, path: pathlib.Path, format: Format, comm: MPI.Intracomm = _COMM
     ) -> None:
         """Export the generated mesh to the given file.
 
@@ -198,24 +198,25 @@ class Mesher:
 
         self._facet_tags = meshtags(self.mesh, facet_dim, facets, markers)
 
-    def _create_box(self, comm: MPI.Intercomm) -> dmesh.Mesh:
-        create_fn = {
-            2: dmesh.create_rectangle,
-            3: dmesh.create_box,
-        }.get(self._gdim)
-
-        if create_fn is None:
+    def _create_box(self, comm: MPI.Intracomm) -> dmesh.Mesh:
+        if self._gdim == 2:
+            return dmesh.create_rectangle(
+                comm,
+                [list(self._domain[0]), list(self._domain[1])],
+                list(self._n),
+                self._cell_type,
+            )
+        elif self._gdim == 3:
+            return dmesh.create_box(
+                comm,
+                [list(self._domain[0]), list(self._domain[1])],
+                list(self._n),
+                self._cell_type,
+            )
+        else:
             raise ValueError("BOX shape requires 2 or 3 dimensions.")
 
-        return create_fn(
-            comm,
-            [self._domain[0], self._domain[1]],
-            list(self._n),
-            self._cell_type,
-            dtype=np.float64,
-        )
-
-    def _read_custom_xdmf(self, comm: MPI.Intercomm) -> dmesh.Mesh:
+    def _read_custom_xdmf(self, comm: MPI.Intracomm) -> dmesh.Mesh:
         with dio.XDMFFile(comm, str(self._custom_file), "r") as xdmf:
             try:
                 mesh = xdmf.read_mesh(name="mesh")
@@ -234,7 +235,7 @@ class Mesher:
 
         return mesh
 
-    def _read_custom_msh(self, comm: MPI.Intercomm) -> dmesh.Mesh:
+    def _read_custom_msh(self, comm: MPI.Intracomm) -> dmesh.Mesh:
         if not self._custom_file or not self._custom_file.exists():
             raise FileNotFoundError(f"Mesh file not found: {self._custom_file}")
         mesh, self._cell_tags, self._facet_tags = gmshio.read_from_msh(

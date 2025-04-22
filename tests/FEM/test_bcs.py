@@ -1,6 +1,8 @@
 """Unit tests for FEM.bcs module."""
 
 import pytest
+import numpy as np
+
 import dolfinx.fem as dfem
 import ufl
 
@@ -40,10 +42,6 @@ def test_dirichlet_velocity_bc(
     mesher_with_tags: Mesher, spaces: FunctionSpaces
 ) -> None:
     """Test Dirichlet velocity boundary condition."""
-    V = spaces.velocity
-    u = ufl.TrialFunction(V)
-    v = ufl.TestFunction(V)
-
     configs = [
         BoundaryCondition(
             marker=1,
@@ -52,7 +50,7 @@ def test_dirichlet_velocity_bc(
         )
     ]
     bcs = define_bcs(
-        mesher_with_tags.mesh, spaces, mesher_with_tags.facet_tags, u, v, configs
+        mesher_with_tags.mesh, spaces, mesher_with_tags.facet_tags, configs
     )
 
     assert len(bcs.velocity) == 1
@@ -66,10 +64,6 @@ def test_dirichlet_pressure_bc(
     mesher_with_tags: Mesher, spaces: FunctionSpaces
 ) -> None:
     """Test Dirichlet pressure boundary condition."""
-    V = spaces.velocity
-    u = ufl.TrialFunction(V)
-    v = ufl.TestFunction(V)
-
     configs = [
         BoundaryCondition(
             marker=1,
@@ -78,7 +72,7 @@ def test_dirichlet_pressure_bc(
         )
     ]
     bcs = define_bcs(
-        mesher_with_tags.mesh, spaces, mesher_with_tags.facet_tags, u, v, configs
+        mesher_with_tags.mesh, spaces, mesher_with_tags.facet_tags, configs
     )
 
     assert len(bcs.pressure) == 1
@@ -88,12 +82,34 @@ def test_dirichlet_pressure_bc(
     assert bcs.robin_forms == []
 
 
+def test_callable_dirichlet_bc(
+    mesher_with_tags: Mesher, spaces: FunctionSpaces
+) -> None:
+    """Test Dirichlet BC with a callable value."""
+
+    def _velocity_field(x: np.ndarray) -> np.ndarray:
+        return np.vstack((np.sin(x[0]), np.cos(x[1])))
+
+    config = BoundaryCondition(
+        marker=1,
+        type=BoundaryConditionType.DIRICHLET_VELOCITY,
+        value=_velocity_field,
+    )
+
+    bcs = define_bcs(
+        mesh=mesher_with_tags.mesh,
+        spaces=spaces,
+        tags=mesher_with_tags.facet_tags,
+        configs=[config],
+    )
+
+    assert len(bcs.velocity) == 1
+    bc = bcs.velocity[0]
+    assert isinstance(bc, dfem.DirichletBC)
+
+
 def test_neumann_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     """Test Neumann boundary condition."""
-    V = spaces.velocity
-    u = ufl.TrialFunction(V)
-    v = ufl.TestFunction(V)
-
     configs = [
         BoundaryCondition(
             marker=1,
@@ -102,7 +118,7 @@ def test_neumann_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
         )
     ]
     bcs = define_bcs(
-        mesher_with_tags.mesh, spaces, mesher_with_tags.facet_tags, u, v, configs
+        mesher_with_tags.mesh, spaces, mesher_with_tags.facet_tags, configs
     )
 
     assert len(bcs.neumann_forms) == 1
@@ -114,10 +130,6 @@ def test_neumann_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
 
 def test_robin_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     """Test Robin boundary condition."""
-    V = spaces.velocity
-    u = ufl.TrialFunction(V)
-    v = ufl.TestFunction(V)
-
     configs = [
         BoundaryCondition(
             marker=1,
@@ -127,7 +139,7 @@ def test_robin_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
         )
     ]
     bcs = define_bcs(
-        mesher_with_tags.mesh, spaces, mesher_with_tags.facet_tags, u, v, configs
+        mesher_with_tags.mesh, spaces, mesher_with_tags.facet_tags, configs
     )
 
     assert len(bcs.robin_forms) == 2
@@ -139,10 +151,6 @@ def test_robin_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
 
 def test_mixed_bcs(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     """Test combination of Dirichlet, Neumann, and Robin boundary conditions."""
-    V = spaces.velocity
-    u = ufl.TrialFunction(V)
-    v = ufl.TestFunction(V)
-
     configs = [
         BoundaryCondition(
             marker=1, type=BoundaryConditionType.DIRICHLET_VELOCITY, value=(1.0, 0.0)
@@ -161,7 +169,7 @@ def test_mixed_bcs(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
         ),
     ]
     bcs = define_bcs(
-        mesher_with_tags.mesh, spaces, mesher_with_tags.facet_tags, u, v, configs
+        mesher_with_tags.mesh, spaces, mesher_with_tags.facet_tags, configs
     )
 
     assert len(bcs.velocity) == 1
