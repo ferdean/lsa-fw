@@ -29,6 +29,7 @@ Hellan
 Herrman
 Herrmann
 Intercomm
+Intracomm
 Isoparametric
 Krylov
 linearizing

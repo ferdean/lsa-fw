@@ -43,6 +43,36 @@
         "reveal": "always",
         "panel": "shared"
       }
+    },
+    {
+      "label": "Run static checker (mypy)",
+      "type": "shell",
+      "command": "/dolfinx-env/bin/python3",
+      "args": [
+        "-m",
+        "mypy",
+        "--explicit-package-bases",
+        "--namespace-packages",
+        "--disable-error-code",
+        "attr-defined",
+        "--disable-error-code",
+        "name-defined",
+        "TestProjects",
+        "FEM",
+        "Meshing"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
     }
   ],
   "inputs": [
