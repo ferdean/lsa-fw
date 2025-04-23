@@ -1,7 +1,10 @@
 """Unit tests for Meshing.core module."""
 
 import pytest
+import numpy as np
+
 from pathlib import Path
+
 from Meshing import Shape, Mesher, iCellType, Format
 
 
@@ -116,3 +119,42 @@ def test_invalid_custom_file_path() -> None:
     invalid_path = Path("non_existent_file.msh")
     with pytest.raises(FileNotFoundError):
         Mesher.from_file(invalid_path, Shape.CUSTOM_MSH)
+
+
+def test_mark_boundary_facets_assigns_tags() -> None:
+    """Test mark_boundary_facets correctly assigns integer facet tags."""
+    mesher = Mesher(shape=Shape.UNIT_SQUARE, n=(4, 4), cell_type=iCellType.TRIANGLE)
+    mesh = mesher.generate()
+
+    # Tag: left=1, right=2, rest=99
+    def _marker_fn(x: np.ndarray) -> int:
+        if np.isclose(x[0], 0.0):
+            return 1
+        elif np.isclose(x[0], 1.0):
+            return 2
+        return 99
+
+    mesher.mark_boundary_facets(_marker_fn)
+    tags = mesher.facet_tags
+
+    assert tags is not None
+    assert tags.dim == mesh.topology.dim - 1
+    assert tags.values.size > 0
+    assert set(tags.values).issubset({1, 2, 99})
+
+
+def test_facet_tags_export_import(tmp_path: Path) -> None:
+    """Test that facet tags are exported to and reloaded from XDMF."""
+    path = tmp_path / "mesh.xdmf"
+
+    mesher = Mesher(shape=Shape.UNIT_SQUARE, n=(2, 2), cell_type=iCellType.TRIANGLE)
+    mesher.generate()
+    mesher.mark_boundary_facets(lambda x: 1 if x[0] < 1e-12 else 2)
+    mesher.export(path, Format.XDMF)
+
+    # Re-import
+    mesher2 = Mesher.from_file(path, Shape.CUSTOM_XDMF)
+    tags = mesher2.facet_tags
+
+    assert tags is not None
+    assert set(tags.values).issubset({1, 2})
