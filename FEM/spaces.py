@@ -4,9 +4,11 @@ This module defines and groups function spaces used in the discretization of the
 such as those for velocity and pressure fields.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from functools import cached_property
-from enum import Enum, auto
+from enum import StrEnum, auto
 from dolfinx.fem import functionspace, FunctionSpace
 import dolfinx.mesh as dmesh
 from basix.ufl import element, enriched_element
@@ -53,7 +55,7 @@ class FunctionSpaces:
         return local, global_
 
 
-class FunctionSpaceType(Enum):
+class FunctionSpaceType(StrEnum):
     """Supported function space types for incompressible Navier-Stokes problems.
 
     Each space type corresponds to a canonical element pair commonly used in the literature and numerical practice.
@@ -84,6 +86,14 @@ class FunctionSpaceType(Enum):
     Employs discontinuous function spaces for velocity and pressure.
     Not currently supported in this framework.
     """
+
+    @classmethod
+    def from_string(cls, value: str) -> FunctionSpaceType:
+        """Get function space type from a string."""
+        try:
+            return cls(value.lower().strip().replace(" ", "_"))
+        except KeyError:
+            raise ValueError(f"No type found for {value}.")
 
 
 def define_spaces(

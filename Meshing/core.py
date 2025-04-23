@@ -1,15 +1,16 @@
 """LSA-FW Meshing core."""
 
-import pathlib
-import numpy as np
-from typing import assert_never, Self, Callable
 import logging
+import pathlib
+from typing import Callable, Self, assert_never
+
+import numpy as np
 from mpi4py import MPI
-import dolfinx.mesh as dmesh
+
 import dolfinx.io as dio
+import dolfinx.mesh as dmesh
 from dolfinx.io import gmshio
-from dolfinx.mesh import MeshTags
-from dolfinx.mesh import locate_entities_boundary, meshtags, compute_midpoints
+from dolfinx.mesh import MeshTags, compute_midpoints, locate_entities_boundary, meshtags
 
 from .utils import Format, Shape, iCellType
 
@@ -78,17 +79,13 @@ class Mesher:
         return self._mesh
 
     @property
-    def facet_tags(self) -> MeshTags:
+    def facet_tags(self) -> MeshTags | None:
         """Get the facet tags of the mesh."""
-        if self._facet_tags is None:
-            raise RuntimeError("Facet tags not available.")
         return self._facet_tags
 
     @property
-    def cell_tags(self) -> MeshTags:
+    def cell_tags(self) -> MeshTags | None:
         """Get the cell tags of the mesh."""
-        if self._cell_tags is None:
-            raise RuntimeError("Cell tags not available.")
         return self._cell_tags
 
     @classmethod
@@ -151,6 +148,16 @@ class Mesher:
                 with dio.XDMFFile(comm, str(path), "w") as file:
                     file.write_mesh(self.mesh)
 
+                    if self._facet_tags is not None:
+                        file.write_meshtags(self._facet_tags, self.mesh.geometry)
+                    else:
+                        logger.warning("No facet tags to export.")
+
+                    if self._cell_tags is not None:
+                        file.write_meshtags(self._cell_tags, self.mesh.geometry)
+                    else:
+                        logger.warning("No cell tags to export.")
+
             case Format.VTK:
                 with dio.VTKFile(comm, str(path), "w") as vtk_file:
                     vtk_file.write_mesh(self.mesh)
@@ -193,10 +200,10 @@ class Mesher:
         # Generate integer markers from user-defined function
         try:
             markers = np.array([marker_fn(p) for p in midpoints], dtype=np.int32)
+            self._facet_tags = meshtags(self.mesh, facet_dim, facets, markers)
+            self._facet_tags.name = "facet_tags"
         except Exception as e:
             raise RuntimeError(f"Failed to evaluate marker function: {e}")
-
-        self._facet_tags = meshtags(self.mesh, facet_dim, facets, markers)
 
     def _create_box(self, comm: MPI.Intracomm) -> dmesh.Mesh:
         if self._gdim == 2:
@@ -220,6 +227,12 @@ class Mesher:
         with dio.XDMFFile(comm, str(self._custom_file), "r") as xdmf:
             try:
                 mesh = xdmf.read_mesh(name="mesh")
+                mesh.topology.create_connectivity(
+                    mesh.topology.dim, mesh.topology.dim - 1
+                )
+                mesh.topology.create_connectivity(
+                    mesh.topology.dim - 1, mesh.topology.dim
+                )
             except Exception as e:
                 raise RuntimeError(f"Failed to read mesh from {self._custom_file}: {e}")
 

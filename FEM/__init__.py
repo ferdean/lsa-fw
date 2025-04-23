@@ -2,7 +2,7 @@
 
 __author__ = "Ferran de Andres <ferran.de-andres-vert@campus.tu-berlin.de>"
 
-from Meshing.plot import setup_logging
+from lib.loggingutils import setup_logging
 
 from .bcs import (
     BoundaryCondition,

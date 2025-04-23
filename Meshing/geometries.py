@@ -8,21 +8,17 @@ import gmsh  # type: ignore[import-untyped]
 from mpi4py import MPI
 from dolfinx.io import gmshio
 import dolfinx.mesh as dmesh
-from Meshing.utils import iCellType
 from typing import Callable
 
-from .utils import Geometry
+from config import CylinderFlowGeometryConfig, StepFlowGeometryConfig
+
+from .utils import Geometry, iCellType
+
+GeometryConfig = CylinderFlowGeometryConfig | StepFlowGeometryConfig
 
 
 def cylinder_flow(
-    length: float,
-    height: float,
-    cylinder_radius: float,
-    cylinder_center: tuple[float, ...],
-    width: float | None = None,
-    resolution: float = 0.05,
-    resolution_cylinder: float = 0.01,
-    influence_radius: float = 0.15,
+    cfg: CylinderFlowGeometryConfig,
     _: iCellType = iCellType.TRIANGLE,  # Currently unused, placeholder for future extension
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> dmesh.Mesh:
@@ -44,27 +40,27 @@ def cylinder_flow(
         _: Cell type (currently unused).
         comm: MPI communicator.
     """
-    if (dim := len(cylinder_center)) == 2:
+    if cfg.dim == 2:
         geo = _initialize_model("cylinder2d")
-        xc, yc = cylinder_center
+        xc, yc = cfg.cylinder_center
         z = 0.0
 
         rect = [
-            geo.addPoint(0, 0, z, resolution),
-            geo.addPoint(length, 0, z, resolution),
-            geo.addPoint(length, height, z, resolution),
-            geo.addPoint(0, height, z, resolution),
+            geo.addPoint(0, 0, z, cfg.resolution),
+            geo.addPoint(cfg.length, 0, z, cfg.resolution),
+            geo.addPoint(cfg.length, cfg.height, z, cfg.resolution),
+            geo.addPoint(0, cfg.height, z, cfg.resolution),
         ]
         loop_rect = geo.addCurveLoop(
             [geo.addLine(rect[i], rect[(i + 1) % 4]) for i in range(4)]
         )
 
-        center = geo.addPoint(xc, yc, z, resolution)
+        center = geo.addPoint(xc, yc, z, cfg.resolution)
         pts = [
-            geo.addPoint(xc, yc + cylinder_radius, z, resolution),
-            geo.addPoint(xc + cylinder_radius, yc, z, resolution),
-            geo.addPoint(xc, yc - cylinder_radius, z, resolution),
-            geo.addPoint(xc - cylinder_radius, yc, z, resolution),
+            geo.addPoint(xc, yc + cfg.cylinder_radius, z, cfg.resolution),
+            geo.addPoint(xc + cfg.cylinder_radius, yc, z, cfg.resolution),
+            geo.addPoint(xc, yc - cfg.cylinder_radius, z, cfg.resolution),
+            geo.addPoint(xc - cfg.cylinder_radius, yc, z, cfg.resolution),
         ]
         arcs = [
             geo.addCircleArc(pts[0], center, pts[1]),
@@ -79,23 +75,27 @@ def cylinder_flow(
         geo.synchronize()
 
         _define_refinement_edges(
-            arcs, resolution, resolution_cylinder, cylinder_radius, influence_radius
+            arcs,
+            cfg.resolution,
+            cfg.resolution_around_cylinder,
+            cfg.cylinder_radius,
+            cfg.influence_radius,
         )
-        return _finalize_and_extract(comm, gdim=2)
+        return _finalize_and_extract(comm, gdim=cfg.dim)
 
-    elif dim == 3:
-        if width is None:
+    elif cfg.dim == 3:
+        if cfg.width is None:
             raise ValueError("Width must be provided for 3D cylinder flow.")
 
-        xc, yc, zc = cylinder_center
-        if not (0 < xc < length and 0 < yc < height):
+        xc, yc, zc = cfg.cylinder_center
+        if not (0 < xc < cfg.length and 0 < yc < cfg.height):
             raise ValueError("Cylinder center must be inside the channel.")
-        if cylinder_radius * 2 >= min(height, width):
+        if cfg.cylinder_radius * 2 >= min(cfg.height, cfg.width):
             raise ValueError("Cylinder radius too large for given height/width.")
 
         occ = _initialize_model("cylinder3d", use_occ=True)
-        box = occ.addBox(0, 0, 0, length, height, width)
-        cyl = occ.addCylinder(xc, yc, 0, 0, 0, width, cylinder_radius)
+        box = occ.addBox(0, 0, 0, cfg.length, cfg.height, cfg.width)
+        cyl = occ.addCylinder(xc, yc, 0, 0, 0, cfg.width, cfg.cylinder_radius)
         fluid = occ.cut([(3, box)], [(3, cyl)], removeObject=True, removeTool=False)
         occ.synchronize()
 
@@ -112,28 +112,27 @@ def cylinder_flow(
         lateral_faces = [
             tag
             for dim, tag in surf
-            if dim == 2 and _is_lateral_surface(tag, xc, yc, zc, cylinder_radius, width)
+            if dim == 2
+            and _is_lateral_surface(tag, xc, yc, zc, cfg.cylinder_radius, cfg.width)
         ]
 
         if not lateral_faces:
             raise RuntimeError("No lateral cylinder surfaces found for refinement.")
 
         _define_refinement_faces(
-            lateral_faces, resolution, resolution_cylinder, influence_radius
+            lateral_faces,
+            cfg.resolution,
+            cfg.resolution_around_cylinder,
+            cfg.influence_radius,
         )
 
-        return _finalize_and_extract(comm, gdim=3, use_occ=True)
+        return _finalize_and_extract(comm, gdim=cfg.dim, use_occ=True)
 
     raise ValueError("Only 2D or 3D supported.")
 
 
 def step_flow(
-    inlet_length: float = 1.0,
-    step_height: float = 0.2,
-    outlet_length: float = 4.0,
-    channel_height: float = 1.0,
-    width: float | None = None,
-    resolution: float = 0.05,
+    cfg: StepFlowGeometryConfig,
     _: iCellType = iCellType.TRIANGLE,  # Currently unused, placeholder for future extension
     comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> dmesh.Mesh:
@@ -149,16 +148,22 @@ def step_flow(
         _: Cell type (currently unused).
         comm: MPI communicator.
     """
-    if width is None:
-        # 2D
+    if cfg.dim == 2:
         geo = _initialize_model("step2d")
         pts = [
-            geo.addPoint(0, 0, 0, resolution),
-            geo.addPoint(inlet_length, 0, 0, resolution),
-            geo.addPoint(inlet_length, step_height, 0, resolution),
-            geo.addPoint(inlet_length + outlet_length, step_height, 0, resolution),
-            geo.addPoint(inlet_length + outlet_length, channel_height, 0, resolution),
-            geo.addPoint(0, channel_height, 0, resolution),
+            geo.addPoint(0, 0, 0, cfg.resolution),
+            geo.addPoint(cfg.inlet_length, 0, 0, cfg.resolution),
+            geo.addPoint(cfg.inlet_length, cfg.step_height, 0, cfg.resolution),
+            geo.addPoint(
+                cfg.inlet_length + cfg.outlet_length, cfg.step_height, 0, cfg.resolution
+            ),
+            geo.addPoint(
+                cfg.inlet_length + cfg.outlet_length,
+                cfg.channel_height,
+                0,
+                cfg.resolution,
+            ),
+            geo.addPoint(0, cfg.channel_height, 0, cfg.resolution),
         ]
         lines = [geo.addLine(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
         lines.append(geo.addLine(pts[-1], pts[0]))
@@ -169,16 +174,24 @@ def step_flow(
         geo.synchronize()
         return _finalize_and_extract(comm, gdim=2)
 
-    else:
-        # 3D version
+    elif cfg.dim == 3:
+        if cfg.width is None:
+            raise ValueError("Width must be provided for 3D step flow.")
         occ = _initialize_model("step3d", use_occ=True)
         base_pts = [
-            occ.addPoint(0, 0, 0, resolution),
-            occ.addPoint(inlet_length, 0, 0, resolution),
-            occ.addPoint(inlet_length, step_height, 0, resolution),
-            occ.addPoint(inlet_length + outlet_length, step_height, 0, resolution),
-            occ.addPoint(inlet_length + outlet_length, channel_height, 0, resolution),
-            occ.addPoint(0, channel_height, 0, resolution),
+            occ.addPoint(0, 0, 0, cfg.resolution),
+            occ.addPoint(cfg.inlet_length, 0, 0, cfg.resolution),
+            occ.addPoint(cfg.inlet_length, cfg.step_height, 0, cfg.resolution),
+            occ.addPoint(
+                cfg.inlet_length + cfg.outlet_length, cfg.step_height, 0, cfg.resolution
+            ),
+            occ.addPoint(
+                cfg.inlet_length + cfg.outlet_length,
+                cfg.channel_height,
+                0,
+                cfg.resolution,
+            ),
+            occ.addPoint(0, cfg.channel_height, 0, cfg.resolution),
         ]
         wire = [
             occ.addLine(base_pts[i], base_pts[i + 1]) for i in range(len(base_pts) - 1)
@@ -186,13 +199,15 @@ def step_flow(
         wire.append(occ.addLine(base_pts[-1], base_pts[0]))
         loop = occ.addCurveLoop(wire)
         surface = occ.addPlaneSurface([loop])
-        vol = occ.extrude([(2, surface)], 0, 0, width)
+        vol = occ.extrude([(2, surface)], 0, 0, cfg.width)
         occ.synchronize()
 
         top_tags = [tag for dim, tag in vol if dim == 3]
         gmsh.model.addPhysicalGroup(3, top_tags, tag=1)
         gmsh.model.setPhysicalName(3, 1, "Fluid")
         return _finalize_and_extract(comm, gdim=3, use_occ=True)
+
+    raise ValueError("Only 2D or 3D supported.")
 
 
 def _initialize_model(name: str, use_occ: bool = False):
@@ -259,11 +274,11 @@ _GEOMETRY_MAP: dict[Geometry, Callable[..., dmesh.Mesh]] = {
 }
 
 
-def get_geometry(geometry: Geometry, **kwargs) -> dmesh.Mesh:
+def get_geometry(geometry: Geometry, config: GeometryConfig) -> dmesh.Mesh:
     """Dispatch and generate a pre-defined CFD benchmark geometry mesh.
 
     Args:
         name: refer to Geometry enum.
-        **kwargs: Geometry-specific parameters (passed to the appropriate generator).
+        config: Geometry-specific configuration.
     """
-    return _GEOMETRY_MAP[geometry](**kwargs)
+    return _GEOMETRY_MAP[geometry](config)
