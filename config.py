@@ -1,10 +1,11 @@
 """LSA-FW configuration."""
 
 import tomllib
+import numpy as np
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, Callable
 
 
 def read_toml(path: Path) -> dict[str, Any]:
@@ -72,3 +73,149 @@ def load_bc_config(path: Path) -> Sequence[BoundaryConditionsConfig]:
             )
         )
     return bcs
+
+
+@dataclass(frozen=True)
+class CylinderFlowGeometryConfig:
+    """Geometrical configuration of a cylinder-flow problem."""
+
+    dim: int
+    """Problem dimensions (2 or 3)."""
+    length: float
+    """Length of the channel."""
+    height: float
+    """Height of the channel (y-direction)."""
+    cylinder_radius: float
+    """Radius of teh cylinder."""
+    cylinder_center: tuple[float]
+    """Coordinates of the cylinder center, as (x, y, [z])."""
+    resolution: float
+    """Base mesh element size."""
+    resolution_around_cylinder: float
+    """Mesh element size around the cylinder."""
+    influence_radius: float
+    """Radius around the cylinder to apply local refinement."""
+    width: float | None = None
+    """Width of the channel (required only for 3D)."""
+
+
+def load_cylinder_flow_config(path: Path) -> CylinderFlowGeometryConfig:
+    """Load cylinder flow geometrical configuration."""
+    cfg = read_toml(path)
+    cfg["cylinder_center"] = tuple(cfg["cylinder_center"])
+    return CylinderFlowGeometryConfig(**cfg)
+
+
+@dataclass(frozen=True)
+class StepFlowGeometryConfig:
+    """Geometrical configuration of a backward-step flow problem."""
+
+    dim: int
+    """Problem dimensions (2 or 3)."""
+    inlet_length: float
+    """Length of the inlet."""
+    step_height: float
+    """Height of the step."""
+    outlet_length: float
+    """Length of the outlet."""
+    channel_height: float
+    """Height of the channel."""
+    resolution: float
+    """Base mesh element size."""
+    width: float | None = None
+    """Width of the channel (required only for 3D)."""
+
+
+def load_step_flow_config(path: Path) -> StepFlowGeometryConfig:
+    """Load step flow geometrical configuration."""
+    cfg = read_toml(path)
+    return StepFlowGeometryConfig(**cfg)
+
+
+@dataclass(frozen=True)
+class FacetCondition:
+    """Condition on a single axis (x, y, or z) to match a facet."""
+
+    axis: str
+    """Coordinate axis to evaluate (x, y, or z)."""
+    equals: float | None = None
+    """Match if axis value is approximately equal to this value."""
+    less_than: float | None = None
+    """Match if axis value is strictly less than this value."""
+    greater_than: float | None = None
+    """Match if axis value is strictly greater than this value."""
+
+
+@dataclass(frozen=True)
+class FacetRule:
+    """Tagging rule for mesh boundary facets."""
+
+    marker: int
+    """Tag to assign to facets that match this rule."""
+    when: FacetCondition | None = None
+    """Condition under which to apply this rule (optional if `otherwise` is set)."""
+    otherwise: bool = False
+    """Set to True to make this rule the fallback if no others match."""
+
+
+def load_facet_config(path: Path) -> Callable[[np.ndarray], int]:
+    """Load facet marker rules from a TOML file and return a callable marker function.
+
+    This function reads a list of facet rules from a TOML file. Each rule specifies
+    how to tag facets by evaluating the coordinates of their midpoints. The rules
+    can match on `x`, `y`, or `z` coordinates, using one of:
+
+    - `equals`: match if coordinate is approximately equal (with tolerance)
+    - `less_than`: match if coordinate is strictly less than a value
+    - `greater_than`: match if coordinate is strictly greater than a value
+    - `otherwise = true`: fallback tag if no other rule matched
+
+    The rules are evaluated in order.
+
+    Example:
+        [[FaceTag]]
+        marker = 1
+        when = { axis = "x", equals = 0.0 }
+
+        [[FaceTag]]
+        marker = 2
+        when = { axis = "x", equals = 1.0 }
+
+        [[FaceTag]]
+        marker = 99
+        otherwise = true
+    """
+    cfg = read_toml(path)
+    rules = cfg.get("FaceTag", [])
+
+    def _make_rule(rule) -> Callable[[np.ndarray], bool]:
+        if rule.get("otherwise", False):
+            return lambda _: True
+
+        axis_index = {"x": 0, "y": 1, "z": 2}[rule["when"]["axis"]]
+        val = rule["when"].get("equals")
+        lt = rule["when"].get("less_than")
+        gt = rule["when"].get("greater_than")
+
+        def _cond(x: np.ndarray) -> bool:
+            coord = x[axis_index]
+            if val is not None and np.isclose(coord, val):
+                return True
+            if lt is not None and coord < lt:
+                return True
+            if gt is not None and coord > gt:
+                return True
+            return False
+
+        return _cond
+
+    conditions = [_make_rule(rule) for rule in rules]
+    markers = [rule["marker"] for rule in rules]
+
+    def marker_fn(x: np.ndarray) -> int:
+        for cond, marker in zip(conditions, markers):
+            if cond(x):
+                return marker
+        raise RuntimeError("No matching rule and no 'otherwise' fallback defined.")
+
+    return marker_fn

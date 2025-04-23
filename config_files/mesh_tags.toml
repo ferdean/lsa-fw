@@ -1,0 +1,24 @@
+[[FaceTag]]
+# Inlet
+marker = 1
+when = { axis = "x", equals = 0.0 }
+
+[[FaceTag]]
+# Outlet
+marker = 2
+when = { axis = "x", equals = 2.2 }
+
+[[FaceTag]]
+# Bottom wall
+marker = 3
+when = { axis = "y", equals = 0.0 }
+
+[[FaceTag]]
+# Top wall
+marker = 4
+when = { axis = "y", equals = 0.41 }
+
+[[FaceTag]]
+# Fallback (e.g. curved wall or cylinder)
+marker = 5
+otherwise = true

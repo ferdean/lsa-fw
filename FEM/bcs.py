@@ -3,8 +3,10 @@
 Defines Dirichlet, Neumann, and Robin conditions for the incompressible Navier-Stokes equations.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import StrEnum, auto
 from typing import Callable, Sequence, assert_never
 
 import numpy as np
@@ -12,13 +14,13 @@ import ufl  # type: ignore[import-untyped]
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 
+from config import BoundaryConditionsConfig
+
 from .spaces import FunctionSpaces
 from .utils import iMeasure
 
-__all__ = ["BoundaryConditionType", "BoundaryConditions", "define_bcs"]
 
-
-class BoundaryConditionType(Enum):
+class BoundaryConditionType(StrEnum):
     """Supported boundary condition types."""
 
     DIRICHLET_VELOCITY = auto()
@@ -29,6 +31,14 @@ class BoundaryConditionType(Enum):
     """Weak Neumann BC."""
     ROBIN = auto()
     """Weak Robin BC."""
+
+    @classmethod
+    def from_string(cls, value: str) -> BoundaryConditionType:
+        """Get boundary condition type from a string."""
+        try:
+            return cls(value.lower().strip().replace(" ", "_"))
+        except KeyError:
+            raise ValueError(f"No type found for {value}.")
 
 
 @dataclass(frozen=True)
@@ -49,6 +59,16 @@ class BoundaryCondition:
     """
     robin_alpha: float | None = None
     """Robin coefficient (only used for Robin BCs)."""
+
+    @classmethod
+    def from_config(cls, config: BoundaryConditionsConfig) -> BoundaryCondition:
+        """Get boundary condition from config."""
+        return cls(
+            marker=config.marker,
+            type=BoundaryConditionType.from_string(config.type),
+            value=config.value,
+            robin_alpha=config.robin_alpha,
+        )
 
 
 @dataclass
