@@ -26,8 +26,8 @@ from rich.console import Console
 import dolfinx.fem as dfem
 
 from config import load_bc_config
+from lib.loggingutils import setup_logging
 
-from Meshing.plot import setup_logging  # hack: move to utils
 from Meshing import Mesher, Shape
 
 from .spaces import FunctionSpaceType, define_spaces, FunctionSpaces
@@ -133,7 +133,6 @@ def main():
     assemble.add_argument(
         "--bcs",
         type=Path,
-        default=Path("config_files/bcs.toml"),
         help="Path to the boundary condition config file (default: config_files/bcs.toml)",
     )
     assemble.add_argument(

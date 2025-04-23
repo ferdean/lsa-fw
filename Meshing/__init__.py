@@ -2,9 +2,11 @@
 
 __author__ = "Ferran de Andres <ferran.de-andres-vert@campus.tu-berlin.de>"
 
+from lib.loggingutils import setup_logging
+
 from .core import Mesher
 from .geometries import get_geometry
-from .plot import PlotMode, plot_mesh, setup_logging
+from .plot import PlotMode, plot_mesh
 from .utils import Format, Geometry, Shape, iCellType
 
 setup_logging(verbose=False)

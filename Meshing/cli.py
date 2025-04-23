@@ -11,6 +11,7 @@ Subcommands:
 Example usage:
     # Generate a 2D unit square mesh and export to XDMF (with plot)
     python -m Meshing -p generate --shape unit_square --cell-type triangle \
+                                  --facet_config config_files/mesh_tags.toml \
                                   --resolution 32 32 --export mesh.xdmf --format xdmf
 
     # Import a mesh from a XDMF .xdmf file and convert to VTK
@@ -30,10 +31,11 @@ from mpi4py import MPI
 from rich.console import Console
 
 from config import load_cylinder_flow_config, load_step_flow_config, load_facet_config
+from lib.loggingutils import setup_logging
 
 from .core import Mesher
 from .utils import Shape, Format, iCellType, Geometry
-from .plot import setup_logging, plot_mesh
+from .plot import plot_mesh
 from .geometries import get_geometry
 
 console: Console = Console()
@@ -158,7 +160,7 @@ def main():
     generate.add_argument(
         "--domain", type=float, nargs="+", help="Bounding box: x0 y0 [z0] x1 y1 [z1]"
     )
-    parser.add_argument(
+    generate.add_argument(
         "--facet_config", type=Path, help="Path to config file to define facet tags."
     )
     generate.add_argument("--export", type=Path)
