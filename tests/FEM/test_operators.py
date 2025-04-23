@@ -147,10 +147,10 @@ def test_assemble_linear_operator_structure(
     assert A_block is not None
     assert G_block is not None
     assert D_block is not None
-    # PETSc creates an uninitialized submatrix for the zero block. It is not a `None` object, but trying to access
-    # any of its expected properties or methods would raise a runtime error at c++ level (then, a natural check for
-    # .nonzero_entries == 0 or .norm() == 0.0 cannot be done)
-    assert zero_block is not None
+    # PETSc creates an uninitialized submatrix for the zero block. Trying to access any of its expected properties
+    # or methods would raise a runtime error at c++ level (then, a natural check for .nonzero_entries == 0 or
+    # .norm() == 0.0 cannot be done)
+    assert zero_block is None
 
     assert mat.shape == (n_u + n_p, n_u + n_p)
     assert A_block.shape == (n_u, n_u)

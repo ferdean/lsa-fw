@@ -92,6 +92,7 @@ class iPETScMatrix:
 
     def __init__(self, mat: PETSc.Mat) -> None:
         """Initialize PETSc matrix wrapper."""
+        mat.assemble()
         self._mat = mat
 
     @classmethod
@@ -309,7 +310,7 @@ class iPETScMatrix:
             )
 
         sub_mat = self._mat.getNestSubMatrix(row, col)
-        if sub_mat is None:
+        if sub_mat.handle == 0:
             return None
         return iPETScMatrix(sub_mat)
 
@@ -381,9 +382,10 @@ class iPETScMatrix:
     def export(self, path: Path) -> None:
         """Export the matrix to a binary file."""
         viewer = PETSc.Viewer().createBinary(
-            str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self._mat.comm
+            str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self.comm
         )
-        self._mat.view(viewer)
+        viewer(self.raw)
+        viewer.destroy()
 
 
 class iPETScVector:
