@@ -260,7 +260,8 @@ class LinearizedNavierStokesAssembler:
         vec = assemble_vector(form)
         dfem.apply_lifting(vec, [form], bcs=[self._u_bcs])
         vec.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-        dfem.set_bc(vec, self._u_bcs)
+        for bc in self._u_bcs:
+            bc.set(vec)
 
         return iPETScVector(vec)
 
