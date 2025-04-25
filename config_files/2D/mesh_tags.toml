@@ -1,0 +1,24 @@
+[[FaceTag]]
+# Left face (x = 0)
+marker = 1
+when = { axis = "x", equals = 0.0 }
+
+[[FaceTag]]
+# Right face (x = 1)
+marker = 2
+when = { axis = "x", equals = 2.2 }
+
+[[FaceTag]]
+# Bottom face (y = 0)
+marker = 3
+when = { axis = "y", equals = 0.0 }
+
+[[FaceTag]]
+# Top face (y = 1)
+marker = 4
+when = { axis = "y", equals = 0.41 }
+
+[[FaceTag]]
+# Fallback for unmatched surfaces (e.g, cylinder)
+marker = 5
+otherwise = true

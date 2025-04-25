@@ -2,10 +2,13 @@
 
 import pytest
 import numpy as np
-
 from pathlib import Path
 
-from Meshing import Shape, Mesher, iCellType, Format
+import dolfinx.mesh as dmesh
+from mpi4py import MPI
+
+from Meshing import Shape, Mesher, Format, iCellType, Geometry
+from config import StepFlowGeometryConfig, CylinderFlowGeometryConfig
 
 
 def test_cell_type_enum_mapping():
@@ -158,3 +161,82 @@ def test_facet_tags_export_import(tmp_path: Path) -> None:
 
     assert tags is not None
     assert set(tags.values).issubset({1, 2})
+
+
+def test_mesher_from_mesh() -> None:
+    """Test Mesher.from_mesh correctly wraps a given dolfinx Mesh and tags."""
+    mesh = dmesh.create_unit_interval(
+        MPI.COMM_WORLD, 4, np.float64  # Create a simple 1D mesh
+    )
+    # Create dummy facet tags on endpoints
+    facet_dim = mesh.topology.dim - 1
+    entities = np.array([0, 1], dtype=np.int64)
+    values = np.array([10, 20], dtype=np.int32)
+    facet_tags = dmesh.meshtags(mesh, facet_dim, entities, values)
+
+    mesher = Mesher.from_mesh(mesh, facet_tags=facet_tags, cell_tags=None)
+
+    assert mesher.mesh is mesh
+    assert mesher.facet_tags is facet_tags
+    assert mesher.cell_tags is None
+    assert mesher._shape == Shape.PREDEFINED
+    assert mesher._gdim == mesh.topology.dim
+    coords = mesh.geometry.x
+    expected_domain = (
+        tuple(coords.min(axis=0).tolist()),
+        tuple(coords.max(axis=0).tolist()),
+    )
+    assert mesher._domain == expected_domain
+
+
+def test_from_geometry_step_flow_2d():
+    """Test Mesher.from_geometry for the 2D step flow geometry."""
+    cfg = StepFlowGeometryConfig(
+        dim=2,
+        inlet_length=1.0,
+        step_height=0.5,
+        outlet_length=2.0,
+        channel_height=1.0,
+        resolution=0.2,
+    )
+    mesher = Mesher.from_geometry(Geometry.STEP_FLOW, cfg)
+    mesh = mesher.mesh
+    domain = mesher.domain
+    expected_xmax = cfg.inlet_length + cfg.outlet_length
+    expected_domain = ((0.0, 0.0), (expected_xmax, cfg.channel_height))
+
+    assert mesh.topology.dim == 2
+    assert mesher._shape == Shape.PREDEFINED
+    assert domain[0][0] == pytest.approx(expected_domain[0][0])
+    assert domain[0][1] == pytest.approx(expected_domain[0][1])
+    assert domain[1][0] == pytest.approx(expected_domain[1][0])
+    assert domain[1][1] == pytest.approx(expected_domain[1][1])
+    assert mesher.facet_tags is None
+    assert mesher.cell_tags is None
+
+
+def test_from_geometry_cylinder_flow_2d():
+    """Test Mesher.from_geometry for the 2D cylinder flow geometry."""
+    cfg = CylinderFlowGeometryConfig(
+        dim=2,
+        length=2.0,
+        height=1.0,
+        cylinder_radius=0.25,
+        cylinder_center=(0.5, 0.5),
+        resolution=0.2,
+        resolution_around_cylinder=0.1,
+        influence_radius=0.5,
+    )
+    mesher = Mesher.from_geometry(Geometry.CYLINDER_FLOW, cfg)
+    mesh = mesher.mesh
+    domain = mesher.domain
+    expected_domain = ((0.0, 0.0), (cfg.length, cfg.height))
+
+    assert mesh.topology.dim == 2
+    assert mesher._shape == Shape.PREDEFINED
+    assert domain[0][0] == pytest.approx(expected_domain[0][0])
+    assert domain[0][1] == pytest.approx(expected_domain[0][1])
+    assert domain[1][0] == pytest.approx(expected_domain[1][0])
+    assert domain[1][1] == pytest.approx(expected_domain[1][1])
+    assert mesher.facet_tags is None
+    assert mesher.cell_tags is None
