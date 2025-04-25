@@ -6,7 +6,7 @@ from lib.loggingutils import setup_logging
 
 from .core import Mesher
 from .geometries import get_geometry
-from .plot import PlotMode, plot_mesh
+from .plot import PlotMode, plot_mesh, get_mesh_summary
 from .utils import Format, Geometry, Shape, iCellType
 
 setup_logging(verbose=False)
@@ -16,9 +16,10 @@ __all__ = [
     "Format",
     "Mesher",
     "Geometry",
+    "PlotMode",
+    "plot_mesh",
     "iCellType",
     "get_geometry",
-    "plot_mesh",
-    "PlotMode",
     "setup_logging",
+    "get_mesh_summary",
 ]

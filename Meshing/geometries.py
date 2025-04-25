@@ -19,8 +19,8 @@ GeometryConfig = CylinderFlowGeometryConfig | StepFlowGeometryConfig
 
 def cylinder_flow(
     cfg: CylinderFlowGeometryConfig,
+    comm: MPI.Intracomm,
     _: iCellType = iCellType.TRIANGLE,  # Currently unused, placeholder for future extension
-    comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> dmesh.Mesh:
     """Generate a mesh for cylinder flow in a rectangular channel.
 
@@ -133,8 +133,8 @@ def cylinder_flow(
 
 def step_flow(
     cfg: StepFlowGeometryConfig,
+    comm: MPI.Intracomm,
     _: iCellType = iCellType.TRIANGLE,  # Currently unused, placeholder for future extension
-    comm: MPI.Comm = MPI.COMM_WORLD,
 ) -> dmesh.Mesh:
     """Generate a backward-facing step flow domain.
 
@@ -274,11 +274,14 @@ _GEOMETRY_MAP: dict[Geometry, Callable[..., dmesh.Mesh]] = {
 }
 
 
-def get_geometry(geometry: Geometry, config: GeometryConfig) -> dmesh.Mesh:
+def get_geometry(
+    geometry: Geometry, config: GeometryConfig, comm: MPI.Intracomm
+) -> dmesh.Mesh:
     """Dispatch and generate a pre-defined CFD benchmark geometry mesh.
 
     Args:
         name: refer to Geometry enum.
         config: Geometry-specific configuration.
+        comm: MPI communicator.
     """
-    return _GEOMETRY_MAP[geometry](config)
+    return _GEOMETRY_MAP[geometry](config, comm)

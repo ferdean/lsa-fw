@@ -1,0 +1,31 @@
+# Unit-cube face tagging
+
+[[FaceTag]]
+# Left face (x = 0)
+marker = 1
+when = { axis = "x", equals = 0.0 }
+
+[[FaceTag]]
+# Right face (x = 1)
+marker = 2
+when = { axis = "x", equals = 1.0 }
+
+[[FaceTag]]
+# Front face (y = 0)
+marker = 3
+when = { axis = "y", equals = 0.0 }
+
+[[FaceTag]]
+# Back face (y = 1)
+marker = 4
+when = { axis = "y", equals = 1.0 }
+
+[[FaceTag]]
+# Bottom face (z = 0)
+marker = 5
+when = { axis = "z", equals = 0.0 }
+
+[[FaceTag]]
+# Top face (z = 1)
+marker = 6
+when = { axis = "z", equals = 1.0 }

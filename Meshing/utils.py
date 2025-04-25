@@ -64,6 +64,8 @@ class Shape(StrEnum):
     """Imported mesh from a custom XDMF (.xdmf) file."""
     CUSTOM_MSH = auto()
     """Imported mesh from a GMSH (.msh) file."""
+    PREDEFINED = auto()
+    """Imported mesh. Used for pre-defined shapes (refer to Geometry-enum) or dolfinx.mesh.Mesh objects."""
 
 
 class Format(StrEnum):
