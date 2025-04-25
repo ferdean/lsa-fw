@@ -44,6 +44,7 @@ Mesher
 meshio
 meshtags
 mpiaij
+mpirun
 mult
 Navier
 ndarray
