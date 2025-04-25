@@ -12,7 +12,8 @@ import dolfinx.mesh as dmesh
 from dolfinx.io import gmshio
 from dolfinx.mesh import MeshTags, compute_midpoints, locate_entities_boundary, meshtags
 
-from .utils import Format, Shape, iCellType
+from .utils import Format, Shape, iCellType, Geometry
+from .geometries import get_geometry, GeometryConfig
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,11 @@ class Mesher:
         """Get the cell tags of the mesh."""
         return self._cell_tags
 
+    @property
+    def domain(self) -> tuple[tuple[float, ...], tuple[float, ...]]:
+        """Get the meshing domain."""
+        return self._domain
+
     @classmethod
     def from_file(cls, path: pathlib.Path, shape: Shape, gdim: int = 3) -> Self:
         """Create a Mesher instance from a custom mesh file."""
@@ -96,6 +102,42 @@ class Mesher:
         mesh = cls(shape=shape, custom_file=path, gdim=gdim)
         _ = mesh.generate()
         return mesh
+
+    @classmethod
+    def from_mesh(
+        cls,
+        mesh: dmesh.Mesh,
+        facet_tags: MeshTags | None = None,
+        cell_tags: MeshTags | None = None,
+    ) -> Self:
+        """Wrap an existing dolfinx Mesh into a Mesher."""
+        obj = cls.__new__(cls)
+
+        obj._mesh = mesh
+        obj._shape = Shape.PREDEFINED
+        obj._facet_tags = facet_tags
+        obj._cell_tags = cell_tags
+        obj._gdim = mesh.topology.dim
+
+        coords = mesh.geometry.x
+        obj._domain = (
+            tuple(coords.min(axis=0).tolist()),
+            tuple(coords.max(axis=0).tolist()),
+        )
+
+        obj._cell_type = mesh.topology.cell_type
+        obj._n = tuple()  # only meaningful for structured meshes
+        obj._custom_file = None
+
+        return obj
+
+    @classmethod
+    def from_geometry(
+        cls, geometry: Geometry, config: GeometryConfig, comm: MPI.Intracomm = _COMM
+    ) -> Self:
+        """Generate via one of the prebuilt generators, then wrap in a Mesher."""
+        mesh = get_geometry(geometry, config, comm)
+        return cls.from_mesh(mesh)
 
     def generate(self, comm: MPI.Intracomm = _COMM) -> dmesh.Mesh:
         """Generate the mesh according to shape."""
@@ -121,6 +163,11 @@ class Mesher:
 
             case Shape.CUSTOM_MSH:
                 self._mesh = self._read_custom_msh(comm)
+
+            case Shape.PREDEFINED:
+                raise ValueError(
+                    "Predefined meshes generation should be managed externally."
+                )
 
             case _:
                 assert_never(self._shape)
