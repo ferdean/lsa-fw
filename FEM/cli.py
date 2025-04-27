@@ -9,13 +9,16 @@ Subcommands:
 
 Example usage:
     # Assemble the FEM system with default BCs and base flow
-    python -m FEM assemble --mesh out/mesh/mesh.xdmf --re 100
+    python -m FEM assemble --mesh path/to/mesh --re 100
 
     # Assemble using Taylor-Hood spaces and plot sparsity
-    python -m FEM -p assemble --mesh out/mesh/mesh.xdmf \
+    python -m FEM -p assemble --mesh path/to/mesh \
                            --space taylor_hood \
                            --re 500 \
-                           --output_path out/matrices/
+                           --output_path path/for/output
+
+Note that the above commands can be parallelized using 'mpirun -n <number_of_processors> <command>',
+as all FEM processes within this module are MPI-aware.
 """
 
 import argparse
@@ -30,11 +33,11 @@ from lib.loggingutils import setup_logging
 
 from Meshing import Mesher, Shape
 
-from .spaces import FunctionSpaceType, define_spaces, FunctionSpaces
-from .bcs import define_bcs, BoundaryConditions
-from .operators import LinearizedNavierStokesAssembler
-from .plot import spy
-from .utils import iPETScMatrix
+from FEM.spaces import FunctionSpaceType, define_spaces, FunctionSpaces
+from FEM.bcs import define_bcs, BoundaryConditions
+from FEM.operators import LinearizedNavierStokesAssembler
+from FEM.plot import spy
+from FEM.utils import iPETScMatrix
 
 console: Console = Console()
 logger: logging.Logger = logging.getLogger(__name__)
@@ -97,7 +100,7 @@ def assemble_fem(args: argparse.Namespace) -> None:
 
     A, M = assembler.assemble_eigensystem()
 
-    _export_matrices(A, M, args.output_path / "matrices")
+    _export_matrices(A, M, args.output_path / "matrices")  # TODO: this does not work
 
     if args.plot:
         logger.info(f"Plots will be saved to: {args.output_path}/plots")
@@ -106,7 +109,7 @@ def assemble_fem(args: argparse.Namespace) -> None:
 
 
 def main():
-    """LSA-FW Meshing CLI entry point."""
+    """LSA-FW FEM CLI entry point."""
     parser = argparse.ArgumentParser(description="LSA-FW Meshing tool: assemble")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     parser.add_argument(
@@ -158,7 +161,11 @@ def main():
     setup_logging(args.verbose)
 
     if args.command == "assemble":
-        assemble_fem(args)
+        try:
+            assemble_fem(args)
+        except Exception as e:
+            logger.exception("Error during CLI execution: %s", e)
+            raise SystemExit(1)
     else:
         console.print("[red]Unknown command. Use --help for usage info.[/red]")
         parser.print_help()

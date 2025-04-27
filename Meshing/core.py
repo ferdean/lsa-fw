@@ -94,6 +94,11 @@ class Mesher:
         """Get the meshing domain."""
         return self._domain
 
+    @property
+    def gdim(self) -> int:
+        """Get the geometric dimensions."""
+        return self._gdim
+
     @classmethod
     def from_file(cls, path: pathlib.Path, shape: Shape, gdim: int = 3) -> Self:
         """Create a Mesher instance from a custom mesh file."""
