@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from enum import Enum, auto
 from typing import overload
 from pathlib import Path
@@ -11,6 +13,8 @@ from basix import ElementFamily as DolfinxElementFamily
 from dolfinx.mesh import Mesh, MeshTags
 from ufl import Measure  # type: ignore[import-untyped]
 from petsc4py import PETSc
+
+logger = logging.getLogger(__name__)
 
 
 class iElementFamily(Enum):
@@ -92,7 +96,10 @@ class iPETScMatrix:
 
     def __init__(self, mat: PETSc.Mat) -> None:
         """Initialize PETSc matrix wrapper."""
-        mat.assemble()
+        try:
+            mat.assemble()
+        except Exception:
+            logger.warning("PETSc matrix could not be assembled upon initialization.")
         self._mat = mat
 
     @classmethod
@@ -290,6 +297,10 @@ class iPETScMatrix:
         )
         return diff.norm() < tol
 
+    def assemble(self) -> None:
+        """(Re)assemble matrix after any insert."""
+        self._mat.assemble()
+
     def print(self) -> None:
         """Print the matrix."""
         self._mat.view()
@@ -349,6 +360,11 @@ class iPETScMatrix:
         """Create a vector for left-hand side operations."""
         return iPETScVector(self._mat.createVecLeft())
 
+    def duplicate(self, copy: bool = False) -> iPETScMatrix:
+        """Return a new matrix with the same layout (and optionally, values)."""
+        new_mat = self._mat.duplicate(copy=copy)
+        return iPETScMatrix(new_mat)
+
     def to_aij(self) -> iPETScMatrix:
         """Convert a nested (MatNest) matrix to a flat AIJ matrix."""
         if self.type.lower() != "nest":
@@ -360,6 +376,10 @@ class iPETScMatrix:
         aij.assemble()
         return iPETScMatrix(aij)
 
+    def zero_row_columns(self, rows: list[int], diag: float = 0.0) -> None:
+        """Zero row and column and place a given value in the diagonal."""
+        self._mat.zeroRowsColumns(rows, diag=diag)
+
     def pin_dof(self, index: int) -> None:
         """Pin a single DOF by zeroing its row and column and placing a 1 on the diagonal.
 
@@ -370,6 +390,7 @@ class iPETScMatrix:
 
     def attach_nullspace(self, nullspace: PETSc.MatNullSpace) -> None:
         """Attach an existing PETSc nullspace object to this matrix."""
+        self._mat.setNearNullSpace(nullspace)
         self._mat.setNullSpace(nullspace)
 
     def get_nullspace(self) -> PETSc.MatNullSpace | None:
@@ -398,6 +419,10 @@ class iPETScVector:
 
     def __init__(self, vec: PETSc.Vec) -> None:
         """Initialize PETSc vector wrapper."""
+        try:
+            vec.assemble()
+        except Exception:
+            logger.warning("PETSc vector could not be assembled upon initialization.")
         self._vec = vec
 
     @classmethod
@@ -511,7 +536,7 @@ class iPETScVector:
             return False
 
         diff = self.raw.duplicate()
-        diff.waxpy(-1.0, self.raw, other.raw)  # diff = other - self
+        diff.axpy(-1.0, self.raw, other.raw)  # diff = other - self
         return diff.norm() < 1e-12
 
     @property
@@ -538,6 +563,15 @@ class iPETScVector:
         """Create a copy of the vector."""
         return iPETScVector(self._vec.copy())
 
+    def duplicate(self) -> iPETScVector:
+        """Return a new vector of the same size (optionally copying values)."""
+        new_vec = self._vec.duplicate()
+        return iPETScVector(new_vec)
+
+    def assemble(self) -> iPETScVector:
+        """(Re)assemble vector after any change."""
+        self._vec.assemble()
+
     def scale(self, alpha: float) -> None:
         """Scale the vector by a constant factor."""
         self._vec.scale(alpha)
@@ -557,6 +591,22 @@ class iPETScVector:
     def as_array(self) -> np.ndarray:
         """Return the vector as a NumPy array."""
         return self._vec.getArray().copy()
+
+    def ghost_update(
+        self,
+        addv: PETSc.InsertMode = PETSc.InsertMode.INSERT_VALUES,
+        mode: PETSc.ScatterMode = PETSc.ScatterMode.FORWARD,
+    ) -> None:
+        """Synchronize ghost (parallel) entries."""
+        self._vec.ghostUpdate(addv=addv, mode=mode)
+
+    def axpy(self, alpha: float, other: iPETScVector) -> None:
+        """Perform an AXPY operation: this = alpha * other + this."""
+        self._vec.axpy(alpha, other._vec)
+
+    def set_array(self, array: np.ndarray) -> None:
+        """Directly replace the underlying array (and rebuild ghost entries)."""
+        self._vec.setArray(array)
 
     def set_random(self, rng: PETSc.Random | None = None) -> None:
         """Set the vector to random values."""
