@@ -54,7 +54,9 @@ def test_dirichlet_velocity_bc(
     )
 
     assert len(bcs.velocity) == 1
-    assert isinstance(bcs.velocity[0], dfem.DirichletBC)
+    marker, bc = bcs.velocity[0]
+    assert marker == 1
+    assert isinstance(bc, dfem.DirichletBC)
     assert bcs.pressure == []
     assert bcs.neumann_forms == []
     assert bcs.robin_forms == []
@@ -76,7 +78,9 @@ def test_dirichlet_pressure_bc(
     )
 
     assert len(bcs.pressure) == 1
-    assert isinstance(bcs.pressure[0], dfem.DirichletBC)
+    marker, bc = bcs.pressure[0]
+    assert marker == 1
+    assert isinstance(bc, dfem.DirichletBC)
     assert bcs.velocity == []
     assert bcs.neumann_forms == []
     assert bcs.robin_forms == []
@@ -104,7 +108,7 @@ def test_callable_dirichlet_bc(
     )
 
     assert len(bcs.velocity) == 1
-    bc = bcs.velocity[0]
+    _, bc = bcs.velocity[0]
     assert isinstance(bc, dfem.DirichletBC)
 
 
@@ -122,7 +126,9 @@ def test_neumann_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     )
 
     assert len(bcs.neumann_forms) == 1
-    assert isinstance(bcs.neumann_forms[0], ufl.Form)
+    marker, form = bcs.neumann_forms[0]
+    assert marker == 1
+    assert isinstance(form, ufl.Form)
     assert bcs.velocity == []
     assert bcs.pressure == []
     assert bcs.robin_forms == []
@@ -143,7 +149,7 @@ def test_robin_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     )
 
     assert len(bcs.robin_forms) == 2
-    assert all(isinstance(f, ufl.Form) for f in bcs.robin_forms)
+    assert all(isinstance(form, ufl.Form) for _, form in bcs.robin_forms)
     assert bcs.velocity == []
     assert bcs.pressure == []
     assert bcs.neumann_forms == []
@@ -176,6 +182,10 @@ def test_mixed_bcs(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     assert len(bcs.pressure) == 1
     assert len(bcs.neumann_forms) == 1
     assert len(bcs.robin_forms) == 2
-    assert all(isinstance(b, dfem.DirichletBC) for b in bcs.velocity + bcs.pressure)
-    assert isinstance(bcs.neumann_forms[0], ufl.Form)
-    assert all(isinstance(f, ufl.Form) for f in bcs.robin_forms)
+
+    for marker, bc in bcs.velocity + bcs.pressure:
+        assert isinstance(bc, dfem.DirichletBC)
+
+    marker, form = bcs.neumann_forms[0]
+    assert isinstance(form, ufl.Form)
+    assert all(isinstance(form, ufl.Form) for _, form in bcs.robin_forms)

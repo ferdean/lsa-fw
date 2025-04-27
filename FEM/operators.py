@@ -118,7 +118,11 @@ class LinearizedNavierStokesAssembler:
     ) -> tuple[list[dfem.DirichletBC], list[dfem.DirichletBC], list[Form], list[Form]]:
         if bcs is None:
             return [], [], [], []
-        return bcs.velocity, bcs.pressure, bcs.neumann_forms, bcs.robin_forms
+        velocity_bcs = [bc for _, bc in bcs.velocity]
+        pressure_bcs = [bc for _, bc in bcs.pressure]
+        neumann_forms = [form for _, form in bcs.neumann_forms]
+        robin_forms = [form for _, form in bcs.robin_forms]
+        return velocity_bcs, pressure_bcs, neumann_forms, robin_forms
 
     @staticmethod
     def _assemble(
@@ -201,7 +205,7 @@ class LinearizedNavierStokesAssembler:
             "robin",
             lambda: (
                 iPETScMatrix.zeros(
-                    self._spaces.velocity_dofs[0:1] * 2,
+                    (self._spaces.velocity_dofs[0], self._spaces.velocity_dofs[0]),
                     comm=self._base_flow.function_space.mesh.comm,
                 )
                 if not self._robin_forms
