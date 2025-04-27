@@ -75,13 +75,13 @@ class BoundaryCondition:
 class BoundaryConditions:
     """Container for all boundary condition components."""
 
-    velocity: list[dfem.DirichletBC]
+    velocity: list[tuple[int, dfem.DirichletBC]]
     """Strong velocity Dirichlet BCs to be applied to the system."""
-    pressure: list[dfem.DirichletBC]
+    pressure: list[tuple[int, dfem.DirichletBC]]
     """Strong pressure Dirichlet BCs to be applied to the system."""
-    neumann_forms: list[ufl.Form]
+    neumann_forms: list[tuple[int, ufl.Form]]
     """Neumann boundary contributions to the weak form."""
-    robin_forms: list[ufl.Form]
+    robin_forms: list[tuple[int, ufl.Form]]
     """Robin boundary contributions to the weak form."""
 
 
@@ -132,7 +132,7 @@ def define_bcs(
                 fn.interpolate(interpolator)
 
                 dofs = dfem.locate_dofs_topological(V, dim - 1, facets)
-                velocity_bcs.append(dfem.dirichletbc(fn, dofs))
+                velocity_bcs.append((marker, dfem.dirichletbc(fn, dofs)))
 
             case BoundaryConditionType.DIRICHLET_PRESSURE:
                 fn = dfem.Function(Q)
@@ -145,7 +145,7 @@ def define_bcs(
                 fn.interpolate(interpolator)
 
                 dofs = dfem.locate_dofs_topological(Q, dim - 1, facets)
-                pressure_bcs.append(dfem.dirichletbc(fn, dofs))
+                pressure_bcs.append((marker, dfem.dirichletbc(fn, dofs)))
 
             case BoundaryConditionType.NEUMANN:
                 g = (
@@ -154,7 +154,7 @@ def define_bcs(
                     else lambda _: np.full(geom_dim, cfg.value)
                 )
                 g_expr = ufl.as_vector(g(ufl.SpatialCoordinate(mesh)))
-                neumann_forms.append(ufl.dot(g_expr, v_test) * ds(marker))
+                neumann_forms.append((marker, ufl.dot(g_expr, v_test) * ds(marker)))
 
             case BoundaryConditionType.ROBIN:
                 if cfg.robin_alpha is None:
@@ -167,10 +167,10 @@ def define_bcs(
                 g_expr = ufl.as_vector(g(ufl.SpatialCoordinate(mesh)))
 
                 robin_forms.append(
-                    cfg.robin_alpha * ufl.dot(u_trial, v_test) * ds(marker)
+                    (marker, cfg.robin_alpha * ufl.dot(u_trial, v_test) * ds(marker))
                 )
                 robin_forms.append(
-                    cfg.robin_alpha * ufl.dot(g_expr, v_test) * ds(marker)
+                    (marker, cfg.robin_alpha * ufl.dot(g_expr, v_test) * ds(marker))
                 )
 
             case _:
