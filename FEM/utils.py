@@ -5,8 +5,9 @@ from __future__ import annotations
 import logging
 
 from enum import Enum, auto
-from typing import overload
+from typing import overload, TypeAlias
 from pathlib import Path
+from copy import deepcopy
 import numpy as np
 
 from basix import ElementFamily as DolfinxElementFamily
@@ -15,6 +16,13 @@ from ufl import Measure  # type: ignore[import-untyped]
 from petsc4py import PETSc
 
 logger = logging.getLogger(__name__)
+
+Scalar: TypeAlias = PETSc.ScalarType
+"""Alias for the base numeric type used throughout the framework (float or complex).
+
+Depending on how PETSc was configured, `PETSc.ScalarType` will be either
+`float` (real builds) or `complex` (complex builds).
+"""
 
 
 class iElementFamily(Enum):
@@ -139,6 +147,28 @@ class iPETScMatrix:
         mat.assemble()
         return cls(mat)
 
+    @classmethod
+    def create_aij(
+        cls,
+        shape: tuple[int],
+        comm: PETSc.Comm = PETSc.COMM_SELF,
+        nnz: int | list[int] | None = None,
+    ) -> iPETScMatrix:
+        """Create an AIJ (sparse) matrix of the given global shape and wrap it.
+
+        This is roughly equivalent to:
+
+            A = PETSc.Mat().createAIJ(shape, nnz=nnz, comm=comm)
+            A.setUp()
+            return iPETScMatrix(A)
+
+        If you a different preallocation pattern (e.g. per-row) is needed,
+        pass in a sequence of nnz counts instead of a single int.
+        """
+        mat = PETSc.Mat().createAIJ(shape, nnz=nnz, comm=comm)
+        mat.setUp()
+        return cls(mat)
+
     def __str__(self) -> str:
         return f"iPETScMatrix(shape={self.shape}, nnz={self.nonzero_entries})"
 
@@ -152,7 +182,7 @@ class iPETScMatrix:
             )
 
         result = self._mat.duplicate(copy=True)
-        result.axpy(1.0, other.raw)
+        result.axpy(Scalar(1.0), other.raw)
         return iPETScMatrix(result)
 
     def __radd__(self, other: object) -> iPETScMatrix:
@@ -211,7 +241,7 @@ class iPETScMatrix:
         self._mat.multTranspose(other.raw, result)
         return iPETScVector(result)
 
-    def __getitem__(self, indices: tuple[int, int]) -> float:
+    def __getitem__(self, indices: tuple[int, int]) -> Scalar:
         """Get a value via direct indexation (i.e., matrix[i, j])."""
         if self.type.lower() == "nest":
             raise NotImplementedError(
@@ -220,7 +250,9 @@ class iPETScMatrix:
             )
         return self.get_value(indices[0], indices[1])
 
-    def __setitem__(self, indices: tuple[int, int], value: int | float) -> None:
+    def __setitem__(
+        self, indices: tuple[int, int], value: int | float | complex
+    ) -> None:
         """Set a value via direct indexation (i.e., matrix[i, j] = value)."""
         if self.type.lower() == "nest":
             raise NotImplementedError(
@@ -228,9 +260,8 @@ class iPETScMatrix:
                 "Use sub-matrix access or flatten the structure manually."
             )
         self._mat.setValue(
-            indices[0], indices[1], float(value), addv=PETSc.InsertMode.INSERT_VALUES
+            indices[0], indices[1], Scalar(value), addv=PETSc.InsertMode.INSERT_VALUES
         )
-        self._mat.assemble()
 
     def __eq__(self, other: object) -> bool:
         """Matrix equality."""
@@ -241,7 +272,11 @@ class iPETScMatrix:
             return False
 
         diff = self.raw.copy()
-        diff.axpy(-1.0, other.raw, structure=PETSc.Mat.Structure.SUBSET_NONZERO_PATTERN)
+        diff.axpy(
+            Scalar(-1.0),
+            other.raw,
+            structure=PETSc.Mat.Structure.SUBSET_NONZERO_PATTERN,
+        )
         return diff.norm() < 1e-12
 
     @property
@@ -257,9 +292,12 @@ class iPETScMatrix:
     @property
     def T(self) -> iPETScMatrix:
         """Return the transpose of the matrix."""
-        transposed = PETSc.Mat().createTranspose(self._mat)
-        transposed.assemble()
-        return iPETScMatrix(transposed)
+        return iPETScMatrix(PETSc.Mat().createTranspose(self._mat))
+
+    @property
+    def H(self) -> iPETScMatrix:
+        """Return the Hermitian transpose of the matrix."""
+        return iPETScMatrix(PETSc.Mat().createHermitianTranspose(self._mat))
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -271,7 +309,7 @@ class iPETScMatrix:
         return self._mat.getInfo()["nz_used"]
 
     @property
-    def norm(self) -> float:
+    def norm(self) -> Scalar:
         """Return the Frobenius norm of the matrix."""
         return self._mat.norm()
 
@@ -285,7 +323,7 @@ class iPETScMatrix:
         """Check whether the matrix is symmetric."""
         return self._mat.isSymmetric()
 
-    def is_numerically_symmetric(self, tol: float = 1e-10) -> bool:
+    def is_numerically_symmetric(self, tol: float = 1e-6) -> bool:
         """Check whether the matrix is numerically symmetric.
 
         This is more robust than `is_symmetric`, which may fail due to rounding errors,
@@ -293,9 +331,18 @@ class iPETScMatrix:
         """
         diff = self.raw.copy()
         diff.axpy(
-            -1.0, self.T.raw, structure=PETSc.Mat.Structure.SUBSET_NONZERO_PATTERN
+            Scalar(-1.0),
+            self.T.raw,
+            structure=PETSc.Mat.Structure.SUBSET_NONZERO_PATTERN,
         )
         return diff.norm() < tol
+
+    def is_hermitian(self, tol: float = 1e-6) -> bool:
+        """Check whether the matrix is Hermitian.
+
+        For real matrices, it should return the same as `is_numerically_symetric`.
+        """
+        return self._mat.isHermitian(tol)
 
     def assemble(self) -> None:
         """(Re)assemble matrix after any insert."""
@@ -305,13 +352,13 @@ class iPETScMatrix:
         """Print the matrix."""
         self._mat.view()
 
-    def scale(self, alpha: int | float) -> None:
+    def scale(self, alpha: int | float | complex) -> None:
         """Scale the matrix by a constant factor."""
-        self._mat.scale(float(alpha))
+        self._mat.scale(Scalar(alpha))
 
-    def shift(self, alpha: int | float) -> None:
+    def shift(self, alpha: int | float | complex) -> None:
         """Shift the diagonal of the matrix by a constant."""
-        self._mat.shift(float(alpha))
+        self._mat.shift(Scalar(alpha))
 
     def sub(self, row: int, col: int) -> iPETScMatrix | None:
         """Return the (row, col)-th submatrix from a nested matrix."""
@@ -329,16 +376,16 @@ class iPETScMatrix:
         """Zero all entries in the matrix."""
         self._mat.zeroEntries()
 
-    def get_value(self, row: int, col: int) -> float:
+    def get_value(self, row: int, col: int) -> Scalar:
         """Get the value at position (row, col)."""
         return self._mat.getValue(row, col)
 
-    def get_row(self, row: int) -> tuple[list[int], list[float]]:
+    def get_row(self, row: int) -> tuple[list[int], list[Scalar]]:
         """Get column indices and values for a specific row."""
         cols, values = self._mat.getRow(row)
         return cols.tolist(), values.tolist()
 
-    def axpy(self, alpha: int | float, other: object) -> None:
+    def axpy(self, alpha: int | float | complex, other: object) -> None:
         """Perform an AXPY operation: this = alpha * other + this."""
         if not isinstance(other, iPETScMatrix):
             raise NotImplementedError(f"Cannot add iPETScMatrix with {type(other)}")
@@ -347,7 +394,7 @@ class iPETScMatrix:
                 f"Incompatible matrix shapes: {self.shape} vs {other.shape}"
             )
         self._mat.axpy(
-            float(alpha),
+            Scalar(alpha),
             other.raw,
             structure=PETSc.Mat.Structure.SUBSET_NONZERO_PATTERN,
         )
@@ -367,7 +414,7 @@ class iPETScMatrix:
 
     def to_aij(self) -> iPETScMatrix:
         """Convert a nested (MatNest) matrix to a flat AIJ matrix."""
-        if self.type.lower() != "nest":
+        if self.type.lower() not in ("nest", "hermitiantranspose", "transpose"):
             raise NotImplementedError(
                 "Only MatNest matrices can be flattened with `to_aij()`."
             )
@@ -376,9 +423,11 @@ class iPETScMatrix:
         aij.assemble()
         return iPETScMatrix(aij)
 
-    def zero_row_columns(self, rows: list[int], diag: float = 0.0) -> None:
+    def zero_row_columns(
+        self, rows: list[int], diag: int | float | complex = 0.0
+    ) -> None:
         """Zero row and column and place a given value in the diagonal."""
-        self._mat.zeroRowsColumns(rows, diag=diag)
+        self._mat.zeroRowsColumns(rows, diag=Scalar(diag))
 
     def pin_dof(self, index: int) -> None:
         """Pin a single DOF by zeroing its row and column and placing a 1 on the diagonal.
@@ -386,17 +435,17 @@ class iPETScMatrix:
         This is commonly used to eliminate nullspaces and ensure compatibility with solvers that do not handle
         them, e.g., fixing pressure at a point in incompressible flow problems.
         """
-        self._mat.zeroRowsColumns([index], diag=1.0)
+        self._mat.zeroRowsColumns([index], diag=Scalar(1.0))
 
-    def attach_nullspace(self, nullspace: PETSc.MatNullSpace) -> None:
+    def attach_nullspace(self, nullspace: iPETScNullSpace) -> None:
         """Attach an existing PETSc nullspace object to this matrix."""
-        self._mat.setNearNullSpace(nullspace)
-        self._mat.setNullSpace(nullspace)
+        self._mat.setNearNullSpace(nullspace.raw)
+        self._mat.setNullSpace(nullspace.raw)
 
-    def get_nullspace(self) -> PETSc.MatNullSpace | None:
+    def get_nullspace(self) -> iPETScNullSpace | None:
         """Retrieve attached nullspace."""
         try:
-            return self.raw.getNullSpace()
+            return iPETScNullSpace(self.raw.getNullSpace())
         except Exception:
             return None
 
@@ -431,7 +480,7 @@ class iPETScVector:
         vec = PETSc.Vec().create(comm=comm)
         vec.setSizes(size)
         vec.setFromOptions()
-        vec.set(0.0)
+        vec.set(Scalar(0.0))
         return cls(vec)
 
     @classmethod
@@ -439,7 +488,14 @@ class iPETScVector:
         cls, array: np.ndarray, comm: PETSc.Comm = PETSc.COMM_WORLD
     ) -> iPETScVector:
         """Create a vector from a NumPy array."""
-        vec = PETSc.Vec().createWithArray(array, comm=comm)
+        vec = PETSc.Vec().createWithArray(deepcopy(array), comm=comm)
+        vec.setFromOptions()
+        return cls(vec)
+
+    @classmethod
+    def create_seq(cls, size: int, comm: PETSc.Comm = PETSc.COMM_SELF) -> iPETScVector:
+        """Create a sequential (non-parallel) vector of the given size."""
+        vec = PETSc.Vec().createSeq(size, comm=comm)
         vec.setFromOptions()
         return cls(vec)
 
@@ -454,7 +510,7 @@ class iPETScVector:
                 f"Incompatible vector communicators: {self.comm} vs {other.comm}"
             )
         result = self.copy()
-        result._vec.axpy(1.0, other.raw)
+        result._vec.axpy(Scalar(1.0), other.raw)
         return result
 
     def __radd__(self, other: object) -> iPETScVector:
@@ -474,27 +530,27 @@ class iPETScVector:
                 f"Incompatible vector communicators: {self.comm} vs {other.comm}"
             )
         result = self.copy()
-        result._vec.axpy(-1.0, other.raw)
+        result._vec.axpy(Scalar(-1.0), other.raw)
         return result
 
     @overload
-    def __mul__(self, other: int | float) -> iPETScVector: ...
+    def __mul__(self, other: int | float | complex) -> iPETScVector: ...
 
     @overload
-    def __mul__(self, other: iPETScVector) -> float: ...
+    def __mul__(self, other: iPETScVector) -> float | complex: ...
 
-    def __mul__(self, other: int | float | iPETScVector) -> iPETScVector | float:
-        """Perform scalar-vector multiplication."""
-        if isinstance(other, (int, float)):
-            result = self.copy()
-            result.scale(other)
-            return result
-
+    def __mul__(
+        self, other: int | float | complex | iPETScVector
+    ) -> iPETScVector | float | complex:
+        """Perform scalar-vector multiplication or inner product."""
         if isinstance(other, iPETScVector):
             return self.dot(other)
+        result = self.copy()
+        result.scale(other)
+        return result
 
-    def __rmul__(self, alpha: int | float) -> iPETScVector:
-        """Perform vector-scalar multiplication"""
+    def __rmul__(self, alpha: int | float | complex) -> iPETScVector:
+        """Perform vector-scalar multiplication."""
         return self.__mul__(alpha)
 
     def __matmul__(self, other: iPETScVector) -> iPETScMatrix:
@@ -502,29 +558,30 @@ class iPETScVector:
         if not isinstance(other, iPETScVector):
             return NotImplemented
 
+        logger.warning(
+            "Vector outer product creates a dense matrix; if you need a sparse result, "
+            "override __matmul__ for sparse vectors."
+        )
+
         A = PETSc.Mat().createDense([self.size, other.size], comm=self.comm)
         A.setUp()
-
         x = self.raw
         y = other.raw
-
-        # Outer product: A[i,j] = x[i] * y[j]
         for i in range(self.size):
             xi = x.getValue(i)
             for j in range(other.size):
                 yj = y.getValue(j)
                 A.setValue(i, j, xi * yj)
-
         A.assemble()
         return iPETScMatrix(A)
 
-    def __getitem__(self, index: int) -> float:
+    def __getitem__(self, index: int) -> int | float | complex:
         """Get a value via direct indexation (i.e., vector[i])."""
         return self._vec.getValue(index)
 
-    def __setitem__(self, index: int, value: int | float) -> None:
+    def __setitem__(self, index: int, value: int | float | complex) -> None:
         """Set a value via direct indexation (i.e., vector[i] = value)."""
-        self._vec.setValue(index, float(value), addv=PETSc.InsertMode.INSERT_VALUES)
+        self._vec.setValue(index, Scalar(value), addv=PETSc.InsertMode.INSERT_VALUES)
         self._vec.assemble()
 
     def __eq__(self, other: object) -> bool:
@@ -536,7 +593,7 @@ class iPETScVector:
             return False
 
         diff = self.raw.duplicate()
-        diff.axpy(-1.0, self.raw, other.raw)  # diff = other - self
+        diff.axpy(Scalar(-1.0), self.raw, other.raw)  # diff = other - self
         return diff.norm() < 1e-12
 
     @property
@@ -555,7 +612,7 @@ class iPETScVector:
         return self._vec.getSize()
 
     @property
-    def norm(self) -> float:
+    def norm(self) -> Scalar:
         """Return the 2-norm of the vector."""
         return self._vec.norm()
 
@@ -572,21 +629,21 @@ class iPETScVector:
         """(Re)assemble vector after any change."""
         self._vec.assemble()
 
-    def scale(self, alpha: float) -> None:
+    def scale(self, alpha: int | float | complex) -> None:
         """Scale the vector by a constant factor."""
-        self._vec.scale(alpha)
+        self._vec.scale(Scalar(alpha))
 
     def zero_all_entries(self) -> None:
         """Zero all entries in the vector."""
-        self._vec.set(0.0)
+        self._vec.set(Scalar(0.0))
 
-    def get_value(self, i: int) -> float:
+    def get_value(self, i: int) -> Scalar:
         """Get the value at index i."""
         return self._vec.getValue(i)
 
-    def set_value(self, i: int, value: float) -> None:
+    def set_value(self, i: int, value: int | float | complex) -> None:
         """Set the value at index i."""
-        self._vec.setValue(i, value)
+        self._vec.setValue(i, Scalar(value))
 
     def as_array(self) -> np.ndarray:
         """Return the vector as a NumPy array."""
@@ -600,9 +657,9 @@ class iPETScVector:
         """Synchronize ghost (parallel) entries."""
         self._vec.ghostUpdate(addv=addv, mode=mode)
 
-    def axpy(self, alpha: float, other: iPETScVector) -> None:
+    def axpy(self, alpha: int | float | complex, other: iPETScVector) -> None:
         """Perform an AXPY operation: this = alpha * other + this."""
-        self._vec.axpy(alpha, other._vec)
+        self._vec.axpy(Scalar(alpha), other._vec)
 
     def set_array(self, array: np.ndarray) -> None:
         """Directly replace the underlying array (and rebuild ghost entries)."""
@@ -615,7 +672,7 @@ class iPETScVector:
             rng.setFromOptions()
         self._vec.setRandom(rng)
 
-    def dot(self, other: iPETScVector) -> float:
+    def dot(self, other: iPETScVector) -> int | float | complex:
         """Vector inner product."""
         return self._vec.dot(other.raw)
 
@@ -628,6 +685,97 @@ class iPETScVector:
             str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self._vec.comm
         )
         self._vec.view(viewer)
+
+
+class iPETScNullSpace:
+    """Minimal wrapper around PETSc nullspace to provide a consistent interface.
+
+    A nullspace (or kernel) of a matrix A is the set of all vectors x such that A*x = 0.
+    In many PDE and linear algebra applications, correctly identifying and removing nullspace components
+    is crucial for solver stability (e.g., incompressible flow nullspaces).
+
+    This class provides a minimal typed interface to create, attach, test, and remove nullspaces.
+    """
+
+    def __init__(self, raw: PETSc.NullSpace) -> None:
+        """Create nullspace from PETSc object."""
+        self._raw = raw
+        self._comm = raw.getComm()
+
+    def __repr__(self) -> str:
+        info = "constant" if self.has_constant() else "vector-based"
+        return f"<iPETScNullSpace {info}, comm={self._comm}>"
+
+    @property
+    def raw(self) -> PETSc.NullSpace:
+        """Return the underlying PETSc NullSpace object."""
+        return self._raw
+
+    @property
+    def comm(self) -> PETSc.Comm:
+        """MPI communicator for the null space."""
+        return self._comm
+
+    @classmethod
+    def from_vectors(cls, vectors: list[iPETScVector]) -> iPETScNullSpace:
+        """Create a NullSpace from a list of iPETScVector basis vectors (no constant)."""
+        if not vectors:
+            raise ValueError("Cannot create NullSpace from empty vector list")
+        # Ensure all vectors share the same communicator
+        comm = vectors[0].raw.comm
+        for v in vectors:
+            if v.raw.comm != comm:
+                raise ValueError("All vectors must have the same communicator")
+        raw_vecs = [v.raw for v in vectors]
+        ns = PETSc.NullSpace().create(constant=False, vectors=raw_vecs, comm=comm)
+        return cls(ns)
+
+    @classmethod
+    def create_constant(cls, comm: PETSc.Comm = PETSc.COMM_WORLD) -> iPETScNullSpace:
+        """Create a NullSpace containing only the constant vector."""
+        ns = PETSc.NullSpace().create(constant=True, vectors=(), comm=comm)
+        return cls(ns)
+
+    @classmethod
+    def create_constant_and_vectors(
+        cls, vectors: list[iPETScVector], comm: PETSc.Comm | None = PETSc.COMM_WORLD
+    ) -> iPETScNullSpace:
+        """Create a NullSpace with the constant vector and additional basis vectors."""
+        if not vectors:
+            return cls.create_constant(comm=comm)
+        base_comm = comm
+        if comm is None:
+            base_comm = vectors[0].raw.comm
+        raw_vecs = [v.raw for v in vectors]
+        ns = PETSc.NullSpace().create(constant=True, vectors=raw_vecs, comm=base_comm)
+        return cls(ns)
+
+    def has_constant(self) -> bool:
+        """Return whether this nullspace contains the constant vector."""
+        return self.raw.hasConstant()
+
+    def test(self, matrix: iPETScMatrix) -> bool:
+        """Test if this nullspace is valid for the given matrix.
+
+        Returns True if A*x = 0 for all nullspace vectors.
+        """
+        try:
+            return self._raw.test(matrix.raw)
+        except Exception as e:
+            logger.warning(f"NullSpace.test failed: {e}")
+            return False
+
+    def remove(self, vector: iPETScVector) -> None:
+        """Remove all components of the null space from the given vector in-place."""
+        try:
+            self._raw.remove(vector.raw)
+        except Exception as e:
+            logger.warning(f"NullSpace.test failed: {e}")
+
+    def attach_to(self, mat: iPETScMatrix) -> None:
+        """Attach this nullspace to an iPETScMatrix (sets both NullSpace and NearNullSpace)."""
+        mat.raw.setNullSpace(self.raw)
+        mat.raw.setNearNullSpace(self.raw)
 
 
 _MAP_TO_DOLFINX: dict[iElementFamily, DolfinxElementFamily] = {
