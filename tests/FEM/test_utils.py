@@ -6,7 +6,13 @@ import numpy as np
 
 from petsc4py import PETSc
 
-from FEM.utils import iPETScMatrix, iPETScVector
+from FEM.utils import iPETScMatrix, iPETScVector, iPETScNullSpace
+
+_complex_build = np.issubdtype(PETSc.ScalarType, np.complexfloating)
+
+skip_complex = pytest.mark.skipif(
+    not _complex_build, reason="Complex-valued PETSc build required"
+)
 
 
 class TestVector:
@@ -49,6 +55,20 @@ class TestVector:
 
         dot = v * iPETScVector.from_array(np.array([4.0, 5.0]))
         assert pytest.approx(dot, abs=1e-10) == 3
+
+    @skip_complex
+    def test_scale_complex(self) -> None:
+        """Scale a vector by a complex factor."""
+        arr = np.array([1 + 1j, 2 - 2j])
+        vec = iPETScVector.from_array(arr)
+
+        factor = 0.5 + 0.25j
+        vec.scale(factor)
+
+        result = vec.as_array()
+        expected = arr * factor
+
+        np.testing.assert_allclose(result, expected, atol=1e-12)
 
     def test_rmul(self) -> None:
         """Test right scalar multiplication."""
@@ -96,10 +116,32 @@ class TestVector:
         v.set_value(0, 42)
         assert pytest.approx(v.get_value(0), abs=1e-10) == 42
 
+    @skip_complex
+    def test_set_value_complex(self) -> None:
+        """Test set_value and get_value for complex entries."""
+        vec = iPETScVector.zeros(3)
+
+        vec.set_value(0, 1 + 2j)
+        vec.set_value(2, -3 - 4j)
+
+        assert pytest.approx(vec.get_value(0), abs=1e-12) == 1 + 2j
+        assert pytest.approx(vec.get_value(1), abs=1e-12) == 0.0 + 0.0j
+        assert pytest.approx(vec.get_value(2), abs=1e-12) == -3 - 4j
+
     def test_norm(self) -> None:
         """Test norm."""
         v = iPETScVector.from_array(np.array([3.0, 4.0]))
         assert pytest.approx(v.norm, abs=1e-10) == 5.0
+
+    @skip_complex
+    def test_norm_complex(self) -> None:
+        """Norm of a complex vector."""
+        arr = np.array([3 + 4j, -1 + 2j, 0 - 1j], dtype=PETSc.ScalarType)
+        vec = iPETScVector.from_array(arr)
+        # PETSc returns a real 2-norm even for complex vectors
+        norm = vec.norm
+        expected = np.linalg.norm(arr)
+        assert pytest.approx(norm, abs=1e-12) == expected
 
     def test_export_vector(self, tmp_path: Path) -> None:
         """Test exporting a vector to binary file."""
@@ -118,22 +160,31 @@ class TestVector:
 class TestMatrix:
     """Test suite for the iPETScMatrix wrapper class."""
 
+    def test_create_aij(self) -> None:
+        """Test creating an aij sparse matrix."""
+        shape = (3, 4)
+        mat = iPETScMatrix.create_aij(shape, comm=PETSc.COMM_SELF, nnz=2)
+
+        assert isinstance(mat, iPETScMatrix)
+        assert mat.shape == shape
+        assert mat.nonzero_entries == 0
+        assert "aij" in mat.type.lower()
+
     def test_from_nested(self) -> None:
         """Test building a nested matrix from blocks, and converting it to aij."""
-        A = PETSc.Mat().createAIJ([2, 2], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 0, 1.0)
-        A.setValue(1, 1, 2.0)
+        A = iPETScMatrix.create_aij((2, 2))
+        A[0, 0] = 1.0
+        A[1, 1] = 2.0
         A.assemble()
 
-        Z = A.copy()
-        Z.zeroEntries()
+        Z = A.duplicate()
+        Z.zero_all_entries()
         Z.assemble()
 
         nested = iPETScMatrix.from_nested(
             [
-                [A, Z],
-                [Z, None],
+                [A.raw, Z.raw],
+                [Z.raw, None],
             ]
         )
         aij = nested.to_aij()  # Convert to aij matrix for better indexing
@@ -151,36 +202,32 @@ class TestMatrix:
 
         assert isinstance(mat, iPETScMatrix)
         assert mat.shape == shape
-        assert mat.nonzero_entries == 0  # AIJ with no prealloc should be truly zero
+        assert mat.nonzero_entries == 0
 
     def test_addition(self) -> None:
         """Test matrix addition and reflected addition."""
-        A = PETSc.Mat().createAIJ([2, 2], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 0, 1.0)
+        A = iPETScMatrix.create_aij((2, 2))
+        A[0, 0] = 1.0
         A.assemble()
 
-        mat1 = iPETScMatrix(A)
-        mat2 = iPETScMatrix(A.copy())
+        B = A.duplicate(copy=True)
 
-        mat_sum = mat1 + mat2
+        C = A + B
 
-        assert pytest.approx(mat_sum[0, 0], abs=1e-10) == 2.0
-        assert pytest.approx((mat2 + mat1)[0, 0], abs=1e-10) == 2.0
+        assert pytest.approx(C[0, 0], abs=1e-10) == 2.0
+        assert pytest.approx((B + A)[0, 0], abs=1e-10) == 2.0
 
     def test_matmul(self) -> None:
         """Test matrix @ vector and matrix @ matrix operations."""
-        A = PETSc.Mat().createAIJ([2, 2], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 0, 2.0)
-        A.setValue(1, 1, 3.0)
+        A = iPETScMatrix.create_aij((2, 2))
+        A[0, 0] = 2.0
+        A[1, 1] = 3.0
         A.assemble()
 
-        mat = iPETScMatrix(A)
         vec = iPETScVector.from_array(np.array([1.0, 2.0]))
 
-        result_vec = mat @ vec
-        mat2 = mat @ mat
+        result_vec = A @ vec
+        mat2 = A @ A
 
         np.testing.assert_allclose(result_vec.as_array(), [2.0, 6.0])
         assert isinstance(mat2, iPETScMatrix)
@@ -188,174 +235,235 @@ class TestMatrix:
 
     def test_rmatmul_vector_matrix(self) -> None:
         """Test vector @ matrix operation."""
-        A = PETSc.Mat().createAIJ([2, 2], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 0, 2.0)
-        A.setValue(1, 1, 3.0)
+        A = iPETScMatrix.create_aij((2, 2))
+        A[0, 0] = 2.0
+        A[1, 1] = 3.0
         A.assemble()
 
-        mat = iPETScMatrix(A)
         vec = iPETScVector.from_array(np.array([3.0, 4.0]))
 
-        result = vec @ mat
+        result = vec @ A
         np.testing.assert_allclose(result.as_array(), [6.0, 12.0])
 
     def test_indexing_get_set(self) -> None:
         """Test matrix[i, j] get and set functionality."""
-        A = PETSc.Mat().createAIJ([2, 2], comm=PETSc.COMM_SELF)
-        A.setUp()
+        A = iPETScMatrix.create_aij((2, 2))
+
+        A[1, 0] = 3.0
         A.assemble()
 
-        mat = iPETScMatrix(A)
-        mat[1, 0] = 3.0
-
-        assert pytest.approx(mat[1, 0], abs=1e-10) == 3.0
+        assert pytest.approx(A[1, 0], abs=1e-10) == 3.0
 
     def test_properties_transpose_and_shape(self) -> None:
         """Test properties: shape, transpose, nonzero_entries, norm, type."""
-        A = PETSc.Mat().createAIJ([2, 3], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 1, 1.0)
-        A.setValue(1, 2, 2.0)
+        A = iPETScMatrix.create_aij((2, 3))
+        A[0, 1] = 1.0
+        A[1, 2] = 2.0
         A.assemble()
 
-        mat = iPETScMatrix(A)
+        transpose = A.T.to_aij()  # Convert just to support indexing
 
-        assert mat.shape == (2, 3)
-        assert mat.T.shape == (3, 2)
-        assert mat.nonzero_entries == 2
+        assert A.shape == (2, 3)
+        assert A.T.shape == (3, 2)
+        assert transpose[2, 1] == 2.0
+        assert transpose[1, 0] == 1.0
 
-        assert isinstance(mat.norm, float)
-        assert isinstance(mat.type, str)
+    @skip_complex
+    def test_hermitian(self) -> None:
+        """Test Hermitian transpose for complex matrices."""
+        A = iPETScMatrix.create_aij((2, 2))
+        A[0, 0] = 1.0 + 0.0j
+        A[0, 1] = 4.0 - 2.0j
+        A[1, 0] = 3.0 + 5.0j
+        A[1, 1] = 2.0 + 0.0j
+        A.assemble()
+
+        H = A.H.to_aij()  # Convert just to support indexing
+
+        for i in range(2):
+            for j in range(2):
+                expected = A[j, i].conjugate()
+                assert pytest.approx(H[i, j], abs=1e-12) == expected
 
     def test_symmetry_checks(self) -> None:
         """Test is_symmetric and is_numerically_symmetric methods."""
-        A = PETSc.Mat().createAIJ([2, 2], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 0, 1.0)
-        A.setValue(0, 1, 2.0)
-        A.setValue(1, 0, 2.0)
-        A.setValue(1, 1, 1.0)
+        A = iPETScMatrix.create_aij((2, 2))
+        A[0, 0] = 1.0
+        A[0, 1] = 2.0
+        A[1, 0] = 2.0
+        A[1, 1] = 1.0
         A.assemble()
 
-        mat = iPETScMatrix(A)
-
-        assert mat.is_symmetric
-        assert mat.is_numerically_symmetric(tol=1e-12)
+        assert A.is_symmetric
+        assert A.is_numerically_symmetric(tol=1e-12)
 
     def test_scale_and_shift(self) -> None:
         """Test scale and shift operations on matrix."""
-        A = PETSc.Mat().createAIJ([1, 1], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 0, 1.0)
+        A = iPETScMatrix.create_aij((1, 1))
+        A[0, 0] = 1.0
         A.assemble()
 
-        mat = iPETScMatrix(A)
+        A.shift(2.0)
+        assert pytest.approx(A[0, 0], abs=1e-10) == 3.0
 
-        mat.shift(2.0)
-        assert pytest.approx(mat[0, 0], abs=1e-10) == 3.0
+        A.scale(0.5)
+        assert pytest.approx(A[0, 0], abs=1e-10) == 1.5
 
-        mat.scale(0.5)
-        assert pytest.approx(mat[0, 0], abs=1e-10) == 1.5
+    @skip_complex
+    def test_scale_with_complex_factor(self) -> None:
+        """Scale by a purely imaginary factor."""
+        A = iPETScMatrix.create_aij((1, 1))
+        A[0, 0] = 2.0 + 0.0j
+        A.assemble()
+
+        factor = 0.0 + 1.0j
+        A.scale(factor)
+
+        expected = (2.0 + 0.0j) * factor
+        assert pytest.approx(A[0, 0], abs=1e-12) == expected
 
     def test_zero_all_entries(self) -> None:
         """Test that zero_all_entries() clears the matrix."""
-        A = PETSc.Mat().createAIJ([1, 1], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 0, 5.0)
+        A = iPETScMatrix.create_aij((1, 1))
+        A[0, 0] = 5.0
         A.assemble()
 
-        mat = iPETScMatrix(A)
-        mat.zero_all_entries()
-
-        assert pytest.approx(mat[0, 0], abs=1e-10) == 0.0
+        A.zero_all_entries()
+        assert pytest.approx(A[0, 0], abs=1e-10) == 0.0
 
     def test_get_value_and_get_row(self) -> None:
         """Test get_value and get_row consistency."""
-        A = PETSc.Mat().createAIJ([2, 2], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(1, 0, 2.0)
+        A = iPETScMatrix.create_aij((2, 2))
+        A[1, 0] = 2.0
         A.assemble()
 
-        mat = iPETScMatrix(A)
-
-        cols, values = mat.get_row(1)
+        cols, values = A.get_row(1)
         for col, val in zip(cols, values):
-            assert pytest.approx(mat.get_value(1, col), abs=1e-10) == val
+            assert pytest.approx(A.get_value(1, col), abs=1e-10) == val
 
     def test_axpy(self) -> None:
         """Test AXPY operation on matrices."""
-        A = PETSc.Mat().createAIJ([1, 1], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 0, 1.0)
+        A = iPETScMatrix.create_aij((1, 1))
+        A[0, 0] = 1.0
         A.assemble()
 
-        mat = iPETScMatrix(A)
-        mat.axpy(2.0, mat)
+        A.axpy(2.0, A)
+        assert pytest.approx(A[0, 0], abs=1e-10) == 3.0
 
-        assert pytest.approx(mat[0, 0], abs=1e-10) == 3.0
+    @skip_complex
+    def test_axpy_with_complex_alpha(self) -> None:
+        """Test complex AXPY operation on matrices."""
+        A = iPETScMatrix.create_aij((1, 1))
+        A[0, 0] = 1.0 + 0.0j
+        A.assemble()
+
+        alpha = 2.0 + 3.0j
+        A.axpy(alpha, A)
+
+        expected = (alpha + 1.0) * (1.0 + 0.0j)
+        assert pytest.approx(A[0, 0], abs=1e-12) == expected
 
     def test_create_vector_right_left(self) -> None:
         """Test creation of left and right-hand vectors from matrix."""
-        A = PETSc.Mat().createAIJ([3, 2], comm=PETSc.COMM_SELF)
-        A.setUp()
+        A = iPETScMatrix.create_aij((3, 2))
         A.assemble()
 
-        mat = iPETScMatrix(A)
-
-        v_r = mat.create_vector_right()
-        v_l = mat.create_vector_left()
+        v_r = A.create_vector_right()
+        v_l = A.create_vector_left()
 
         assert v_r.size == 2
         assert v_l.size == 3
 
     def test_pin_dof(self) -> None:
         """Test pinning a DOF by zeroing its row and column and setting the diagonal."""
-        A = PETSc.Mat().createAIJ([2, 2], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 0, 1.0)
-        A.setValue(0, 1, 2.0)
-        A.setValue(1, 0, 3.0)
-        A.setValue(1, 1, 4.0)
+        A = iPETScMatrix.create_aij((2, 2))
+        A[0, 0] = 1.0
+        A[0, 1] = 2.0
+        A[1, 0] = 3.0
+        A[1, 1] = 4.0
         A.assemble()
 
-        mat = iPETScMatrix(A)
-        mat.pin_dof(0)
+        A.pin_dof(0)
 
-        # After pinning, row 0 and column 0 should be zero except the diagonal
-        assert pytest.approx(mat[0, 0], abs=1e-10) == 1.0
-        assert pytest.approx(mat[0, 1], abs=1e-10) == 0.0
-        assert pytest.approx(mat[1, 0], abs=1e-10) == 0.0
-        assert pytest.approx(mat[1, 1], abs=1e-10) == 4.0
+        assert pytest.approx(A[0, 0], abs=1e-10) == 1.0
+        assert pytest.approx(A[0, 1], abs=1e-10) == 0.0
+        assert pytest.approx(A[1, 0], abs=1e-10) == 0.0
+        assert pytest.approx(A[1, 1], abs=1e-10) == 4.0
 
     def test_attach_nullspace(self) -> None:
         """Test attaching a constant nullspace to a matrix."""
-        A = PETSc.Mat().createAIJ([3, 3], comm=PETSc.COMM_SELF)
-        A.setUp()
+        A = iPETScMatrix.create_aij((3, 3))
         A.assemble()
 
-        mat = iPETScMatrix(A)
-        ns_vec = PETSc.Vec().createSeq(3, comm=PETSc.COMM_SELF)
-        ns_vec.set(1.0)
+        ns_vec = iPETScVector.create_seq(3)
+        for i in range(3):
+            ns_vec[i] = 1.0
         ns_vec.assemble()
 
-        ns = PETSc.NullSpace().create(constant=True, vectors=[ns_vec])
-        mat.attach_nullspace(ns)
+        ns = iPETScNullSpace.create_constant_and_vectors([ns_vec])
+        A.attach_nullspace(ns)
 
-        ns_retrieved = mat.get_nullspace()
+        ns_retrieved = A.get_nullspace()
         assert ns_retrieved is not None
-        assert ns_retrieved.test(mat.raw)
+        assert ns_retrieved.test(A)
 
     def test_export_matrix(self, tmp_path: Path) -> None:
         """Test exporting matrix to binary format."""
-        A = PETSc.Mat().createAIJ([2, 2], comm=PETSc.COMM_SELF)
-        A.setUp()
-        A.setValue(0, 1, 4.2)
+        A = iPETScMatrix.create_aij((2, 2))
+        A[0, 1] = 4.2
         A.assemble()
 
-        mat = iPETScMatrix(A)
-        path = tmp_path / "matrix_output.bin"
-        mat.export(path)
+        filepath = tmp_path / "matrix_output.bin"
+        A.export(filepath)
 
-        assert path.exists()
-        assert path.stat().st_size > 0
+        assert filepath.exists()
+        assert filepath.stat().st_size > 0
+
+
+class TestNullSpace:
+    """Tests for the iPETScNullSpace wrapper."""
+
+    def _build_tridiag_matrix(self) -> iPETScMatrix:
+        """Build a simple 3x3 tridiagonal matrix whose nullspace is span{[1,1,1]}."""
+        A = iPETScMatrix.create_aij((3, 3))
+        A[0, 0] = 1.0
+        A[0, 1] = -1.0
+        A[1, 0] = -1.0
+        A[1, 1] = 2.0
+        A[1, 2] = -1.0
+        A[2, 1] = -1.0
+        A[2, 2] = 1.0
+        A.assemble()
+        return A
+
+    def test_from_vectors_and_test(self) -> None:
+        """Construct nullspace from the constant basis vector and verify test()."""
+        A = self._build_tridiag_matrix()
+        v1 = iPETScVector.from_array(np.array([1.0, 1.0, 1.0]))
+        ns = iPETScNullSpace.from_vectors([v1])
+        assert ns.test(A)
+
+    def test_create_constant_and_test(self) -> None:
+        """Test that create_constant() yields the all-ones nullspace for this A."""
+        A = self._build_tridiag_matrix()
+        ns = iPETScNullSpace.create_constant(comm=A.comm)
+        assert ns.has_constant()
+        assert ns.test(A)
+
+    def test_remove_constant(self) -> None:
+        """Test that removing a constant nullspace subtracts the mean from the vector."""
+        v = iPETScVector.from_array(np.array([2.0, 3.0, 4.0]))
+        ns = iPETScNullSpace.create_constant(comm=v.comm)
+        ns.remove(v)
+        arr = v.as_array()
+        # after removal, should be [-1,0,1]
+        np.testing.assert_allclose(arr, np.array([-1.0, 0.0, 1.0]), atol=1e-12)
+
+    def test_constant_and_vectors(self) -> None:
+        """Test that create_constant_and_vectors should include both constant and extra modes."""
+        A = self._build_tridiag_matrix()
+        v2 = iPETScVector.from_array(np.array([2.0, 2.0, 2.0]))
+        ns = iPETScNullSpace.create_constant_and_vectors([v2], comm=A.comm)
+
+        assert ns.has_constant()
+        assert ns.test(A)

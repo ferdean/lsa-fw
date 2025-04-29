@@ -4,6 +4,7 @@ import pytest
 import numpy as np
 from pathlib import Path
 
+import dolfinx
 import dolfinx.mesh as dmesh
 from mpi4py import MPI
 
@@ -146,6 +147,10 @@ def test_mark_boundary_facets_assigns_tags() -> None:
     assert set(tags.values).issubset({1, 2, 99})
 
 
+@pytest.mark.skipif(
+    dolfinx.default_scalar_type == np.complex128,
+    reason="Read/write XDMF meshes currently not supported in complex config.",
+)
 def test_facet_tags_export_import(tmp_path: Path) -> None:
     """Test that facet tags are exported to and reloaded from XDMF."""
     path = tmp_path / "mesh.xdmf"
