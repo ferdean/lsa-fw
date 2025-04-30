@@ -1,6 +1,6 @@
-"""Solve a simplified 2D Navier–Stokes driven lid flow using DOLFINx and visualize results.
+"""Solve a simplified 2D Navier-Stokes driven lid flow using DOLFINx and visualize results.
 
-The problem simulates incompressible flow described by the Navier–Stokes equations
+The problem simulates incompressible flow described by the Navier-Stokes equations
 on a unit square domain. The top boundary (lid) moves horizontally, driving the fluid motion.
 The bottom boundary remains stationary (no-slip), and side boundaries have no explicit boundary conditions,
 representing open or symmetry boundaries. The fluid is initially at rest.
