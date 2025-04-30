@@ -9,6 +9,7 @@ including mass, viscous, convection, shear, pressure, and divergence operators.
 
 import logging
 from typing import Callable
+import numpy as np
 
 import dolfinx.fem as dfem
 from ufl import dx, TrialFunction, TestFunction, Form, inner, grad, div, dot, Measure  # type: ignore[import-untyped]
@@ -16,7 +17,7 @@ from ufl.argument import Argument  # type: ignore[import-untyped]
 from dolfinx.fem.petsc import assemble_matrix, assemble_vector
 from petsc4py import PETSc
 
-from .utils import iPETScMatrix, iPETScVector
+from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace
 from .spaces import FunctionSpaces
 from .bcs import BoundaryConditions
 
@@ -87,9 +88,10 @@ class LinearizedNavierStokesAssembler:
 
         self._base_flow = base_flow
         self._re = re
+        self._dtype = PETSc.ScalarType
 
         self._spaces = spaces
-        self._nullspace: PETSc.MatNullSpace | None = None
+        self._nullspace: iPETScNullSpace | None = None
 
         self._u, self._p = self._get_trial_functions(spaces)
         self._v, self._q = self._get_test_functions(spaces)
@@ -126,10 +128,10 @@ class LinearizedNavierStokesAssembler:
 
     @staticmethod
     def _assemble(
-        bilinear_form: Form, dirichlet_bcs: list[dfem.DirichletBC]
+        bilinear_form: Form, dirichlet_bcs: list[dfem.DirichletBC], dtype: np.dtype
     ) -> iPETScMatrix:
-        a_petsc = assemble_matrix(dfem.form(bilinear_form), bcs=dirichlet_bcs)
-        a_petsc.assemble()
+        ufl_form = dfem.form(bilinear_form, dtype=dtype)
+        a_petsc = assemble_matrix(ufl_form, bcs=dirichlet_bcs)
         return iPETScMatrix(a_petsc)
 
     def _get_or_compute_matrix(
@@ -146,7 +148,9 @@ class LinearizedNavierStokesAssembler:
         return self._get_or_compute_matrix(
             "mass",
             lambda: self._assemble(
-                VariationalForms.mass(self._u, self._v), self._u_bcs
+                VariationalForms.mass(self._u, self._v),
+                self._u_bcs,
+                self._dtype,
             ),
         )
 
@@ -157,6 +161,7 @@ class LinearizedNavierStokesAssembler:
             lambda: self._assemble(
                 VariationalForms.convection(self._u, self._v, self._base_flow),
                 self._u_bcs,
+                self._dtype,
             ),
         )
 
@@ -165,7 +170,9 @@ class LinearizedNavierStokesAssembler:
         return self._get_or_compute_matrix(
             "shear",
             lambda: self._assemble(
-                VariationalForms.shear(self._u, self._v, self._base_flow), self._u_bcs
+                VariationalForms.shear(self._u, self._v, self._base_flow),
+                self._u_bcs,
+                self._dtype,
             ),
         )
 
@@ -174,7 +181,9 @@ class LinearizedNavierStokesAssembler:
         return self._get_or_compute_matrix(
             "pressure_gradient",
             lambda: self._assemble(
-                VariationalForms.pressure_gradient(self._p, self._v), self._p_bcs
+                VariationalForms.pressure_gradient(self._p, self._v),
+                self._p_bcs,
+                self._dtype,
             ),
         )
 
@@ -183,7 +192,9 @@ class LinearizedNavierStokesAssembler:
         return self._get_or_compute_matrix(
             "viscous",
             lambda: self._assemble(
-                VariationalForms.viscous(self._u, self._v, self._re), self._u_bcs
+                VariationalForms.viscous(self._u, self._v, self._re),
+                self._u_bcs,
+                self._dtype,
             ),
         )
 
@@ -192,7 +203,9 @@ class LinearizedNavierStokesAssembler:
         return self._get_or_compute_matrix(
             "divergence",
             lambda: self._assemble(
-                VariationalForms.divergence(self._u, self._q), self._u_bcs
+                VariationalForms.divergence(self._u, self._q),
+                self._u_bcs,
+                self._dtype,
             ),
         )
 
@@ -216,6 +229,9 @@ class LinearizedNavierStokesAssembler:
     def assemble_linear_operator(self) -> iPETScMatrix:
         """Assemble the full linear operator. Refer to the module documentation for nomenclature details."""
         logger.info("Assembling full linear NS operator.")
+
+        # @FIXME: This matrix addition gives problems when running in different ranks (MPI),
+        # as the addition finds matrix size mismatches
 
         A = (
             self.assemble_shear_matrix()  # C1
@@ -259,8 +275,9 @@ class LinearizedNavierStokesAssembler:
     def assemble_neumann_rhs(self, g: dfem.Function, ds: Measure) -> iPETScVector:
         """Assemble the Neumann boundary condition RHS contribution."""
         logger.info("Assembling Neumann boundary condition RHS.")
-
-        form = dfem.form(VariationalForms.neumann_rhs(self._v, g, ds))
+        form = dfem.form(
+            VariationalForms.neumann_rhs(self._v, g, ds), dtype=self._dtype
+        )
         vec = assemble_vector(form)
         dfem.apply_lifting(vec, [form], bcs=[self._u_bcs])
         vec.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
@@ -284,9 +301,7 @@ class LinearizedNavierStokesAssembler:
 
         if self._nullspace is None:
             n_p, _ = self._spaces.pressure_dofs
-            vec = PETSc.Vec().createMPI(n_p, comm=mat.comm)
-            vec.set(1.0)
-            vec.assemble()
-            self._nullspace = PETSc.MatNullSpace().create(constant=True, vectors=[vec])
+            vec = iPETScVector.from_array(np.ones((n_p,)), comm=mat.comm)
+            self._nullspace = iPETScNullSpace.create_constant_and_vectors(vectors=[vec])
 
         mat.attach_nullspace(self._nullspace)

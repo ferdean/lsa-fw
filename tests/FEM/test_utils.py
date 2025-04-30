@@ -285,6 +285,17 @@ class TestMatrix:
                 expected = A[j, i].conjugate()
                 assert pytest.approx(H[i, j], abs=1e-12) == expected
 
+    def test_real_hermitian(self) -> None:
+        """Test Hermitian transpose for real matrices."""
+        A = iPETScMatrix.create_aij((2, 2))
+        A[0, 0] = 1.0
+        A[0, 1] = 4.0
+        A[1, 0] = 3.0
+        A[1, 1] = 2.0
+        A.assemble()
+
+        assert A.T.to_aij() == A.H.to_aij()
+
     def test_symmetry_checks(self) -> None:
         """Test is_symmetric and is_numerically_symmetric methods."""
         A = iPETScMatrix.create_aij((2, 2))

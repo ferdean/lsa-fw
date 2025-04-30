@@ -15,9 +15,7 @@ from FEM.utils import iMeasure
 @pytest.fixture(scope="module")
 def test_mesher() -> Mesher:
     """Define test mesher."""
-    mesher = Mesher(
-        shape=Shape.UNIT_INTERVAL, n=(400, 400, 400), cell_type=iCellType.TETRAHEDRON
-    )
+    mesher = Mesher(shape=Shape.UNIT_SQUARE, n=(16, 16), cell_type=iCellType.TRIANGLE)
     _ = mesher.generate()
     return mesher
 
@@ -56,14 +54,8 @@ def test_shapes(
     test_assembler: LinearizedNavierStokesAssembler, test_spaces: FunctionSpaces
 ) -> None:
     """Test that all assembled operator shapes match the expected dimensions."""
-    u_dofs = (
-        test_spaces.velocity.dofmap.index_map.size_global
-        * test_spaces.velocity.dofmap.index_map_bs
-    )
-    p_dofs = (
-        test_spaces.pressure.dofmap.index_map.size_global
-        * test_spaces.pressure.dofmap.index_map_bs
-    )
+    u_dofs, _ = test_spaces.velocity_dofs
+    p_dofs, _ = test_spaces.pressure_dofs
 
     viscous = test_assembler.assemble_viscous_matrix()
     convection = test_assembler.assemble_convection_matrix()
@@ -170,6 +162,7 @@ def test_assemble_eigensystem_properties(
 
     assert M_v_block is not None
     assert M_v == M_v_block
+    # Note that M_v has been tested to be SPD in `test_mass_matrix_positive_definite`
 
 
 def test_assemble_neumann_rhs_format(
