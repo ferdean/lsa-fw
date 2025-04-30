@@ -9,8 +9,11 @@ FROM dolfinx/dolfinx:stable
 # even in the real case:
 # ```RuntimeError: Failed to successfully call PETSc function 'MatXIJSetPreallocation'.
 # PETSc error code is: 63, Argument out of range```
+# This error is found by trying to assemble any of the matrices defined in FEM.operators;
+# both in the real and the complex cases.
 # In case it is also a hint for debugging, importing a mesh file from a XDMF also
-# crashes with this configuration.
+# crashes with this configuration
+# (refer to `test/Meshing/test_core.py/test_facet_tags_export_import`).
 # This is to be further investigated once complex results are needed (i.e., for the
 # validation of the eigensolver)
 
@@ -58,3 +61,4 @@ RUN pip install --no-cache-dir \
 #   4. Install and configure the NVIDIA Container Toolkit on the host.
 #   5. Run your container with GPU access:
 #        docker run --gpus all -it <your-image>
+# Remember to consider real/complex scalar types when building PETSc manually.
