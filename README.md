@@ -26,7 +26,7 @@ Current features include:
 - Infrastructure
   - Modular mesh generation and import/export (via [Meshing Module](doc/models/meshing.md))
   - CLI-based experiment runners
-  - Support for parameter files (e.g., `.json`)
+  - Support for parameter files (e.g., `.json` or `.toml`, refer to `config_files`)
 
 ## Module Overview
 
@@ -48,12 +48,12 @@ Finite Element Method backend that assembles the linearized Navier–Stokes oper
 - Handles boundary condition enforcement for Dirichlet, Neumann, and Robin types.
 - Exposes PETSc matrices for solver consumption.
 
-### Solver *(Planned)*
+### Solver 
 
 Linear solver module that will support:
 
+- Base flow computation *(planned)*
 - Eigenvalue solvers for modal stability analysis (via SLEPc)
-- Time-stepping solvers for linearized flow evolution (via PETSc TS)
 - Preconditioners for large sparse matrices
 - Fully decoupled from FEM to allow extensibility
 
