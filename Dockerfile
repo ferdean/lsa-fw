@@ -3,21 +3,32 @@
 
 FROM dolfinx/dolfinx:stable
 
-# Select scalar mode (real or complex)
-ARG FENICS_VARIANT=complex
-ENV FENICS_VARIANT=${FENICS_VARIANT}
-ENV DOLFINX_BASE=/usr/local/dolfinx-${FENICS_VARIANT}
+# @FIXME: The way to chose between real/complex builds seems to be something similar
+# to what is commented here. It does change the scalar type (PETSc.ScalarType), but
+# somehow breaks the unit tests and makes PETSc fail upon assembly of the operators,
+# even in the real case:
+# ```RuntimeError: Failed to successfully call PETSc function 'MatXIJSetPreallocation'.
+# PETSc error code is: 63, Argument out of range```
+# In case it is also a hint for debugging, importing a mesh file from a XDMF also
+# crashes with this configuration.
+# This is to be further investigated once complex results are needed (i.e., for the
+# validation of the eigensolver)
 
-# Define only for complex mode
-ENV PETSC_ARCH=linux-gnu-complex128-64
+# # Select scalar mode (real or complex)
+# ARG FENICS_VARIANT=real
+# ENV FENICS_VARIANT=${FENICS_VARIANT}
+# ENV DOLFINX_BASE=/usr/local/dolfinx-${FENICS_VARIANT}
 
-# Define only for real mode
+# # Define only for complex mode
+# # ENV PETSC_ARCH=linux-gnu-complex128-64
+
+# # Define only for real mode
 # ENV PETSC_ARCH=linux-gnu-real64-64
 
-# Environment variables for DOLFINx
-ENV PKG_CONFIG_PATH=${DOLFINX_BASE}/lib/pkgconfig:$PKG_CONFIG_PATH
-ENV PYTHONPATH=${DOLFINX_BASE}/lib/python3.12/dist-packages:$PYTHONPATH
-ENV LD_LIBRARY_PATH=${DOLFINX_BASE}/lib:$LD_LIBRARY_PATH
+# # Environment variables for DOLFINx
+# ENV PKG_CONFIG_PATH=${DOLFINX_BASE}/lib/pkgconfig:$PKG_CONFIG_PATH
+# ENV PYTHONPATH=${DOLFINX_BASE}/lib/python3.12/dist-packages:$PYTHONPATH
+# ENV LD_LIBRARY_PATH=${DOLFINX_BASE}/lib:$LD_LIBRARY_PATH
 
 # Install extra Python packages
 RUN pip install --no-cache-dir \
