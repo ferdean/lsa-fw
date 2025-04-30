@@ -337,12 +337,26 @@ class iPETScMatrix:
         )
         return diff.norm() < tol
 
-    def is_hermitian(self, tol: float = 1e-6) -> bool:
+    def is_hermitian(self) -> bool:
         """Check whether the matrix is Hermitian.
 
         For real matrices, it should return the same as `is_numerically_symetric`.
         """
-        return self._mat.isHermitian(tol)
+        return self._mat.isHermitian()
+
+    def is_numerically_hermitian(self, tol: float = 1e-4) -> bool:
+        """Check whether the matrix is numerically Hermitian.
+
+        This is more robust than `is_hermitian`, which may fail due to rounding errors,
+        reordering, or boundary condition insertions.
+        """
+        diff = self.raw.copy()
+        diff.axpy(
+            Scalar(-1.0),
+            self.H.to_aij().raw,
+            structure=PETSc.Mat.Structure.SUBSET_NONZERO_PATTERN,
+        )
+        return diff.norm() < tol
 
     def assemble(self) -> None:
         """(Re)assemble matrix after any insert."""
@@ -422,6 +436,10 @@ class iPETScMatrix:
         aij = self._mat.convert("aij")
         aij.assemble()
         return iPETScMatrix(aij)
+
+    def as_array(self) -> np.ndarray:
+        """Return the vector as a NumPy array."""
+        return self._mat.getArray().copy()
 
     def zero_row_columns(
         self, rows: list[int], diag: int | float | complex = 0.0

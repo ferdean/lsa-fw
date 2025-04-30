@@ -17,7 +17,7 @@ from ufl.argument import Argument  # type: ignore[import-untyped]
 from dolfinx.fem.petsc import assemble_matrix, assemble_vector
 from petsc4py import PETSc
 
-from .utils import iPETScMatrix, iPETScVector
+from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace
 from .spaces import FunctionSpaces
 from .bcs import BoundaryConditions
 
@@ -91,7 +91,7 @@ class LinearizedNavierStokesAssembler:
         self._dtype = PETSc.ScalarType
 
         self._spaces = spaces
-        self._nullspace: PETSc.MatNullSpace | None = None
+        self._nullspace: iPETScNullSpace | None = None
 
         self._u, self._p = self._get_trial_functions(spaces)
         self._v, self._q = self._get_test_functions(spaces)
@@ -230,6 +230,9 @@ class LinearizedNavierStokesAssembler:
         """Assemble the full linear operator. Refer to the module documentation for nomenclature details."""
         logger.info("Assembling full linear NS operator.")
 
+        # @FIXME: This matrix addition gives problems when running in different ranks (MPI),
+        # as the addition finds matrix size mismatches
+
         A = (
             self.assemble_shear_matrix()  # C1
             + self.assemble_convection_matrix()  # C2
@@ -298,9 +301,7 @@ class LinearizedNavierStokesAssembler:
 
         if self._nullspace is None:
             n_p, _ = self._spaces.pressure_dofs
-            vec = PETSc.Vec().createMPI(n_p, comm=mat.comm)
-            vec.set(1.0)
-            vec.assemble()
-            self._nullspace = PETSc.MatNullSpace().create(constant=True, vectors=[vec])
+            vec = iPETScVector.from_array(np.ones((n_p,)), comm=mat.comm)
+            self._nullspace = iPETScNullSpace.create_constant_and_vectors(vectors=[vec])
 
         mat.attach_nullspace(self._nullspace)

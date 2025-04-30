@@ -17,6 +17,7 @@ dolfinx
 eigenanalysis
 eigenpair
 eigenpairs
+eigenproblem
 eigenproblems
 Eigensolver
 eigensystem
