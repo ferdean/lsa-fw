@@ -3,9 +3,8 @@
 import pytest
 from dolfinx.fem import FunctionSpace
 from dolfinx.mesh import Mesh
-from pathlib import Path
 
-from Meshing import Mesher, Shape
+from Meshing import Mesher, Shape, iCellType
 from FEM.spaces import (
     define_spaces,
     FunctionSpaceType,
@@ -20,9 +19,11 @@ def test_mesh() -> Mesh:
     Although this creates a dependency on external state and violates strict test isolation, it is a deliberate
     and common trade-off in staged test suites (e.g., testing FEM only after validating Meshing).
     """
-    mesher = Mesher.from_file(
-        path=Path(__file__).parent / "test_data" / "test_mesh.xdmf",
-        shape=Shape.CUSTOM_XDMF,
+    mesher = Mesher(
+        shape=Shape.BOX,
+        n=(12, 12, 12),
+        cell_type=iCellType.HEXAHEDRON,
+        domain=((0, 0, 0), (10, 5, 10)),
     )
     return mesher.generate()
 
