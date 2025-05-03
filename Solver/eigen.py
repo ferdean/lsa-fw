@@ -27,6 +27,7 @@ iEpsSolver object.
 """
 
 import logging
+import time
 from dataclasses import dataclass
 
 from FEM.utils import iPETScMatrix, iComplexPETScVector
@@ -64,6 +65,16 @@ class EigenSolver:
         self, cfg: EigensolverConfig, A: iPETScMatrix, M: iPETScMatrix | None = None
     ) -> None:
         """Initialize eigensolver."""
+        nrows, ncols = A.shape
+        if nrows != ncols:
+            raise ValueError(f"Operator A must be square, got shape ({nrows}, {ncols})")
+
+        if M is not None:
+            mrows, mcols = M.shape
+            if (mrows, mcols) != (nrows, ncols):
+                raise ValueError(
+                    f"Operator M shape {M.shape} does not match A's shape {A.shape}"
+                )
         if cfg.problem_type in _HERMITIAN_TYPES:
             if not A.is_numerically_hermitian():
                 logger.warning(
@@ -102,11 +113,25 @@ class EigenSolver:
         """Run the solver and return eigenpairs."""
         logger.info(
             f"Starting eigenvalue solve: type={self._cfg.problem_type.name}, "
-            f"num_eigenpairs={self._cfg.num_eig}, atol={self._cfg.atol}, max_it={self._cfg.max_it}."
+            f"nev={self._cfg.num_eig}, "
+            f"tol={self._cfg.atol}, max_it={self._cfg.max_it}"
         )
-        self._solver.solve()
 
-        logger.info(f"Converged eigenpairs: {self._solver.get_num_converged()}")
+        t0 = time.time()
+        self._solver.solve()
+        elapsed = time.time() - t0
+
+        nconv = self._solver.get_num_converged()
+        try:
+            # Attempt to retrieve number of iterations from PETSc if exposed
+            its = self._solver.raw.getST().getKSP().getIterationNumber()
+        except Exception:
+            its = None
+
+        logger.info(
+            f"Solve completed in {elapsed:.2f} s; converged {nconv} eigenpairs"
+            + (f"; iterations={its}" if its is not None else "")
+        )
 
         pairs = list(self._solver.get_all_eigenpairs_up_to(self._cfg.num_eig))
         logger.info(f"Retrieved {len(pairs)} eigenpairs")

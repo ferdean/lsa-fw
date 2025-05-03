@@ -355,7 +355,18 @@ class iPETScMatrix:
                 "The current matrix is dense, so all the entries are memory-allocated. "
                 "Then, the value returned by this property might not be useful."
             )
-        return self._mat.getInfo()["nz_used"]
+
+        if "nest" in self.type:
+            total_nz = 0
+            n_row, n_col = self._mat.getNestSize()
+            for i in range(n_row):
+                for j in range(n_col):
+                    sub = self._mat.getNestSubMatrix(i, j)
+                    if sub.handle != 0:
+                        total_nz += sub.getInfo()["nz_used"]
+            return int(total_nz)
+
+        return int(self._mat.getInfo()["nz_used"])
 
     @property
     def norm(self) -> Scalar:
@@ -518,6 +529,7 @@ class iPETScMatrix:
 
     def export(self, path: Path) -> None:
         """Export the matrix to a binary file."""
+        # FIXME: This is currently not working
         viewer = PETSc.Viewer().createBinary(
             str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self.comm
         )

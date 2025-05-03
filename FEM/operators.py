@@ -270,6 +270,9 @@ class LinearizedNavierStokesAssembler:
             ]
         )
 
+        self.attach_pressure_nullspace(A)
+        self.attach_pressure_nullspace(M)
+
         return A, M
 
     def assemble_neumann_rhs(self, g: dfem.Function, ds: Measure) -> iPETScVector:
@@ -300,8 +303,10 @@ class LinearizedNavierStokesAssembler:
         logger.info("Attaching constant-pressure nullspace to matrix %s.", mat)
 
         if self._nullspace is None:
+            n_v, _ = self._spaces.velocity_dofs
             n_p, _ = self._spaces.pressure_dofs
-            vec = iPETScVector.from_array(np.ones((n_p,)), comm=mat.comm)
+            arr = np.concatenate([np.zeros(n_v), np.ones(n_p)])
+            vec = iPETScVector.from_array(arr, comm=mat.comm)
             self._nullspace = iPETScNullSpace.create_constant_and_vectors(vectors=[vec])
 
         mat.attach_nullspace(self._nullspace)
