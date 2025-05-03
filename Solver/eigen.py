@@ -29,7 +29,7 @@ iEpsSolver object.
 import logging
 from dataclasses import dataclass
 
-from FEM.utils import iPETScMatrix, iPETScVector
+from FEM.utils import iPETScMatrix, iComplexPETScVector
 
 from .utils import iEpsProblemType, iEpsSolver
 
@@ -98,7 +98,7 @@ class EigenSolver:
         """Get the solver configuration."""
         return self._cfg
 
-    def solve(self) -> list[tuple[float | complex, iPETScVector]]:
+    def solve(self) -> list[tuple[float | complex, iComplexPETScVector]]:
         """Run the solver and return eigenpairs."""
         logger.info(
             f"Starting eigenvalue solve: type={self._cfg.problem_type.name}, "

@@ -762,9 +762,13 @@ class iComplexPETScVector:
     the first assignment or operation that produces a non-zero imaginary component.
     """
 
-    def __init__(self, real: iPETScVector, imag: iPETScVector | None = None):
+    def __init__(
+        self,
+        real: PETSc.Vec | iPETScVector,
+        imag: PETSc.Vec | iPETScVector | None = None,
+    ):
         """Create complex vector."""
-        self._real = real
+        self._real = real if isinstance(real, iPETScVector) else iPETScVector(real)
         if _IS_COMPLEX_BUILD:
             # In a complex PETSc build, ignore any provided imaginary part
             self._imag = None
@@ -775,7 +779,11 @@ class iComplexPETScVector:
                 )
         else:
             # In a real PETSc build, accept or lazy-allocate imag
-            self._imag = imag
+            self._imag = (
+                None
+                if imag is None
+                else imag if isinstance(imag, iPETScVector) else iPETScVector(imag)
+            )
 
     @classmethod
     def from_array(

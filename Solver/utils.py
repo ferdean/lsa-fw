@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import numpy as np
+
 from enum import Enum, StrEnum, auto
 from typing import TypeAlias, Iterator
 
 from slepc4py import SLEPc
 from petsc4py import PETSc
 
-from FEM.utils import iPETScMatrix, iPETScVector
+from FEM.utils import iPETScMatrix, iComplexPETScVector
 
 Scalar: TypeAlias = PETSc.ScalarType
 """Alias for the base numeric type used throughout the framework (float or complex).
@@ -16,6 +18,8 @@ Scalar: TypeAlias = PETSc.ScalarType
 Depending on how PETSc was configured, `PETSc.ScalarType` will be either
 `float` (real builds) or `complex` (complex builds).
 """
+
+_IS_COMPLEX_BUILD: bool = np.dtype(Scalar).kind == "c"
 
 
 class iEpsProblemType(Enum):
@@ -77,7 +81,7 @@ class PreconditionerType(StrEnum):
     CHOLESKY = auto()
     """Direct Cholesky factorization."""
     GAMG = auto()
-    """PETSc's Geometric-Algebraic Multigrid."""
+    """Geometric-Algebraic Multigrid."""
     HYPRE = auto()
     """Hypre algebraic multigrid (requires Hypre support)."""
     REDUNDANT = auto()
@@ -224,20 +228,47 @@ class iEpsSolver:
         """Get the eigenvalue at index idx."""
         return self._eps.getEigenvalue(idx)
 
-    def get_eigenvector(self, idx: int) -> iPETScVector:
-        """Get the eigenvector at index idx."""
+    def _get_eigenvector_real(self, idx: int) -> iComplexPETScVector:
+        A, _ = self._eps.getOperators()
+        vec_r = A.createVecRight()
+        vec_i = A.createVecRight()
+        self._eps.getEigenvector(idx, vec_r, vec_i)
+
+        vec_i.assemble()
+        if vec_i.norm() <= 1e-6:
+            # Avoid unnecessary allocation of imaginary part, if vector is real
+            return iComplexPETScVector(vec_r)
+
+        return iComplexPETScVector(vec_r, vec_i)
+
+    def _get_eigenvector_complex(self, idx: int) -> iComplexPETScVector:
         A, _ = self._eps.getOperators()
         vec = A.createVecRight()
         self._eps.getEigenvector(idx, vec)
-        return iPETScVector(vec)
+        return iComplexPETScVector(vec)
 
-    def get_eigenpair(self, idx: int) -> tuple[float | complex, iPETScVector]:
+    def get_eigenvector(self, idx: int) -> iComplexPETScVector:
+        """Get the eigenvector at index idx.
+
+        The format of the output eigenvector depends on the PETSc build:
+          - In the real-scalar build, both parts (real and imaginary) are explicitly returned; so they have to be
+          manipulated separately.
+        - In the complex-scalar build, a single vector is used and already contains the complex data.
+
+        In either case, the vectors are normalized (2-norm or B-norm).
+        """
+        if _IS_COMPLEX_BUILD:
+            return self._get_eigenvector_complex(idx)
+        else:
+            return self._get_eigenvector_real(idx)
+
+    def get_eigenpair(self, idx: int) -> tuple[float | complex, iComplexPETScVector]:
         """Get (eigenvalue, eigenvector) tuple at index idx."""
         return self.get_eigenvalue(idx), self.get_eigenvector(idx)
 
     def get_all_eigenpairs_up_to(
         self, num: int
-    ) -> Iterator[tuple[float | complex, iPETScVector]]:
+    ) -> Iterator[tuple[float | complex, iComplexPETScVector]]:
         """Lazily yield up to `num` converged eigenpairs.
 
         This avoids allocating a full list if you process them one-by-one.
