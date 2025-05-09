@@ -1,17 +1,22 @@
 """Tests for FEM.utils module."""
 
 import pytest
-from pathlib import Path
 import numpy as np
+from scipy import sparse
+from pathlib import Path
 
 from petsc4py import PETSc
 
-from FEM.utils import iPETScMatrix, iPETScVector, iPETScNullSpace
+from FEM.utils import iPETScMatrix, iPETScVector, iPETScNullSpace, iComplexPETScVector
 
 _complex_build = np.issubdtype(PETSc.ScalarType, np.complexfloating)
 
 skip_complex = pytest.mark.skipif(
     not _complex_build, reason="Complex-valued PETSc build required"
+)
+
+skip_real = pytest.mark.skipif(
+    _complex_build, reason="Real-valued PETSc build required"
 )
 
 
@@ -204,6 +209,59 @@ class TestMatrix:
         assert mat.shape == shape
         assert mat.nonzero_entries == 0
 
+    def test_from_matrix_self(self) -> None:
+        """Test creating a matrix from another matrix."""
+        A = iPETScMatrix.create_aij((2, 2), comm=PETSc.COMM_SELF, nnz=1)
+        B = iPETScMatrix.from_matrix(A)
+        assert B is A
+
+    def test_from_matrix_wraps_petsc_mat(self) -> None:
+        """Test that passing a raw PETSc.Mat wraps a iPETScMatrix."""
+        raw = PETSc.Mat().createAIJ((3, 3), comm=PETSc.COMM_SELF)
+        raw.setValue(0, 0, 7.0)
+        raw.assemble()
+        M = iPETScMatrix.from_matrix(raw)
+
+        assert isinstance(M, iPETScMatrix)
+        assert M.shape == (3, 3)
+        assert pytest.approx(M[0, 0]) == 7.0
+        assert "aij" in M.type.lower()
+
+    def test_from_matrix_from_array(self) -> None:
+        """Test creating a matrix from a numpy array."""
+        arr = np.array(
+            [
+                [1.0, 0.0, 2.0],
+                [0.0, -3.5, 0.0],
+            ]
+        )
+        M = iPETScMatrix.from_matrix(arr, comm=PETSc.COMM_SELF)
+
+        assert isinstance(M, iPETScMatrix)
+        assert M.shape == arr.shape
+        assert pytest.approx(M[0, 0]) == arr[0, 0]
+        assert pytest.approx(M[0, 2]) == arr[0, 2]
+        assert pytest.approx(M[1, 1]) == arr[1, 1]
+
+    def test_from_matrix_from_scipy_sparse(self) -> None:
+        """SciPy sparse matrices should convert to AIJ with same sparsity and values."""
+        data = np.array([10, 20, 30])
+        rows = np.array([0, 1, 2])
+        cols = np.array([2, 0, 1])
+        sp = sparse.coo_matrix((data, (rows, cols)), shape=(4, 4))
+        M = iPETScMatrix.from_matrix(sp, comm=PETSc.COMM_SELF)
+
+        assert isinstance(M, iPETScMatrix)
+        assert M.shape == (4, 4)
+        for i, j, v in zip(rows, cols, data):
+            assert pytest.approx(M[i, j]) == v
+        assert M.nonzero_entries == len(data)
+
+    def test_from_matrix_invalid_input(self) -> None:
+        """Passing an unsupported type should raise a TypeError."""
+        with pytest.raises(TypeError):
+            _ = iPETScMatrix.from_matrix("not a matrix", comm=PETSc.COMM_SELF)
+
     def test_addition(self) -> None:
         """Test matrix addition and reflected addition."""
         A = iPETScMatrix.create_aij((2, 2))
@@ -219,11 +277,7 @@ class TestMatrix:
 
     def test_matmul(self) -> None:
         """Test matrix @ vector and matrix @ matrix operations."""
-        A = iPETScMatrix.create_aij((2, 2))
-        A[0, 0] = 2.0
-        A[1, 1] = 3.0
-        A.assemble()
-
+        A = iPETScMatrix.from_matrix(np.array([[2.0, 0.0], [0.0, 3.0]]))
         vec = iPETScVector.from_array(np.array([1.0, 2.0]))
 
         result_vec = A @ vec
@@ -235,11 +289,7 @@ class TestMatrix:
 
     def test_rmatmul_vector_matrix(self) -> None:
         """Test vector @ matrix operation."""
-        A = iPETScMatrix.create_aij((2, 2))
-        A[0, 0] = 2.0
-        A[1, 1] = 3.0
-        A.assemble()
-
+        A = iPETScMatrix.from_matrix(np.array([[2.0, 0.0], [0.0, 3.0]]))
         vec = iPETScVector.from_array(np.array([3.0, 4.0]))
 
         result = vec @ A
@@ -248,7 +298,6 @@ class TestMatrix:
     def test_indexing_get_set(self) -> None:
         """Test matrix[i, j] get and set functionality."""
         A = iPETScMatrix.create_aij((2, 2))
-
         A[1, 0] = 3.0
         A.assemble()
 
@@ -256,10 +305,7 @@ class TestMatrix:
 
     def test_properties_transpose_and_shape(self) -> None:
         """Test properties: shape, transpose, nonzero_entries, norm, type."""
-        A = iPETScMatrix.create_aij((2, 3))
-        A[0, 1] = 1.0
-        A[1, 2] = 2.0
-        A.assemble()
+        A = iPETScMatrix.from_matrix(np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 2.0]]))
 
         transpose = A.T.to_aij()  # Convert just to support indexing
 
@@ -271,12 +317,14 @@ class TestMatrix:
     @skip_complex
     def test_hermitian(self) -> None:
         """Test Hermitian transpose for complex matrices."""
-        A = iPETScMatrix.create_aij((2, 2))
-        A[0, 0] = 1.0 + 0.0j
-        A[0, 1] = 4.0 - 2.0j
-        A[1, 0] = 3.0 + 5.0j
-        A[1, 1] = 2.0 + 0.0j
-        A.assemble()
+        A = iPETScMatrix.from_matrix(
+            np.array(
+                [
+                    [1.0 + 0.0j, 4.0 - 2.0j],
+                    [3.0 + 5.0j, 2.0 + 0.0j],
+                ]
+            )
+        )
 
         H = A.H.to_aij()  # Convert just to support indexing
 
@@ -287,23 +335,27 @@ class TestMatrix:
 
     def test_real_hermitian(self) -> None:
         """Test Hermitian transpose for real matrices."""
-        A = iPETScMatrix.create_aij((2, 2))
-        A[0, 0] = 1.0
-        A[0, 1] = 4.0
-        A[1, 0] = 3.0
-        A[1, 1] = 2.0
-        A.assemble()
+        A = iPETScMatrix.from_matrix(
+            np.array(
+                [
+                    [1.0, 4.0],
+                    [3.0, 2.0],
+                ]
+            )
+        )
 
         assert A.T.to_aij() == A.H.to_aij()
 
     def test_symmetry_checks(self) -> None:
         """Test is_symmetric and is_numerically_symmetric methods."""
-        A = iPETScMatrix.create_aij((2, 2))
-        A[0, 0] = 1.0
-        A[0, 1] = 2.0
-        A[1, 0] = 2.0
-        A[1, 1] = 1.0
-        A.assemble()
+        A = iPETScMatrix.from_matrix(
+            np.array(
+                [
+                    [1.0, 2.0],
+                    [2.0, 2.0],
+                ]
+            )
+        )
 
         assert A.is_symmetric
         assert A.is_numerically_symmetric(tol=1e-12)
@@ -387,12 +439,14 @@ class TestMatrix:
 
     def test_pin_dof(self) -> None:
         """Test pinning a DOF by zeroing its row and column and setting the diagonal."""
-        A = iPETScMatrix.create_aij((2, 2))
-        A[0, 0] = 1.0
-        A[0, 1] = 2.0
-        A[1, 0] = 3.0
-        A[1, 1] = 4.0
-        A.assemble()
+        A = iPETScMatrix.from_matrix(
+            np.array(
+                [
+                    [1.0, 2.0],
+                    [3.0, 4.0],
+                ]
+            )
+        )
 
         A.pin_dof(0)
 
@@ -436,16 +490,16 @@ class TestNullSpace:
 
     def _build_tridiag_matrix(self) -> iPETScMatrix:
         """Build a simple 3x3 tridiagonal matrix whose nullspace is span{[1,1,1]}."""
-        A = iPETScMatrix.create_aij((3, 3))
-        A[0, 0] = 1.0
-        A[0, 1] = -1.0
-        A[1, 0] = -1.0
-        A[1, 1] = 2.0
-        A[1, 2] = -1.0
-        A[2, 1] = -1.0
-        A[2, 2] = 1.0
-        A.assemble()
-        return A
+        return iPETScMatrix.from_matrix(
+            np.array(
+                [
+                    [1.0, -1.0, 0.0],
+                    [-1.0, 2.0, -1.0],
+                    [0.0, -1.0, 1.0],
+                ],
+                dtype=float,
+            )
+        )
 
     def test_from_vectors_and_test(self) -> None:
         """Construct nullspace from the constant basis vector and verify test()."""
@@ -467,7 +521,7 @@ class TestNullSpace:
         ns = iPETScNullSpace.create_constant(comm=v.comm)
         ns.remove(v)
         arr = v.as_array()
-        # after removal, should be [-1,0,1]
+        # after removal, should be [-1, 0, 1]
         np.testing.assert_allclose(arr, np.array([-1.0, 0.0, 1.0]), atol=1e-12)
 
     def test_constant_and_vectors(self) -> None:
@@ -478,3 +532,229 @@ class TestNullSpace:
 
         assert ns.has_constant()
         assert ns.test(A)
+
+
+class TestComplexVector:
+    """Tests for the iComplexPETScVector wrapper."""
+
+    @skip_real
+    def test_initialization_real(self) -> None:
+        """Test initialization with real build."""
+        vec = iPETScVector.zeros(3)
+        real_vec = iComplexPETScVector(vec)
+        imag_vec = iComplexPETScVector(real=vec, imag=vec)
+
+        assert real_vec.imag is None
+        assert imag_vec.imag is not None
+
+    @skip_complex
+    def test_initialization_complex(self) -> None:
+        """Test initialization with complex build (imag is never set)."""
+        vec = iPETScVector.zeros(3)
+        real_vec = iComplexPETScVector(vec)
+        imag_vec = iComplexPETScVector(real=vec, imag=vec)
+
+        assert real_vec.imag is None
+        assert imag_vec.imag is None
+
+    @skip_real
+    def test_lazy_imag_allocation_real(self) -> None:
+        """Test lazy imaginary allocation with real build."""
+        real_vec = iPETScVector.zeros(2)
+        comp_vec = iComplexPETScVector(real_vec)
+        comp_vec[0] = 1.0
+        comp_vec[1] = -2.5
+        comp_vec.assemble()
+
+        # After setting only real values, imaginary part stays None
+        assert comp_vec.imag is None
+
+        comp_vec[1] = 3.0 + 4.0j  # Triggers allocation of the imaginary vector
+        assert comp_vec.imag is not None
+        assert comp_vec[1] == 3.0 + 4.0j
+        assert isinstance(comp_vec[0], complex)
+        assert comp_vec[0] == 1.0 + 0j
+
+    @skip_complex
+    def test_lazy_imag_allocation_complex(self) -> None: ...
+
+    def test_is_complex_property(self) -> None:
+        """Test .is_complex both in real and complex PETSc builds."""
+        real_vec = iComplexPETScVector.from_array(
+            np.array([1.0, 0.0, 3.0]), comm=PETSc.COMM_SELF
+        )
+        # If PETSc itself is built with complex support, is_complex must be True even for real matrices
+        if np.dtype(PETSc.ScalarType).kind == "c":
+            assert real_vec.is_complex
+        else:
+            assert not real_vec.is_complex
+
+        c_vec = iComplexPETScVector.from_array(
+            np.array([1.0 + 0j, 0.0 + 2j, 3.0 + 0j]), comm=PETSc.COMM_SELF
+        )
+        assert c_vec.is_complex
+
+    def test_add(self) -> None:
+        """Test addition."""
+        v1 = iComplexPETScVector.from_array(np.array([1 + 2j, 3 + 4j]))
+        v2 = iComplexPETScVector.from_array(np.array([5 + 6j, 7 + 8j]))
+
+        v_sum = v1 + v2
+
+        assert v_sum[0] == pytest.approx(6 + 8j)
+        assert v_sum[1] == pytest.approx(10 + 12j)
+
+    def test_sub(self) -> None:
+        """Test subtraction."""
+        v1 = iComplexPETScVector.from_array(np.array([1 + 2j, 3 + 4j]))
+        v2 = iComplexPETScVector.from_array(np.array([5 + 6j, 7 + 8j]))
+
+        v_diff = v2 - v1
+
+        assert v_diff[0] == pytest.approx(4 + 4j)
+        assert v_diff[1] == pytest.approx(4 + 4j)
+
+    @skip_real
+    def test_add_sub_lazy_alloc(self) -> None:
+        """Test that adding two purely real vectors yields imag=None (lazy behavior)."""
+        v1 = iComplexPETScVector.from_array(np.array([1, 3]))
+        v2 = iComplexPETScVector.from_array(np.array([5, 7]))
+
+        v_sum = v1 + v2
+
+        assert v_sum.imag is None
+        assert v_sum[0] == pytest.approx(6)
+        assert v_sum[1] == pytest.approx(10)
+
+    @skip_real
+    def test_scalar_mul_and_scale_real(self) -> None:
+        """Test scalar mul and in-place scale with real build and lazy imag allocation."""
+        comp = iComplexPETScVector.from_array(np.array([2.0, 0.5]))
+
+        # Real scalar multiply
+        v2 = comp * 2.0
+        assert isinstance(v2[0], (int, float, complex))
+        assert v2.imag is None
+        assert v2[0] == pytest.approx(4.0)
+        assert v2[1] == pytest.approx(1.0)
+
+        # Complex scalar multiply: triggers imag allocation
+        v3 = comp * (1 + 1j)
+        assert v3.imag is not None
+        assert v3[0] == pytest.approx(2.0 + 2.0j)
+        assert v3[1] == pytest.approx(0.5 + 0.5j)
+
+        # In-place scale
+        comp.scale(1 + 1j)
+        assert comp.imag is not None
+        assert comp[0] == pytest.approx(2.0 + 2.0j)
+        assert comp[1] == pytest.approx(0.5 + 0.5j)
+
+    @skip_complex
+    def test_scalar_mul_and_scale_complex(self) -> None:
+        """Test scalar mul and scale with complex build (imag never allocated)."""
+        comp = iComplexPETScVector.from_array(np.array([2.0, 0.5]))
+        v2 = comp * 2.0
+        assert comp.imag is None
+        assert v2[0] == pytest.approx(4.0)
+        assert v2[1] == pytest.approx(1.0)
+
+        v3 = comp * (1 + 1j)
+        assert comp.imag is None
+        assert v3[0] == pytest.approx(2.0 + 2.0j)
+        assert v3[1] == pytest.approx(0.5 + 0.5j)
+
+        comp.scale(1 + 1j)
+        assert comp.imag is None
+        assert comp[0] == pytest.approx(2.0 + 2.0j)
+        assert comp[1] == pytest.approx(0.5 + 0.5j)
+
+    def test_matmul_mat_vec(self) -> None:
+        """Test iPETScMatrix @ iComplexPETScVector."""
+        mat = iPETScMatrix.from_matrix(
+            np.array(
+                [
+                    [1.0, 2.0],
+                    [3.0, 4.0],
+                ]
+            )
+        )
+        vec = iComplexPETScVector.from_array(np.array([1 + 1j, 2 + 2j]))
+
+        res = mat @ vec
+
+        # Expected: [1*(1+1j)+2*(2+2j), 3*(1+1j)+4*(2+2j)]
+        exp0 = (1 + 1j) + 2 * (2 + 2j)
+        exp1 = 3 * (1 + 1j) + 4 * (2 + 2j)
+
+        assert isinstance(res, iComplexPETScVector)
+        assert res.is_complex
+        assert res[0] == pytest.approx(exp0)
+        assert res[1] == pytest.approx(exp1)
+
+    def test_matmul_vec_mat(self) -> None:
+        """Test iComplexPETScVector @ iPETScMatrix."""
+        mat = iPETScMatrix.from_matrix(
+            np.array(
+                [
+                    [1.0, 2.0],
+                    [3.0, 4.0],
+                ]
+            )
+        )
+        vec = iComplexPETScVector.from_array(np.array([1 + 1j, 2 + 2j]))
+
+        res = vec @ mat
+
+        # expected: [(1+1j)*1 + (2+2j)*3, (1+1j)*2 + (2+2j)*4 ]
+        exp0 = (1 + 1j) * 1 + (2 + 2j) * 3
+        exp1 = (1 + 1j) * 2 + (2 + 2j) * 4
+
+        assert isinstance(res, iComplexPETScVector)
+        assert res.is_complex
+        assert res[0] == pytest.approx(exp0)
+        assert res[1] == pytest.approx(exp1)
+
+    @skip_real
+    def test_norm_and_dot_real(self) -> None:
+        """Test norm() and dot() in real build."""
+        v = iComplexPETScVector.from_array(np.array([3 + 4j, 0]), comm=PETSc.COMM_SELF)
+        w = iComplexPETScVector.from_array(np.array([3 - 4j, 0]), comm=PETSc.COMM_SELF)
+
+        assert v.norm() == pytest.approx(5.0)
+        assert w.norm() == pytest.approx(5.0)
+
+        # v·v = 25
+        dvv = v.dot(v)
+        assert dvv.real == pytest.approx(25.0)
+        assert dvv.imag == pytest.approx(0.0)
+
+        # w·w = 25
+        dww = w.dot(w)
+        assert dww.real == pytest.approx(25.0)
+        assert dww.imag == pytest.approx(0.0)
+
+        # v·w = (3 - 4j)*(3 - 4j) = -7 - 24j
+        dvw = v.dot(w)
+        assert dvw.real == pytest.approx(-7.0)
+        assert dvw.imag == pytest.approx(-24.0)
+
+        # w·v = (3 + 4j)*(3 + 4j) = -7 + 24j
+        dwv = w.dot(v)
+        assert dwv.real == pytest.approx(-7.0)
+        assert dwv.imag == pytest.approx(24.0)
+
+    @skip_complex
+    def test_norm_and_dot_complex(self) -> None: ...
+
+    def test_copy_and_equality(self) -> None:
+        """Test copy() and equality operators using from_array."""
+        data = np.array([1.0, 2 + 3j, -4.5])
+        vec = iComplexPETScVector.from_array(data, comm=PETSc.COMM_SELF)
+
+        vec_copy = vec.copy()
+        assert vec_copy == vec
+
+        # mutating original breaks equality
+        vec[0] = 9.0
+        assert vec_copy != vec
