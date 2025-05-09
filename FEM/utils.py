@@ -8,7 +8,9 @@ from enum import Enum, auto
 from typing import overload, TypeAlias
 from pathlib import Path
 from copy import deepcopy
+from scipy import sparse
 import numpy as np
+
 
 from basix import ElementFamily as DolfinxElementFamily
 from dolfinx.mesh import Mesh, MeshTags
@@ -23,6 +25,8 @@ Scalar: TypeAlias = PETSc.ScalarType
 Depending on how PETSc was configured, `PETSc.ScalarType` will be either
 `float` (real builds) or `complex` (complex builds).
 """
+
+_IS_COMPLEX_BUILD: bool = np.dtype(Scalar).kind == "c"
 
 
 class iElementFamily(Enum):
@@ -169,6 +173,48 @@ class iPETScMatrix:
         mat.setUp()
         return cls(mat)
 
+    @classmethod
+    def from_matrix(
+        cls,
+        matrix: PETSc.Mat | iPETScMatrix | np.ndarray | sparse.spmatrix,
+        comm: PETSc.Comm = PETSc.COMM_WORLD,
+    ) -> iPETScMatrix:
+        """Construct a matrix from various matrix-like objects.
+
+        - If given an iPETScMatrix, returns it directly.
+        - If given a PETSc.Mat, wraps and returns it.
+        - If given a NumPy ndarray, creates a dense PETSc matrix.
+        - If given a SciPy sparse matrix, creates an AIJ PETSc matrix with identical sparsity.
+        """
+        if isinstance(matrix, cls):
+            return matrix
+
+        if isinstance(matrix, PETSc.Mat):
+            return cls(matrix)
+
+        if isinstance(matrix, np.ndarray):
+            mat = PETSc.Mat().createDense(matrix.shape, array=matrix, comm=comm)
+            mat.assemble()
+            return cls(mat)
+
+        if sparse.isspmatrix(matrix):
+            csr = matrix.tocsr()
+            row_nnz = (csr.indptr[1:] - csr.indptr[:-1]).tolist()
+            mat = PETSc.Mat().createAIJ(
+                csr.shape,
+                nnz=row_nnz,
+                comm=comm,
+            )
+            coo = csr.tocoo()
+            for i, j, v in zip(coo.row, coo.col, coo.data):
+                mat.setValue(i, j, v, addv=PETSc.InsertMode.INSERT_VALUES)
+            mat.assemble()
+            return cls(mat)
+
+        raise TypeError(
+            f"Cannot construct iPETScMatrix from object of type {type(matrix)}"
+        )
+
     def __str__(self) -> str:
         return f"iPETScMatrix(shape={self.shape}, nnz={self.nonzero_entries})"
 
@@ -223,9 +269,7 @@ class iPETScMatrix:
                 return iPETScMatrix(result)
 
             case _:
-                raise NotImplementedError(
-                    f"Matrix cannot be multiplied with object of type {type(other)}"
-                )
+                return NotImplemented
 
     def __rmatmul__(self, other: object) -> iPETScVector:
         """Perform vector-matrix multiplication."""
@@ -306,7 +350,23 @@ class iPETScMatrix:
     @property
     def nonzero_entries(self) -> int:
         """Return the number of non-zero entries in the matrix."""
-        return self._mat.getInfo()["nz_used"]
+        if "dense" in self.type:
+            logger.warning(
+                "The current matrix is dense, so all the entries are memory-allocated. "
+                "Then, the value returned by this property might not be useful."
+            )
+
+        if "nest" in self.type:
+            total_nz = 0
+            n_row, n_col = self._mat.getNestSize()
+            for i in range(n_row):
+                for j in range(n_col):
+                    sub = self._mat.getNestSubMatrix(i, j)
+                    if sub.handle != 0:
+                        total_nz += sub.getInfo()["nz_used"]
+            return int(total_nz)
+
+        return int(self._mat.getInfo()["nz_used"])
 
     @property
     def norm(self) -> Scalar:
@@ -469,6 +529,7 @@ class iPETScMatrix:
 
     def export(self, path: Path) -> None:
         """Export the matrix to a binary file."""
+        # FIXME: This is currently not working
         viewer = PETSc.Viewer().createBinary(
             str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self.comm
         )
@@ -649,7 +710,7 @@ class iPETScVector:
 
     def scale(self, alpha: int | float | complex) -> None:
         """Scale the vector by a constant factor."""
-        self._vec.scale(Scalar(alpha))
+        self._vec.scale(alpha)
 
     def zero_all_entries(self) -> None:
         """Zero all entries in the vector."""
@@ -703,6 +764,340 @@ class iPETScVector:
             str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self._vec.comm
         )
         self._vec.view(viewer)
+
+
+class iComplexPETScVector:
+    """Wrapper for PETSc vectors supporting an optional imaginary part.
+
+    Note that if the PETSc build is real and the user never uses the imaginary part (never sets a complex value or
+    scales by a complex number), then self._imag stays None (saving memory). The imaginary vector is allocated on
+    the first assignment or operation that produces a non-zero imaginary component.
+    """
+
+    def __init__(
+        self,
+        real: PETSc.Vec | iPETScVector,
+        imag: PETSc.Vec | iPETScVector | None = None,
+    ):
+        """Create complex vector."""
+        self._real = real if isinstance(real, iPETScVector) else iPETScVector(real)
+        if _IS_COMPLEX_BUILD:
+            # In a complex PETSc build, ignore any provided imaginary part
+            self._imag = None
+            if imag is not None:
+                logger.warning(
+                    "PETSc is built in a complex-floating point configuration. "
+                    "Please use `iPETScVector`."
+                )
+        else:
+            # In a real PETSc build, accept or lazy-allocate imag
+            self._imag = (
+                None
+                if imag is None
+                else imag if isinstance(imag, iPETScVector) else iPETScVector(imag)
+            )
+
+    @classmethod
+    def from_array(
+        cls, data: np.ndarray | sparse.spmatrix, comm: PETSc.Comm = PETSc.COMM_SELF
+    ) -> iComplexPETScVector:
+        """Construct an iComplexPETScVector from
+        - a 1-D numpy array or
+        - a SciPy sparse column-vector (shape (n,1) or (1,n)).
+        """
+        if isinstance(data, np.ndarray):
+            arr = data
+        elif sparse.isspmatrix(data):
+            mat = data.tocsr()
+            r, c = mat.shape
+            if c == 1:
+                arr = mat.toarray().ravel()
+            elif r == 1:
+                arr = mat.toarray().ravel()
+            else:
+                raise ValueError(f"Cannot treat shape {mat.shape} as vector")
+        else:
+            raise TypeError(f"Unsupported type {type(data)}")
+
+        n = arr.size
+        real = iPETScVector.zeros(n, comm=comm)
+        imag = None
+        if not _IS_COMPLEX_BUILD and np.iscomplexobj(arr):
+            imag = iPETScVector.zeros(n, comm=comm)
+
+        # Only set non-zeros
+        # For a dense array we still scan all entries, but sparse input
+        # came through as dense only where needed
+        nz = np.nonzero(arr)[0]
+        for i in nz:
+            real[i] = arr[i].real
+            if imag is not None:
+                imag[i] = arr[i].imag
+
+        real.assemble()
+        if imag is not None:
+            imag.assemble()
+
+        if _IS_COMPLEX_BUILD:
+            return cls(real)
+        else:
+            return cls(real, imag)
+
+    @property
+    def real(self) -> iPETScVector:
+        """Get the real part of this vector."""
+        return self._real
+
+    @property
+    def imag(self) -> iPETScVector | None:
+        """Get the imaginary part (iPETScVector) of this vector, or None if unused."""
+        return self._imag
+
+    @property
+    def is_complex(self) -> bool:
+        """Return True if this vector carries any imaginary component."""
+        return _IS_COMPLEX_BUILD or (self._imag is not None)
+
+    def get_value(self, index: int) -> float | complex:
+        """Get the value at the given index."""
+        if self._imag is None:
+            return self._real.get_value(index)
+        return self._real.get_value(index) + 1j * self._imag.get_value(index)
+
+    def set_value(self, index: int, value: float | complex) -> None:
+        """Set the value at the given index. Accepts float (real) or complex."""
+        if _IS_COMPLEX_BUILD:
+            # PETSc will handle both real and complex values natively.
+            self._real.set_value(index, value)
+            return
+
+        # Real‐only PETSc: we need to unpack complex ourselves.
+        if isinstance(value, complex):
+            a, b = float(value.real), float(value.imag)
+            self._real.set_value(index, a)
+            if b != 0.0 or self._imag is not None:
+                if self._imag is None:
+                    self._imag = self._real.duplicate()
+                self._imag.set_value(index, b)
+        else:
+            # Pure real assignment
+            self._real.set_value(index, value)
+            if self._imag is not None:
+                # Ensure any existing imag part is zeroed out here.
+                self._imag.set_value(index, 0.0)
+
+    def __getitem__(self, index: int) -> float | complex:
+        """Indexing (vec[idx])."""
+        return self.get_value(index)
+
+    def __setitem__(self, index: int, value: float | complex) -> None:
+        """Index assignment (vec[idx] = value)."""
+        self.set_value(index, value)
+
+    def __add__(self, other: iComplexPETScVector | iPETScVector) -> iComplexPETScVector:
+        """Vector addition."""
+        if isinstance(other, iPETScVector):
+            return self.__add__(iComplexPETScVector(other))
+
+        if not isinstance(other, iComplexPETScVector):
+            return NotImplemented
+
+        if _IS_COMPLEX_BUILD:
+            return iComplexPETScVector(self._real + other.real)
+
+        # Both purely real
+        if self._imag is None and other.imag is None:
+            return iComplexPETScVector(self._real + other.real)
+
+        # At least one has imag
+        new_real = self._real + other.real
+        zero_self = self._imag or (self._real * 0.0)
+        zero_other = other.imag or (other.real * 0.0)
+        new_imag = zero_self + zero_other
+        return iComplexPETScVector(new_real, new_imag)
+
+    def __sub__(self, other: iComplexPETScVector | iPETScVector) -> iComplexPETScVector:
+        """Vector subtraction."""
+        if isinstance(other, iPETScVector):
+            return self.__sub__(iComplexPETScVector(other))
+
+        if not isinstance(other, iComplexPETScVector):
+            return NotImplemented
+
+        if _IS_COMPLEX_BUILD:
+            return iComplexPETScVector(self._real - other.real)
+
+        if self._imag is None and other.imag is None:
+            return iComplexPETScVector(self._real - other.real)
+
+        new_real = self._real - other.real
+        zero_self = self._imag or (self._real * 0.0)
+        zero_other = other.imag or (other.real * 0.0)
+        new_imag = zero_self - zero_other
+        return iComplexPETScVector(new_real, new_imag)
+
+    def __mul__(self, scalar: int | float | complex) -> iComplexPETScVector:
+        """Scalar multiplication."""
+        if not isinstance(scalar, (int, float, complex)):
+            return NotImplemented
+
+        if _IS_COMPLEX_BUILD:
+            return iComplexPETScVector(self._real * scalar)
+
+        # Real PETSc build: implement (a + ib)*(x + iy)
+        if isinstance(scalar, complex):
+            a, b = scalar.real, scalar.imag
+            if self._imag is None:
+                # x-only vector
+                new_real = self._real * a
+                new_imag = (self._real * b) if b != 0.0 else None
+                return iComplexPETScVector(new_real, new_imag)
+            # Both parts exist
+            new_real = (self._real * a) - (self._imag * b)
+            new_imag = (self._real * b) + (self._imag * a)
+            return iComplexPETScVector(new_real, new_imag)
+
+        # Real‐only scalar
+        alpha = float(scalar)
+        new_real = self._real * alpha
+        new_imag = (self._imag * alpha) if self._imag is not None else None
+        return iComplexPETScVector(new_real, new_imag)
+
+    def __rmul__(self, scalar: float | complex) -> iComplexPETScVector:
+        """Right scalar multiplication."""
+        return self.__mul__(scalar)
+
+    @overload
+    def __matmul__(self, other: iPETScMatrix) -> iComplexPETScVector: ...
+
+    @overload
+    def __matmul__(self, other: iPETScVector) -> iPETScMatrix: ...
+
+    @overload
+    def __matmul__(self, other: iComplexPETScVector) -> iPETScMatrix: ...
+
+    def __matmul__(
+        self, other: iPETScMatrix | iPETScVector | iComplexPETScVector
+    ) -> iComplexPETScVector | iPETScMatrix:
+        """Perform vector cross product and vector-matrix multiplication."""
+        if isinstance(other, (iPETScVector, iComplexPETScVector)):
+            raise NotImplementedError(
+                "Vector-vector cross product not implemented yet."
+            )
+
+        if isinstance(other, iPETScMatrix):
+            real_out = self.real @ other
+
+            if self.imag is None:
+                return iComplexPETScVector(real_out)
+
+            imag_out = self.imag @ other
+            return iComplexPETScVector(real_out, imag_out)
+
+        raise NotImplementedError(f"Cannot multiply complex vector by {type(other)}")
+
+    @overload
+    def __rmatmul__(self, other: iPETScMatrix) -> iComplexPETScVector: ...
+
+    @overload
+    def __rmatmul__(self, other: iPETScVector) -> iPETScMatrix: ...
+
+    @overload
+    def __rmatmul__(self, other: iComplexPETScVector) -> iPETScMatrix: ...
+
+    def __rmatmul__(
+        self, other: iPETScMatrix | iPETScVector | iComplexPETScVector
+    ) -> iComplexPETScVector | iPETScMatrix:
+        """Perform vector cross product and matrix - vector multiplication."""
+        if isinstance(other, (iPETScVector, iComplexPETScVector)):
+            return NotImplemented  # Let the left operand handle it
+
+        if isinstance(other, iPETScMatrix):
+            real_out = other @ self.real
+
+            if self.imag is None:
+                return iComplexPETScVector(real_out)
+
+            imag_out = other @ self.imag
+            return iComplexPETScVector(real_out, imag_out)
+
+        raise NotImplementedError(f"Cannot multiply {type(other)} by complex vector")
+
+    def __eq__(self, other: object) -> bool:
+        """Equality comparison (within small numerical tolerance)."""
+        if not isinstance(other, iComplexPETScVector):
+            return False
+        diff = self - other
+        return diff.norm() < 1e-12
+
+    def assemble(self) -> None:
+        """Assemble both underlying PETSc vectors."""
+        self._real.assemble()
+        if self._imag is not None:
+            self._imag.assemble()
+
+    def norm(self) -> float:
+        """Compute the Euclidean (2-)norm of the complex vector."""
+        if _IS_COMPLEX_BUILD:
+            return self._real.norm
+
+        if self._imag is None:
+            return self._real.norm
+        real_n = self._real.norm
+        imag_n = self._imag.norm
+        return float(np.sqrt(real_n**2 + imag_n**2))
+
+    def dot(self, other: iComplexPETScVector | iPETScVector) -> complex:
+        """Hermitian-inner-product with another complex vector.
+
+        Note that, by convention, the method conjugates the first vector (self).
+        """
+        if isinstance(other, iPETScVector):
+            return self.dot(iComplexPETScVector(other))
+
+        if not isinstance(other, iComplexPETScVector):
+            raise TypeError("Dot product requires a iComplexPETScVector.")
+
+        if _IS_COMPLEX_BUILD:
+            return self._real.dot(other.real)
+
+        a, b = self._real, self._imag or (self._real * 0.0)
+        c, d = other.real, other.imag or (other.real * 0.0)
+        real_part = a.dot(c) + b.dot(d)
+        imag_part = a.dot(d) - b.dot(c)
+        return real_part + 1j * imag_part
+
+    def scale(self, scalar: float | complex) -> None:
+        """In-place scale of this vector by a scalar (float or complex)."""
+        if _IS_COMPLEX_BUILD:
+            self._real.scale(scalar)
+            return
+
+        if isinstance(scalar, complex):
+            a, b = scalar.real, scalar.imag
+            if self._imag is None:
+                if b == 0.0:
+                    self._real.scale(a)
+                else:
+                    orig = self._real.copy()
+                    self._real.scale(a)
+                    self._imag = orig
+                    self._imag.scale(b)
+            else:
+                xr, xi = self._real.copy(), self._imag.copy()
+                self._real = (xr * a) - (xi * b)
+                self._imag = (xr * b) + (xi * a)
+        else:
+            alpha = float(scalar)
+            self._real.scale(alpha)
+            if self._imag is not None:
+                self._imag.scale(alpha)
+
+    def copy(self) -> iComplexPETScVector:
+        """Deep copy of this ComplexPETScVector."""
+        if _IS_COMPLEX_BUILD or self._imag is None:
+            return iComplexPETScVector(self._real.copy())
+        return iComplexPETScVector(self._real.copy(), self._imag.copy())
 
 
 class iPETScNullSpace:

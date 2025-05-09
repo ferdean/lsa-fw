@@ -1,0 +1,20 @@
+[[FaceTag]]
+# Left face
+marker = 1
+when = { axis = "x", equals = 0.0 }
+
+[[FaceTag]]
+# Right face
+marker = 2
+when = { axis = "x", equals = 2.0 }
+
+[[FaceTag]]
+# Bottom face
+marker = 3
+when = { axis = "y", equals = 0.0 }
+
+[[FaceTag]]
+# Top face
+marker = 4
+when = { axis = "y", equals = 4.0 }
+

@@ -5,9 +5,19 @@ import logging
 import numpy as np
 from petsc4py import PETSc
 
-from FEM.utils import iPETScMatrix, iPETScVector
+from FEM.utils import iPETScMatrix, iPETScVector, iComplexPETScVector
 from Solver.eigen import EigenSolver, EigensolverConfig, iEpsProblemType
 from Solver.utils import iEpsSolver, iEpsWhich, iSTType, PreconditionerType
+
+_complex_build = np.issubdtype(PETSc.ScalarType, np.complexfloating)
+
+skip_complex = pytest.mark.skipif(
+    not _complex_build, reason="Complex-valued PETSc build required"
+)
+
+skip_real = pytest.mark.skipif(
+    _complex_build, reason="Real-valued PETSc build required"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -19,23 +29,16 @@ def capinfo(caplog) -> pytest.LogCaptureFixture:
 
 @pytest.fixture
 def diagonal_matrix() -> iPETScMatrix:
-    """Define a diagonal 3×3 matrix."""
-    A = iPETScMatrix.zeros((3, 3))
-    A[0, 0] = 1.0
-    A[1, 1] = 1.5
-    A[2, 2] = -42.0
-    A.assemble()
-    return A
+    """Define a diagonal 3x3 matrix."""
+    return iPETScMatrix.from_matrix(
+        np.array([[1.0, 0.0, 0.0], [0.0, 1.5, 0.0], [0.0, 0.0, -42]])
+    )
 
 
 @pytest.fixture
 def identity_matrix() -> iPETScMatrix:
     """Define a 3x3 identity matrix."""
-    eye = iPETScMatrix.zeros((3, 3))
-    for i in range(3):
-        eye[i, i] = 1.0
-    eye.assemble()
-    return eye
+    return iPETScMatrix.from_matrix(np.eye(3))
 
 
 @pytest.fixture
@@ -47,7 +50,7 @@ def config_hermitian() -> EigensolverConfig:
 
 
 @pytest.fixture
-def config_nonhermitian() -> EigensolverConfig:
+def config_non_hermitian() -> EigensolverConfig:
     """Configuration for a generalized non-Hermitian eigenproblem (GNHEP)."""
     return EigensolverConfig(
         num_eig=2, problem_type=iEpsProblemType.GNHEP, atol=1e-6, max_it=100
@@ -67,14 +70,8 @@ def random_spd_matrix() -> iPETScMatrix:
     """Define a random 5x5 symmetric positive-definite matrix."""
     rs = np.random.RandomState(42)
     X = rs.randn(5, 5)
-    A_np = X.T @ X + np.eye(5) * 1e-3
-    # build PETSc matrix from NumPy array
-    A = iPETScMatrix.zeros(A_np.shape)
-    for i in range(5):
-        for j in range(5):
-            A[i, j] = float(A_np[i, j])
-    A.assemble()
-    return A
+    A = X.T @ X + np.eye(5) * 1e-3
+    return iPETScMatrix.from_matrix(A.T)
 
 
 def test_invalid_constructor(diagonal_matrix: iPETScMatrix) -> None:
@@ -88,9 +85,9 @@ def test_config_and_solver_properties(
 ) -> None:
     """Test that EigenSolver propagates config correctly into the raw EPS solver."""
     es = EigenSolver(config_hermitian, A=diagonal_matrix)
-    assert es.config is config_hermitian
-
     solver = es.solver
+
+    assert es.config is config_hermitian
     assert isinstance(solver, iEpsSolver)
 
     tol, max_it = solver.raw.getTolerances()
@@ -103,7 +100,7 @@ def test_config_and_solver_properties(
     assert solver.raw.getProblemType() == config_hermitian.problem_type.to_slepc()
 
 
-def test_dummy_solver(
+def test_eigenvalues_solver(
     config_hermitian: EigensolverConfig, diagonal_matrix: iPETScMatrix
 ) -> None:
     """Test that the solver finds eigenvalues of a diagonal matrix (Ax=λx)."""
@@ -116,7 +113,7 @@ def test_dummy_solver(
     assert found == pytest.approx(expected, abs=config_hermitian.atol)
 
 
-def test_dummy_generalized_solver(
+def test_generalized_solver(
     config_hermitian: EigensolverConfig,
     diagonal_matrix: iPETScMatrix,
     identity_matrix: iPETScMatrix,
@@ -128,16 +125,47 @@ def test_dummy_generalized_solver(
     assert found == pytest.approx(expected, abs=config_hermitian.atol)
 
 
-def test_nonhermitian_generalized(config_nonhermitian: EigensolverConfig) -> None:
+def test_non_hermitian_generalized(config_non_hermitian: EigensolverConfig) -> None:
     """Test that solver handles a non-Hermitian 2x2 Jordan block correctly."""
-    A = iPETScMatrix.zeros((2, 2))
-    A[0, 0], A[0, 1], A[1, 0], A[1, 1] = 1.0, 1.0, 0.0, 1.0
-    A.assemble()
+    A = iPETScMatrix.from_matrix(np.array([[1, 1], [0, 1]]))
 
-    es = EigenSolver(config_nonhermitian, A=A)
+    es = EigenSolver(config_non_hermitian, A=A)
     vals = sorted(val.real for val, _ in es.solve())
 
-    assert vals == pytest.approx([1.0, 1.0], abs=config_nonhermitian.atol)
+    assert vals == pytest.approx([1.0, 1.0], abs=config_non_hermitian.atol)
+
+
+def test_complex_eigenpair(config_non_hermitian: EigensolverConfig) -> None:
+    """Test that the solver outputs complex eigenpairs even in the real build.
+
+    The given matrix is expected to have 3±j as eigenvalues, and [2±i, 1] as eigenvectors (computation by hand).
+    """
+    A = iPETScMatrix.from_matrix(np.array([[5, -5], [1, 1]]))
+
+    es = EigenSolver(config_non_hermitian, A=A)
+    pairs = es.solve()
+
+    # Sort by imaginary part so we know which is which
+    (val1, vec1), (val2, vec2) = sorted(pairs, key=lambda p: p[0].imag)
+
+    # eigenvalues 3±i
+    assert val1 == pytest.approx(3 - 1j, abs=config_non_hermitian.atol)
+    assert val2 == pytest.approx(3 + 1j, abs=config_non_hermitian.atol)
+
+    arr1 = vec1.real.as_array()
+    if vec1.imag is not None:
+        arr1 = arr1 + 1j * vec1.imag.as_array()
+
+    arr2 = vec2.real.as_array()
+    if vec2.imag is not None:
+        arr2 = arr2 + 1j * vec2.imag.as_array()
+
+    # Test eigenvector ratios ()
+    ratio1 = arr1[0] / arr1[1]
+    ratio2 = arr2[0] / arr2[1]
+
+    assert ratio1 == pytest.approx(2 - 1j, abs=config_non_hermitian.atol)
+    assert ratio2 == pytest.approx(2 + 1j, abs=config_non_hermitian.atol)
 
 
 def test_smallest_magnitude_selection(
@@ -167,14 +195,44 @@ def test_warning_on_non_hermitian(
     assert any("assumes Hermitian A" in rec.getMessage() for rec in capinfo.records)
 
 
-def test_eigenvector_size(
-    diagonal_matrix: iPETScMatrix, config_nonhermitian: EigensolverConfig
+@skip_complex
+def test_eigenvector_size_complex(
+    diagonal_matrix: iPETScMatrix, config_non_hermitian: EigensolverConfig
 ) -> None:
     """Test that each returned vector has correct dimension."""
-    pairs = EigenSolver(config_nonhermitian, A=diagonal_matrix).solve()
+    pairs = EigenSolver(config_non_hermitian, A=diagonal_matrix).solve()
     for _, vec in pairs:
         assert isinstance(vec, iPETScVector)
         assert vec.size == diagonal_matrix.shape[0]
+
+
+@skip_real
+def test_eigenvector_size_real(
+    diagonal_matrix: iPETScMatrix, config_non_hermitian: EigensolverConfig
+) -> None:
+    """Test that each returned iComplexPETScVector has real and imag parts of correct dimension."""
+    pairs = EigenSolver(config_non_hermitian, A=diagonal_matrix).solve()
+    for _, vec in pairs:
+        assert isinstance(vec, iComplexPETScVector)
+
+        # Real part always exists
+        real = vec.real
+        assert isinstance(real, iPETScVector)
+        assert real.size == diagonal_matrix.shape[0]
+
+        # Imag is not allocated for real eigenvectors
+        assert vec.imag is None
+
+
+def test_normalization_of_eigenvectors(
+    diagonal_matrix: iPETScMatrix, config_hermitian: EigensolverConfig
+) -> None:
+    """Test that returned eigenvectors are normalized to unit 2-norm."""
+    es = EigenSolver(config_hermitian, A=diagonal_matrix)
+    pairs = es.solve()
+    for _, vec in pairs:
+        nrm = vec.norm()
+        assert nrm == pytest.approx(1.0, abs=1e-12)
 
 
 def test_random_spd_matches_numpy(
@@ -192,13 +250,10 @@ def test_random_spd_matches_numpy(
 
 def test_shift_invert_with_epsilon():
     """Test that small epsilon avoids zero pivot in shift-invert factorization."""
-    A = iPETScMatrix.zeros((3, 3))
-    base = [1.0, 1.0 + 1e-8, 1.0 + 2e-8]
+    base = np.array([1.0, 1.0 + 1e-8, 1.0 + 2e-8])
     eps = 1e-9
-    for i, val in enumerate(base):
-        A[i, i] = val + eps
-    A.assemble()
-
+    diag = np.diag(base + eps)
+    A = iPETScMatrix.from_matrix(diag, comm=PETSc.COMM_SELF)
     cfg = EigensolverConfig(
         num_eig=3, problem_type=iEpsProblemType.HEP, atol=1e-12, max_it=500
     )
@@ -210,7 +265,7 @@ def test_shift_invert_with_epsilon():
     assert found == pytest.approx(base, rel=1e-6)
 
 
-def test_singular_M_errors(diagonal_matrix: iPETScMatrix) -> None:
+def test_singular_m_errors(diagonal_matrix: iPETScMatrix) -> None:
     """Test that generalized solve with singular M raises a PETSc.Error."""
     M = iPETScMatrix.zeros((3, 3))
     M[0, 0] = 1.0
@@ -222,6 +277,7 @@ def test_singular_M_errors(diagonal_matrix: iPETScMatrix) -> None:
         EigenSolver(cfg, A=diagonal_matrix, M=M).solve()
 
 
+@skip_complex("A version of this test for the real-build is a TODO.")
 def test_repeated_eigenvalues(diagonal_matrix: iPETScMatrix) -> None:
     """Test that algebraic multiplicity and vector independence hold for repeated eigenvalues."""
     D = diagonal_matrix

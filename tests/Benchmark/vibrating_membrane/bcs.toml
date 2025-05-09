@@ -1,0 +1,19 @@
+[[BC]]
+marker = 1
+type = "dirichlet_velocity"
+value = 0.0
+
+[[BC]]
+marker = 2
+type = "dirichlet_velocity"
+value = 0.0
+
+[[BC]]
+marker = 3
+type = "dirichlet_velocity"
+value = 0.0
+
+[[BC]]
+marker = 4
+type = "dirichlet_velocity"
+value = 0.0
