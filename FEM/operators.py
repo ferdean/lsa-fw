@@ -11,11 +11,27 @@ import logging
 from typing import Callable
 import numpy as np
 
+from dolfinx.fem.petsc import NonlinearProblem
+from dolfinx.nls.petsc import NewtonSolver
+from mpi4py import MPI
 import dolfinx.fem as dfem
-from ufl import dx, TrialFunction, TestFunction, Form, inner, grad, div, dot, Measure  # type: ignore[import-untyped]
+from ufl import (  # type: ignore[import-untyped]
+    dx,
+    TrialFunction,
+    TestFunction,
+    TestFunctions,
+    Form,
+    inner,
+    grad,
+    div,
+    dot,
+    Measure,
+    derivative,
+)
 from ufl.argument import Argument  # type: ignore[import-untyped]
 from dolfinx.fem.petsc import assemble_matrix, assemble_vector
 from petsc4py import PETSc
+from basix.ufl import mixed_element
 
 from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace
 from .spaces import FunctionSpaces
@@ -68,6 +84,11 @@ class VariationalForms:
     def neumann_rhs(v: Argument, g: dfem.Function, ds: Measure) -> Form:
         """Neumann boundary condition operator."""
         return inner(v, g) * ds
+
+    @staticmethod
+    def stiffness(u: Argument, v: Argument) -> Form:
+        """Stiffness (Laplace) operator. Used for the vibrating membrane benchmark."""
+        return inner(grad(u), grad(v)) * dx
 
 
 class LinearizedNavierStokesAssembler:
@@ -310,3 +331,160 @@ class LinearizedNavierStokesAssembler:
             self._nullspace = iPETScNullSpace.create_constant_and_vectors(vectors=[vec])
 
         mat.attach_nullspace(self._nullspace)
+
+
+class SteadyNavierStokesAssembler:
+    """Finite element operator assembler for the steady (nonlinear) incompressible Navier-Stokes flow."""
+
+    def __init__(
+        self,
+        spaces: FunctionSpaces,
+        re: float,
+        bcs: BoundaryConditions | None = None,
+        f: dfem.Function | None = None,
+    ) -> None:
+        """Initialize the assembler."""
+        self._spaces = spaces
+        self._re = re
+        self._bcs = bcs
+        if f is None:
+            # Default body force to 0
+            self._f = dfem.Constant(
+                spaces.velocity.mesh, (0.0,) * spaces.velocity.mesh.topology.dim
+            )
+        else:
+            self._f = f
+
+        # Mixed velocity-pressure space
+        mixed_elem = mixed_element(
+            [
+                spaces.velocity.ufl_element(),
+                spaces.pressure.ufl_element(),
+            ]
+        )
+        self._mixed_space = dfem.functionspace(
+            spaces.velocity.mesh, mixed_elem
+        )  # TODO: this mixed spaces should be an output of the spaces module
+
+        # Solution
+        self._up = dfem.Function(self._mixed_space)
+        self.u, self.p = self._up.split()
+
+        # Newton increment and test functions
+        self._du = TrialFunction(self._mixed_space)
+        self._v, self._q = TestFunctions(self._mixed_space)
+
+        # Boundary conditions and Neumann/Robin terms
+        self._u_bcs, self._p_bcs, self._neumann_forms, self._robin_forms = (
+            self._get_bcs(bcs)
+        )
+
+        # Build variational forms
+        self._residual, self._jacobian = self._build_forms()
+
+        # Caches for PETSc objects
+        self._vec_cache: dict[str, iPETScVector] = {}
+        self._mat_cache: dict[str, iPETScMatrix] = {}
+
+    @staticmethod
+    def _get_bcs(bcs: BoundaryConditions | None):
+        if bcs is None:
+            return [], [], [], []
+        vel_bcs = [bc for _, bc in bcs.velocity]
+        pres_bcs = [bc for _, bc in bcs.pressure]
+        neumann = [form for _, form in bcs.neumann_forms]
+        robin = [form for _, form in bcs.robin_forms]
+        return vel_bcs, pres_bcs, neumann, robin
+
+    @property
+    def residual(self) -> dfem.Form:
+        """Get residual form."""
+        return self._residual
+
+    @property
+    def jacobian(self) -> dfem.Form:
+        """Get jacobian."""
+        return self._jacobian
+
+    @property
+    def bcs(self):
+        """Return all Dirichlet BC objects (velocity + pressure)."""
+        return [*self._u_bcs, *self._p_bcs]
+
+    def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
+        nu = 1.0 / self._re
+
+        momentum_ufl = (
+            inner(grad(self.u) * self.u, self._v) * dx
+            + nu * inner(grad(self.u), grad(self._v)) * dx
+            - inner(self.p, div(self._v)) * dx
+            - inner(self._f, self._v) * dx
+        )
+        for form in self._neumann_forms:
+            momentum_ufl += form
+
+        continuity_ufl = inner(div(self.u), self._q) * dx
+
+        residual_ufl = momentum_ufl + continuity_ufl
+
+        residual = dfem.form(residual_ufl)
+        jacobian = dfem.form(derivative(residual_ufl, self._up, self._du))
+
+        return residual, jacobian
+
+    def assemble_residual(self) -> iPETScVector:
+        """Assemble and return the PETSc residual vector."""
+        key = f"res_{id(self._residual)}"
+        if key not in self._vec_cache:
+            vec = assemble_vector(self._residual)
+            spaces = dfem.extract_function_spaces([self._residual], index=0)
+            block_bcs = dfem.bcs_by_block(spaces, [*self._u_bcs, *self._p_bcs])
+            dfem.apply_lifting(vec, [self._jacobian], block_bcs, x0=None)
+            vec.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+            for bc in (*self._u_bcs, *self._p_bcs):
+                bc.set(vec)
+            self._vec_cache[key] = iPETScVector(vec)
+        return self._vec_cache[key]
+
+    def assemble_jacobian(self) -> iPETScMatrix:
+        """Assemble and return the PETSc Jacobian matrix."""
+        key = f"jac_{id(self._jacobian)}"
+        if key not in self._mat_cache:
+            A = assemble_matrix(self._jacobian, bcs=[*self._u_bcs, *self._p_bcs])
+            A.assemble()
+            self._mat_cache[key] = iPETScMatrix(A)
+        return self._mat_cache[key]
+
+    def clear_cache(self) -> None:
+        """Clear cached PETSc matrices and vectors."""
+        self._vec_cache.clear()
+        self._mat_cache.clear()
+
+    def solve(
+        self,
+        rtol: float = 1e-6,
+        atol: float = 1e-12,
+        max_it: int = 25,
+        linear_solver: str = "gmres",
+        preconditioner: str = "ilu",
+    ):
+        """
+        Compute the steady base flow by solving F(u,p)=0 with Newton’s method.
+        Modifies self._up in place and also returns it.
+        """
+        # wrap the UFL forms and solution Function into a high-level problem
+        problem = NonlinearProblem(
+            self._residual, self._up, bcs=self.bcs, J=self._jacobian
+        )
+
+        solver = NewtonSolver(MPI.COMM_WORLD, problem)
+        solver.rtol = rtol
+        solver.atol = atol
+        solver.max_it = max_it
+        solver.linear_solver = linear_solver
+        solver.preconditioner = preconditioner
+
+        num_its, converged = solver.solve(self._up)
+        if not converged:
+            raise RuntimeError(f"Newton failed to converge in {num_its} iterations")
+        return self._up
