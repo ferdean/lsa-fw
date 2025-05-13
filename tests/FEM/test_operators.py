@@ -49,7 +49,7 @@ def test_bcs(test_mesher: Mesher, test_spaces: FunctionSpaces) -> None:
             value=(1.0, 0.0),
         )
     ]
-    return define_bcs(test_mesher.mesh, test_spaces, test_mesher.facet_tags, configs)
+    return define_bcs(test_mesher, test_spaces, configs)
 
 
 @pytest.fixture(scope="module")
