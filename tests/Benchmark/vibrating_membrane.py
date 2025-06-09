@@ -9,7 +9,7 @@ H1 space) to apply the framework to the membrane benchmark.
 """
 
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, Final
 import numpy as np
 import logging
 import matplotlib.pyplot as plt
@@ -35,14 +35,14 @@ from config import load_facet_config, load_bc_config
 
 logging.getLogger().setLevel(logging.WARNING)
 
-_A: float = 2.0
-_B: float = 4.0
-_NUM_EIG: int = 15
-_MESH_DIVS: tuple[int, int] = (32, 32)
-_CONFIG_DIR: Path = Path(__file__).parent / "vibrating_membrane"
+_A: Final[float] = 2.0
+_B: Final[float] = 4.0
+_NUM_EIG: Final[int] = 15
+_MESH_DIVS: Final[tuple[int, int]] = (32, 32)
+_CONFIG_DIR: Final[Path] = Path(__file__).parent / "vibrating_membrane"
 
 
-def get_mesher(nxy: tuple[int, int], show_plot: bool = False) -> Mesher:
+def get_mesher(nxy: tuple[int, int], *, show_plot: bool = False) -> Mesher:
     """Generate a rectangular mesh with LSA-FW Mesher and apply boundary tags."""
     mesher = Mesher(
         shape=Shape.BOX,

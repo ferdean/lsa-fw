@@ -484,6 +484,83 @@ class TestMatrix:
         assert filepath.exists()
         assert filepath.stat().st_size > 0
 
+    def test_get_row_simple(self):
+        """Test get row."""
+        M = iPETScMatrix.from_matrix(
+            np.array(
+                [
+                    [1.0, 0.0, 2.0],
+                    [0.0, 3.0, 0.0],
+                ]
+            )
+        )
+
+        cols0, vals0 = M.get_row(0)
+        assert cols0 == [0, 1, 2]
+        assert pytest.approx(vals0) == [1.0, 0.0, 2.0]
+
+        cols1, vals1 = M.get_row(1)
+        assert cols1 == [0, 1, 2]
+        assert pytest.approx(vals1) == [0.0, 3.0, 0.0]
+
+    def test_get_row_sparse(self):
+        """Test get row with sparse matrices."""
+        M = iPETScMatrix.zeros((3, 3))
+        M[0, 1] = 42.0
+        M.assemble()
+
+        cols0, vals0 = M.get_row(0)
+        assert cols0 == [1]
+        assert pytest.approx(vals0) == [42]
+
+        cols1, vals1 = M.get_row(1)
+        assert cols1 == []
+        assert pytest.approx(vals1) == []
+
+    def test_get_column_simple(self):
+        """Test get column."""
+        M = iPETScMatrix.from_matrix(
+            np.array(
+                [
+                    [5.0, 0.0],
+                    [0.0, 7.0],
+                    [8.0, 9.0],
+                ]
+            )
+        )
+
+        rows0, vals0 = M.get_column(0)
+        assert rows0 == [0, 1, 2]
+        assert pytest.approx(vals0) == [5.0, 0.0, 8.0]
+
+        rows1, vals1 = M.get_column(1)
+        assert rows1 == [0, 1, 2]
+        assert pytest.approx(vals1) == [0.0, 7.0, 9.0]
+
+    def test_get_column_sparse(self):
+        """Test get column."""
+        M = iPETScMatrix.zeros((2, 3))
+        M[0, 0] = 1.0
+        M.assemble()
+
+        rows0, vals0 = M.get_column(0)
+        assert rows0 == [0]
+        assert pytest.approx(vals0) == [1.0]
+
+    def test_add_value_accumulates(self):
+        """Test add value."""
+        M = iPETScMatrix.zeros((3, 3))
+        M.add_value(1, 2, 4.2)
+        M.add_value(1, 2, 1.3)
+        M.assemble()
+
+        v = M[1, 2]
+        assert pytest.approx(v, abs=1e-12) == 5.5
+
+        cols, vals = M.get_row(1)
+        assert cols == [2]
+        assert pytest.approx(vals) == [5.5]
+
 
 class TestNullSpace:
     """Tests for the iPETScNullSpace wrapper."""

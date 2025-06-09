@@ -112,7 +112,9 @@ class iPETScMatrix:
             mat.assemble()
         except Exception:
             logger.warning("PETSc matrix could not be assembled upon initialization.")
-        self._mat = mat
+
+        self._mat: PETSc.Mat = mat
+        self._csr_mat: PETSc.Mat | None = None
 
     @classmethod
     def from_nested(
@@ -208,7 +210,6 @@ class iPETScMatrix:
             coo = csr.tocoo()
             for i, j, v in zip(coo.row, coo.col, coo.data):
                 mat.setValue(i, j, v, addv=PETSc.InsertMode.INSERT_VALUES)
-            mat.assemble()
             return cls(mat)
 
         raise TypeError(
@@ -450,14 +451,51 @@ class iPETScMatrix:
         """Zero all entries in the matrix."""
         self._mat.zeroEntries()
 
+    def add_value(self, row: int, col: int, value: float | complex) -> None:
+        """Add `value` to entry (row, col) (i.e. set_value with ADD_VALUES)."""
+        self._mat.setValue(row, col, Scalar(value), addv=PETSc.InsertMode.ADD_VALUES)
+
     def get_value(self, row: int, col: int) -> Scalar:
         """Get the value at position (row, col)."""
         return self._mat.getValue(row, col)
 
     def get_row(self, row: int) -> tuple[list[int], list[Scalar]]:
-        """Get column indices and values for a specific row."""
-        cols, values = self._mat.getRow(row)
-        return cols.tolist(), values.tolist()
+        """Get column indices and values for a specific row using getRowIJ."""
+        mat = self._mat
+        if "nest" in self.type:
+            if self._csr_mat is not None:
+                mat = self._csr_mat
+            else:
+                self._csr_mat = self.to_aij().raw
+                mat = self._csr_mat
+
+        ia, ja, a = mat.getValuesCSR()
+        start, end = int(ia[row]), int(ia[row + 1])
+        cols = ja[start:end].tolist()
+        vals = a[start:end].tolist()
+        return cols, vals
+
+    def get_column(self, col: int) -> tuple[list[int], list[Scalar]]:
+        """Get row indices and values for a specific column using getColumnIJ."""
+        mat = self._mat
+        if "nest" in self.type:
+            if self._csr_mat is not None:
+                mat = self._csr_mat
+            else:
+                self._csr_mat = self.to_aij().raw
+                mat = self._csr_mat
+
+        ia, ja, a = mat.getValuesCSR()
+        rows: list[int] = []
+        vals: list[Scalar] = []
+        # for each local row r, entries live in [ia[r], ia[r+1])
+        for r in range(len(ia) - 1):
+            start, end = int(ia[r]), int(ia[r + 1])
+            for idx in range(start, end):
+                if ja[idx] == col:
+                    rows.append(r)
+                    vals.append(a[idx])
+        return rows, vals
 
     def axpy(self, alpha: int | float | complex, other: object) -> None:
         """Perform an AXPY operation: this = alpha * other + this."""
@@ -498,8 +536,22 @@ class iPETScMatrix:
         return iPETScMatrix(aij)
 
     def as_array(self) -> np.ndarray:
-        """Return the vector as a NumPy array."""
-        return self._mat.getArray().copy()
+        """Return the matrix as a NumPy array (dense).
+
+        Works for both dense and AIJ (sparse) PETSc matrices by
+        fetching their CSR representation and reconstructing.
+        """
+        ia, ja, aa = self.raw.getValuesCSR()
+        nrows, ncols = self.shape
+        arr = np.zeros((nrows, ncols), dtype=float)
+
+        # Reconstruct the dense array
+        for i in range(nrows):
+            row_start, row_end = ia[i], ia[i + 1]
+            for idx in range(row_start, row_end):
+                j = ja[idx]
+                arr[i, j] = aa[idx]
+        return arr
 
     def zero_row_columns(
         self, rows: list[int], diag: int | float | complex = 0.0

@@ -35,7 +35,7 @@ from basix.ufl import mixed_element
 
 from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace
 from .spaces import FunctionSpaces
-from .bcs import BoundaryConditions
+from .bcs import BoundaryConditions, apply_periodic_constraints
 
 logger = logging.getLogger(__name__)
 
@@ -117,9 +117,14 @@ class LinearizedNavierStokesAssembler:
         self._u, self._p = self._get_trial_functions(spaces)
         self._v, self._q = self._get_test_functions(spaces)
 
-        self._u_bcs, self._p_bcs, self._neumann_forms, self._robin_forms = (
-            self._get_bcs(bcs)
-        )
+        (
+            self._u_bcs,
+            self._p_bcs,
+            self._neumann_forms,
+            self._robin_forms,
+            self._u_maps,
+            self._p_maps,
+        ) = self._get_bcs(bcs)
 
         self._matrix_cache: dict[str, iPETScMatrix] = {}
 
@@ -138,14 +143,28 @@ class LinearizedNavierStokesAssembler:
     @staticmethod
     def _get_bcs(
         bcs: BoundaryConditions | None,
-    ) -> tuple[list[dfem.DirichletBC], list[dfem.DirichletBC], list[Form], list[Form]]:
+    ) -> tuple[
+        list[dfem.DirichletBC],
+        list[dfem.DirichletBC],
+        list[Form],
+        list[Form],
+        list[dict[int, int]],
+        list[dict[int, int]],
+    ]:
         if bcs is None:
-            return [], [], [], []
+            return [], [], [], [], [], []
         velocity_bcs = [bc for _, bc in bcs.velocity]
         pressure_bcs = [bc for _, bc in bcs.pressure]
         neumann_forms = [form for _, form in bcs.neumann_forms]
         robin_forms = [form for _, form in bcs.robin_forms]
-        return velocity_bcs, pressure_bcs, neumann_forms, robin_forms
+        return (
+            velocity_bcs,
+            pressure_bcs,
+            neumann_forms,
+            robin_forms,
+            bcs.velocity_periodic_map,
+            bcs.pressure_periodic_map,
+        )
 
     @staticmethod
     def _assemble(
@@ -162,6 +181,13 @@ class LinearizedNavierStokesAssembler:
             logger.debug(f"Computing and caching matrix: {key}")
             self._matrix_cache[key] = assembler()
         return self._matrix_cache[key]
+
+    def _apply_periodic_constraint(
+        self, obj: iPETScMatrix | iPETScVector
+    ) -> iPETScMatrix | iPETScVector:
+        for pmap in self._u_maps + self._p_maps:
+            apply_periodic_constraints(obj, pmap)
+        return obj
 
     def assemble_mass_matrix(self) -> iPETScMatrix:
         """Assemble mass matrix."""
@@ -264,12 +290,14 @@ class LinearizedNavierStokesAssembler:
         G = self.assemble_pressure_gradient_matrix()
         D = self.assemble_divergence_matrix()
 
-        return iPETScMatrix.from_nested(
+        L = iPETScMatrix.from_nested(
             [
                 [A.raw, G.raw],
                 [D.raw, None],
             ]
         )
+
+        return self._apply_periodic_constraint(L)
 
     def assemble_eigensystem(self) -> tuple[iPETScMatrix, iPETScMatrix]:
         """Assemble the generalized eigenvalue system (A, M).
@@ -290,6 +318,7 @@ class LinearizedNavierStokesAssembler:
                 [None, M_p.raw],
             ]
         )
+        M = self._apply_periodic_constraint(M)
 
         self.attach_pressure_nullspace(A)
         self.attach_pressure_nullspace(M)
@@ -308,7 +337,7 @@ class LinearizedNavierStokesAssembler:
         for bc in self._u_bcs:
             bc.set(vec)
 
-        return iPETScVector(vec)
+        return self._apply_periodic_constraint(iPETScVector(vec))
 
     def clear_cache(self) -> None:
         """Clear the internal matrix cache."""
@@ -334,7 +363,10 @@ class LinearizedNavierStokesAssembler:
 
 
 class SteadyNavierStokesAssembler:
-    """Finite element operator assembler for the steady (nonlinear) incompressible Navier-Stokes flow."""
+    """Finite element operator assembler for the steady (nonlinear) incompressible Navier-Stokes flow.
+
+    TODO: Periodic BCs not handled yet.
+    """
 
     def __init__(
         self,

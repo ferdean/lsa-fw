@@ -24,7 +24,7 @@ class BoundaryConditionsConfig:
     """Facet marker for the boundary condition."""
     type: str
     """Type of boundary condition."""
-    value: float | tuple[float, ...]
+    value: float | tuple[float, ...] | tuple[int, int]
     """Boundary condition value.
 
     Note that callable boundary conditions are still not supported via configuration file.
@@ -57,7 +57,17 @@ def load_bc_config(path: Path) -> Sequence[BoundaryConditionsConfig]:
     bcs: Sequence[BoundaryConditionsConfig] = []
     for bc in cfg.get("BC"):
         raw_value = bc.get("value")
-        if isinstance(raw_value, list):
+        # for periodic we expect two ints
+        if bc.get("type").lower().strip() == "periodic":
+            if (
+                isinstance(raw_value, list)
+                and len(raw_value) == 2
+                and all(isinstance(v, int) for v in raw_value)
+            ):
+                value = (raw_value[0], raw_value[1])
+            else:
+                raise TypeError("Periodic BC value must be two integer markers.")
+        elif isinstance(raw_value, list):
             value = tuple(float(v) for v in raw_value)
         elif isinstance(raw_value, (int, float)):
             value = float(raw_value)
