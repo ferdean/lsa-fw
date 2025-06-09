@@ -1031,7 +1031,12 @@ class iComplexPETScVector:
     def __matmul__(
         self, other: iPETScMatrix | iPETScVector | iComplexPETScVector
     ) -> iComplexPETScVector | iPETScMatrix:
-        """Perform vector cross product and vector-matrix multiplication."""
+        """Matrix-vector multiplication.
+
+        Only multiplication of a complex vector by a PETSc matrix is supported.
+        Attempts to compute vector-vector cross products will raise
+        ``NotImplementedError``.
+        """
         if isinstance(other, (iPETScVector, iComplexPETScVector)):
             raise NotImplementedError(
                 "Vector-vector cross product not implemented yet."
@@ -1060,7 +1065,11 @@ class iComplexPETScVector:
     def __rmatmul__(
         self, other: iPETScMatrix | iPETScVector | iComplexPETScVector
     ) -> iComplexPETScVector | iPETScMatrix:
-        """Perform vector cross product and matrix - vector multiplication."""
+        """Matrix-vector multiplication.
+
+        The only supported operation is a PETSc matrix multiplying this complex
+        vector. Vector-vector cross products are not implemented.
+        """
         if isinstance(other, (iPETScVector, iComplexPETScVector)):
             return NotImplemented  # Let the left operand handle it
 
