@@ -1,0 +1,18 @@
+[[BC]]
+marker = 1
+type = "dirichlet_velocity"
+value = [0.0, 0.0]
+
+[[BC]]
+marker = 2
+type = "dirichlet_velocity"
+value = [0.0, 0.0]
+
+# Note that as periodic boundary condition is defined from 4 to 3,
+# no need to define a BC in 3 (avoid duplicate)
+
+[[BC]]
+marker = 4
+type = "periodic"
+value = [3, 4]
+
