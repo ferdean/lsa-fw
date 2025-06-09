@@ -20,7 +20,7 @@ Current features include:
 
 - Core Modules
   - Sparse eigenvalue computations for stability and adjoint problems *(planned)*
-  - Base flow construction and diagnostics *(planned)*
+  - Base flow construction via a steady Navier–Stokes solver
   - Automatic differentiation support *(planned)*
 
 - Infrastructure
@@ -46,16 +46,19 @@ Finite Element Method backend that assembles the linearized Navier–Stokes oper
 
 - Modular structure for building velocity-pressure function spaces.
 - Handles boundary condition enforcement for Dirichlet, Neumann, and Robin types.
+- Periodic boundary conditions via DOF pairing.
 - Exposes PETSc matrices for solver consumption.
 
-### Solver 
+### Solver
 
 Linear solver module that will support:
 
-- Base flow computation *(planned)*
+- Steady base flow computation
 - Eigenvalue solvers for modal stability analysis (via SLEPc)
 - Preconditioners for large sparse matrices
 - Fully decoupled from FEM to allow extensibility
+
+See [Solver documentation](doc/models/solver.md) for details.
 
 ### Visualizer *(Planned)*
 

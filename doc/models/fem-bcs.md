@@ -73,18 +73,18 @@ The boundary conditions are grouped and returned as a `BoundaryConditions` datac
 - strong Dirichlet boundary conditions (applied directly using `dolfinx.fem.dirichletbc`), and
 - weak Neumann/Robin forms (as `ufl.Form` terms to be added to the variational formulation).
 
-The core interface is:
+The core interface is now simplified to:
 
 ```python
 def define_bcs(
-    mesh: dolfinx.mesh.Mesh,
+    mesher: Mesher,
     spaces: FunctionSpaces,
-    tags: dolfinx.mesh.MeshTags,
-    u_trial: ufl.Coefficient,
-    v_test: ufl.TestFunction,
-    configs: Sequence[BoundaryCondition]
+    configs: Sequence[BoundaryCondition],
 ) -> BoundaryConditions
 ```
+
+The `Mesher` instance provides the mesh and facet tags, so the caller only
+needs to supply the configuration objects.
 
 ### Design Details
 
@@ -105,12 +105,13 @@ Measure handling (`ds(marker)`) is abstracted via the `iMeasure` utility to ensu
 
 ### Supported Types
 
-| Type                   | Description                                           |
-|------------------------|-------------------------------------------------------|
-| `DIRICHLET_VELOCITY`   | Strong velocity condition                             |
-| `DIRICHLET_PRESSURE`   | Strong pressure condition                             |
-| `NEUMANN`              | Natural Neumann condition (weak form)                 |
+| Type                   | Description |
+|------------------------|-----------------------------------------------------|
+| `DIRICHLET_VELOCITY`   | Strong velocity condition |
+| `DIRICHLET_PRESSURE`   | Strong pressure condition |
+| `NEUMANN`              | Natural Neumann condition (weak form) |
 | `ROBIN`                | Robin condition via penalty terms in weak formulation |
+| `PERIODIC`             | Periodic condition via DOF mapping |
 
 
 ### Example
@@ -119,11 +120,12 @@ Measure handling (`ds(marker)`) is abstracted via the `iMeasure` utility to ensu
 from FEM.bcs import define_bcs, BoundaryCondition, BoundaryConditionType
 
 bcs = define_bcs(
-    mesh, spaces, tags, u_trial, v_test,
+    mesher,
+    spaces,
     configs=[
         BoundaryCondition(marker=1, type=BoundaryConditionType.DIRICHLET_VELOCITY, value=(1.0, 0.0)),
         BoundaryCondition(marker=3, type=BoundaryConditionType.ROBIN, value=(0.0, 0.0), robin_alpha=10.0),
-    ]
+    ],
 )
 ```
 
@@ -146,3 +148,14 @@ This would allow users, for example, to just define a config `bcs` file, such as
   }
 ]
 ```
+
+Periodic boundary conditions can also be defined by specifying two markers in
+`value`:
+
+```toml
+[[BC]]
+marker = 4
+type = "periodic"
+value = [1, 2] # facets tagged 1 map onto facets tagged 2
+```
+

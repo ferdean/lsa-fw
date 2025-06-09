@@ -2,6 +2,7 @@
 
 - [Meshing](meshing.md): Mesh generation, import/export, CFD benchmark geometries.
 - [FEM](fem.md): Function spaces, boundary conditions, matrix assembly.
+- [Solver](solver.md): Base flow and eigenvalue solvers.
 - ...
 
 ---
