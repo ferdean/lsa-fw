@@ -7,6 +7,9 @@
 Linear stability analysis of fluid flows requires linearizing the Navier-Stokes equations around a given base flow.
 This module provides tools to assemble the discrete matrices for this linearized system.
 
+Base flows can be computed with the `SteadyNavierStokesAssembler` described in
+the [Steady Base Flow Solver](fem.md#steady-base-flow-solver) section.
+
 The module supports both time-stepping simulations and eigenanalysis for stabilities, and it provides PETSc features for parallel assembly, block matrix storage and preconditioning.
 
 ## Variational Forms for Linearized Navier-Stokes
