@@ -28,6 +28,16 @@ marker = 3
 type = "robin"
 value = [1.0, 0.0]
 robin_alpha = 5.0
+
+[[BC]]
+marker = 4
+type = "periodic"
+value = [4, 5]
+
+[[BC]]
+marker = 5
+type = "periodic"
+value = [4, 5]
 """
     config_path = tmp_path / "bcs.toml"
     _create_tmp_toml(config_path, toml)
@@ -40,6 +50,8 @@ robin_alpha = 5.0
         config.BoundaryConditionsConfig(
             marker=3, type="robin", value=(1.0, 0.0), robin_alpha=5.0
         ),
+        config.BoundaryConditionsConfig(marker=4, type="periodic", value=(4, 5)),
+        config.BoundaryConditionsConfig(marker=5, type="periodic", value=(4, 5)),
     ]
 
 

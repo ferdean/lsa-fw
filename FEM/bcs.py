@@ -8,16 +8,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from typing import Callable, Sequence, assert_never
-
 import numpy as np
+
 import ufl  # type: ignore[import-untyped]
 import dolfinx.fem as dfem
-import dolfinx.mesh as dmesh
+from petsc4py import PETSc
 
+from Meshing import Mesher
 from config import BoundaryConditionsConfig
 
 from .spaces import FunctionSpaces
-from .utils import iMeasure
+from .utils import iMeasure, iPETScMatrix, iPETScVector
 
 
 class BoundaryConditionType(StrEnum):
@@ -31,6 +32,8 @@ class BoundaryConditionType(StrEnum):
     """Weak Neumann BC."""
     ROBIN = auto()
     """Weak Robin BC."""
+    PERIODIC = auto()
+    """Periodic BC."""
 
     @classmethod
     def from_string(cls, value: str) -> BoundaryConditionType:
@@ -49,12 +52,15 @@ class BoundaryCondition:
     """Facet marker for the boundary condition."""
     type: BoundaryConditionType
     """Type of boundary condition."""
-    value: float | tuple[float, ...] | Callable[[np.ndarray], np.ndarray]
+    value: (
+        float | tuple[int, int] | tuple[float, ...] | Callable[[np.ndarray], np.ndarray]
+    )
     """Value of the boundary condition.
 
     May be:
       - a scalar (e.g. for pressure)
       - a tuple (e.g. constant vector velocity)
+      - a tuple of 2 ints (for periodic BC)
       - a callable returning a NumPy array evaluated at spatial coordinates.
     """
     robin_alpha: float | None = None
@@ -83,12 +89,15 @@ class BoundaryConditions:
     """Neumann boundary contributions to the weak form."""
     robin_forms: list[tuple[int, ufl.Form]]
     """Robin boundary contributions to the weak form."""
+    velocity_periodic_map: list[dict[int, int]]
+    """Periodic maps for velocity BC."""
+    pressure_periodic_map: list[dict[int, int]]
+    """Periodic maps for pressure BC."""
 
 
 def define_bcs(
-    mesh: dmesh.Mesh,
+    mesher: Mesher,
     spaces: FunctionSpaces,
-    tags: dmesh.MeshTags,
     configs: Sequence[BoundaryCondition],
 ) -> BoundaryConditions:
     """
@@ -102,6 +111,8 @@ def define_bcs(
         v_test: Test function.
         configs: List of boundary condition configurations.
     """
+    mesh = mesher.mesh
+    tags = mesher.facet_tags
     dim = mesh.topology.dim
     geom_dim = mesh.geometry.dim
     ds = iMeasure.ds(mesh, tags)
@@ -111,10 +122,12 @@ def define_bcs(
     u_trial = ufl.TrialFunction(V)
     v_test = ufl.TestFunction(V)
 
-    velocity_bcs: list[dfem.DirichletBC] = []
-    pressure_bcs: list[dfem.DirichletBC] = []
-    neumann_forms: list[ufl.Form] = []
-    robin_forms: list[ufl.Form] = []
+    velocity_bcs: list[int, dfem.DirichletBC] = []
+    pressure_bcs: list[int, dfem.DirichletBC] = []
+    neumann_forms: list[int, ufl.Form] = []
+    robin_forms: list[int, ufl.Form] = []
+    velocity_periodic_map: list[dict[int, int]] = []
+    pressure_periodic_map: list[dict[int, int]] = []
 
     for cfg in configs:
         marker = cfg.marker
@@ -173,6 +186,13 @@ def define_bcs(
                     (marker, cfg.robin_alpha * ufl.dot(g_expr, v_test) * ds(marker))
                 )
 
+            case BoundaryConditionType.PERIODIC:
+                from_marker, to_marker = cfg.value
+                vmap = compute_periodic_dof_pairs(V, mesher, from_marker, to_marker)
+                pmap = compute_periodic_dof_pairs(Q, mesher, from_marker, to_marker)
+                velocity_periodic_map.append(vmap)
+                pressure_periodic_map.append(pmap)
+
             case _:
                 assert_never(cfg.type)
 
@@ -181,7 +201,123 @@ def define_bcs(
         pressure=pressure_bcs,
         neumann_forms=neumann_forms,
         robin_forms=robin_forms,
+        velocity_periodic_map=velocity_periodic_map,
+        pressure_periodic_map=pressure_periodic_map,
     )
+
+
+def compute_periodic_dof_pairs(
+    V: dfem.FunctionSpace,
+    mesher: Mesher,
+    from_marker: int,
+    to_marker: int,
+    facet_dim: int | None = None,
+    tolerance: float = 1e-8,
+) -> dict[int, int]:
+    """Identify periodic DOF pairs between 'from' and 'to' tagged boundary facets.
+
+    Args:
+        V: Function space on the mesh.
+        facet_tags: MeshTags marking boundary facets (dim = mesh.topology.dim - 1).
+        from_marker: integer tag value for the source boundary facets.
+        to_marker: integer tag value for the target boundary facets.
+        facet_dim: topological dimension of facets (defaults to mesh.topology.dim - 1).
+        tolerance: maximum distance for matching DOF coordinates.
+
+    Returns:
+        A dict mapping each target DOF index to its corresponding source DOF index.
+    """
+    mesh = mesher.mesh
+    facet_dim = facet_dim or mesh.topology.dim - 1
+    coords = V.tabulate_dof_coordinates()[:, : mesh.geometry.dim]
+
+    # Extract the facet indices for each marker
+    facets = mesher.facet_tags.indices
+    markers = mesher.facet_tags.values
+    facets_from = facets[markers == from_marker]
+    facets_to = facets[markers == to_marker]
+
+    # Find all DOFs on each facets
+    from_dofs = dfem.locate_dofs_topological(V, facet_dim, facets_from)
+    to_dofs = dfem.locate_dofs_topological(V, facet_dim, facets_to)
+    if from_dofs.size == 0 or to_dofs.size == 0:
+        raise ValueError(
+            f"No DOFs found on facets for markers {from_marker} or {to_marker}"
+        )
+
+    # Compute translation vector = centroid(to) - centroid(from)
+    from_coords = coords[from_dofs]
+    to_coords = coords[to_dofs]
+    translation = to_coords.mean(axis=0) - from_coords.mean(axis=0)
+
+    # Compute pairs
+    pairs: dict[int, int] = {}
+    for td in to_dofs:
+        shifted = from_coords + translation
+        dists = np.linalg.norm(shifted - coords[td], axis=1)
+        idx = int(np.argmin(dists))
+        if dists[idx] > tolerance:
+            raise ValueError(
+                f"Could not match target DOF {td!r}: min distance {dists[idx]:.3g} "
+                f"exceeds tolerance {tolerance}"
+            )
+        pairs[int(td)] = int(from_dofs[idx])
+
+    return pairs
+
+
+def apply_periodic_constraints(
+    obj: iPETScMatrix | iPETScVector, periodic_map: dict[int, int]
+) -> None:
+    """Merge periodic contributions and zero out 'to' DOFs on a PETSc matrix in-place.
+
+    For matrices:
+        1. Pulls the original row and column entries of each 'to' DOF.
+        2. Adds them into the corresponding 'from' row and column.
+        3. Zeros out the 'to' row and column, then places a 1 on its diagonal.
+        4. Calls assemble() to finalize PETSc's internal state.
+
+    For vectors:
+        1. For each (to, from) pair, adds vec[to] into vec[from].
+        2. Zeros out all vec[to] entries.
+        3. Calls assemble() to finalize PETSc's internal state.
+    """
+    if isinstance(obj, iPETScMatrix):
+        # TODO: this dynamic new‐nonzero allocation is only a temporary hack to let the post‐assembly periodic
+        # merge run without preallocation errors. Once we fold periodic BCs into assemble_matrix() (refer to
+        # FEM.operators), these options can be removed.
+        obj.raw.setOption(PETSc.Mat.Option.NEW_NONZERO_LOCATIONS, True)
+        obj.raw.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
+
+        for to_dof, from_dof in periodic_map.items():
+            cols, row_vals = obj.get_row(to_dof)  # row
+            for c, v in zip(cols, row_vals):
+                obj.add_value(from_dof, c, v)
+            obj.assemble()
+
+            rows, col_vals = obj.get_column(to_dof)  # column
+            for r, v in zip(rows, col_vals):
+                obj.add_value(r, from_dof, v)
+            obj.assemble()
+
+        # Zero-out and pin each 'to' DOF
+        obj.zero_row_columns(list(periodic_map.keys()), diag=1.0)
+        obj.assemble()
+
+    elif isinstance(obj, iPETScVector):
+        for to_dof, from_dof in periodic_map.items():
+            v_to = obj.get_value(to_dof)
+            v_fr = obj.get_value(from_dof)
+            obj.set_value(from_dof, v_fr + v_to)
+
+        for to_dof in periodic_map:
+            obj.set_value(to_dof, 0.0)
+        obj.assemble()
+
+    else:
+        raise TypeError(
+            f"Unsupported object type: {type(obj)}. Expected iPETScMatrix or iPETScVector."
+        )
 
 
 def _wrap_constant_vector(
