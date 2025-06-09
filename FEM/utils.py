@@ -112,7 +112,9 @@ class iPETScMatrix:
             mat.assemble()
         except Exception:
             logger.warning("PETSc matrix could not be assembled upon initialization.")
-        self._mat = mat
+
+        self._mat: PETSc.Mat = mat
+        self._csr_mat: PETSc.Mat | None = None
 
     @classmethod
     def from_nested(
@@ -459,7 +461,15 @@ class iPETScMatrix:
 
     def get_row(self, row: int) -> tuple[list[int], list[Scalar]]:
         """Get column indices and values for a specific row using getRowIJ."""
-        ia, ja, a = self._mat.getValuesCSR()
+        mat = self._mat
+        if "nest" in self.type:
+            if self._csr_mat is not None:
+                mat = self._csr_mat
+            else:
+                self._csr_mat = self.to_aij().raw
+                mat = self._csr_mat
+
+        ia, ja, a = mat.getValuesCSR()
         start, end = int(ia[row]), int(ia[row + 1])
         cols = ja[start:end].tolist()
         vals = a[start:end].tolist()
@@ -467,7 +477,15 @@ class iPETScMatrix:
 
     def get_column(self, col: int) -> tuple[list[int], list[Scalar]]:
         """Get row indices and values for a specific column using getColumnIJ."""
-        ia, ja, a = self._mat.getValuesCSR()
+        mat = self._mat
+        if "nest" in self.type:
+            if self._csr_mat is not None:
+                mat = self._csr_mat
+            else:
+                self._csr_mat = self.to_aij().raw
+                mat = self._csr_mat
+
+        ia, ja, a = mat.getValuesCSR()
         rows: list[int] = []
         vals: list[Scalar] = []
         # for each local row r, entries live in [ia[r], ia[r+1])

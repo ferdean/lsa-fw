@@ -8,10 +8,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from typing import Callable, Sequence, assert_never
-
 import numpy as np
+
 import ufl  # type: ignore[import-untyped]
 import dolfinx.fem as dfem
+from petsc4py import PETSc
 
 from Meshing import Mesher
 from config import BoundaryConditionsConfig
@@ -236,17 +237,32 @@ def compute_periodic_dof_pairs(
     facets_from = facets[markers == from_marker]
     facets_to = facets[markers == to_marker]
 
-    # Find all DOFs on those facets
+    # Find all DOFs on each facets
     from_dofs = dfem.locate_dofs_topological(V, facet_dim, facets_from)
     to_dofs = dfem.locate_dofs_topological(V, facet_dim, facets_to)
+    if from_dofs.size == 0 or to_dofs.size == 0:
+        raise ValueError(
+            f"No DOFs found on facets for markers {from_marker} or {to_marker}"
+        )
+
+    # Compute translation vector = centroid(to) - centroid(from)
+    from_coords = coords[from_dofs]
+    to_coords = coords[to_dofs]
+    translation = to_coords.mean(axis=0) - from_coords.mean(axis=0)
 
     # Compute pairs
     pairs: dict[int, int] = {}
     for td in to_dofs:
-        dists = np.linalg.norm(coords[from_dofs] - coords[td], axis=1)
+        shifted = from_coords + translation
+        dists = np.linalg.norm(shifted - coords[td], axis=1)
         idx = int(np.argmin(dists))
-        if dists[idx] < tolerance:
-            pairs[int(td)] = int(from_dofs[idx])
+        if dists[idx] > tolerance:
+            raise ValueError(
+                f"Could not match target DOF {td!r}: min distance {dists[idx]:.3g} "
+                f"exceeds tolerance {tolerance}"
+            )
+        pairs[int(td)] = int(from_dofs[idx])
+
     return pairs
 
 
@@ -267,6 +283,12 @@ def apply_periodic_constraints(
         3. Calls assemble() to finalize PETSc's internal state.
     """
     if isinstance(obj, iPETScMatrix):
+        # TODO: this dynamic new‐nonzero allocation is only a temporary hack to let the post‐assembly periodic
+        # merge run without preallocation errors. Once we fold periodic BCs into assemble_matrix() (refer to
+        # FEM.operators), these options can be removed.
+        obj.raw.setOption(PETSc.Mat.Option.NEW_NONZERO_LOCATIONS, True)
+        obj.raw.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
+
         for to_dof, from_dof in periodic_map.items():
             cols, row_vals = obj.get_row(to_dof)  # row
             for c, v in zip(cols, row_vals):

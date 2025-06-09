@@ -190,6 +190,7 @@ def test_periodic_pairs(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> Non
     pairs = compute_periodic_dof_pairs(
         spaces.velocity, mesher_with_tags, from_marker=1, to_marker=2
     )
+    assert pairs
 
     coords = spaces.velocity.tabulate_dof_coordinates()[
         :, : mesher_with_tags.mesh.geometry.dim
@@ -203,8 +204,8 @@ def test_periodic_pairs(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> Non
         assert pytest.approx(y_to, rel=1e-6) == y_fr
 
 
-def test_apply_periodic_to_identity() -> None:
-    """Test applying periodic boundary conditions to the identity matrix."""
+def test_apply_periodic() -> None:
+    """Test applying periodic boundary conditions."""
     #    [[ 1,  2,  3,  4],
     #     [ 5,  6,  7,  8],
     #     [ 9, 10, 11, 12],

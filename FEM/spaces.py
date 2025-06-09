@@ -97,7 +97,10 @@ class FunctionSpaceType(StrEnum):
 
 
 def define_spaces(
-    mesh: dmesh.Mesh, type: FunctionSpaceType = FunctionSpaceType.TAYLOR_HOOD
+    mesh: dmesh.Mesh,
+    type: FunctionSpaceType = FunctionSpaceType.TAYLOR_HOOD,
+    *,
+    gdim: int | None = None,
 ) -> FunctionSpaces:
     """Define function spaces for the Navier-Stokes problem.
 
@@ -112,7 +115,7 @@ def define_spaces(
                 family=iElementFamily.LAGRANGE.to_dolfinx(),
                 cell=cell,
                 degree=2,
-                shape=(mesh.geometry.dim,),
+                shape=(gdim or mesh.geometry.dim,),
             )
             p1 = element(
                 family=iElementFamily.LAGRANGE.to_dolfinx(), cell=cell, degree=1
@@ -126,7 +129,7 @@ def define_spaces(
                 family=iElementFamily.LAGRANGE.to_dolfinx(),
                 cell=cell,
                 degree=1,
-                shape=(mesh.geometry.dim,),
+                shape=(gdim or mesh.geometry.dim,),
             )
             p1 = element(
                 family=iElementFamily.LAGRANGE.to_dolfinx(), cell=cell, degree=1
@@ -135,7 +138,7 @@ def define_spaces(
                 family=iElementFamily.BUBBLE.to_dolfinx(),
                 cell=cell,
                 degree=3,  # bubble element is usually of higher order
-                shape=(mesh.geometry.dim,),
+                shape=(gdim or mesh.geometry.dim,),
             )
             enriched = enriched_element([p1_v, bubble])
 
@@ -151,7 +154,7 @@ def define_spaces(
                 family=iElementFamily.LAGRANGE.to_dolfinx(),
                 cell=cell,
                 degree=1,
-                shape=(mesh.geometry.dim,),
+                shape=(gdim or mesh.geometry.dim,),
             )
             p1_p = element(
                 family=iElementFamily.LAGRANGE.to_dolfinx(), cell=cell, degree=1
