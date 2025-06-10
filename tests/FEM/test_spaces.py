@@ -42,15 +42,9 @@ def test_define_spaces_valid_types(test_mesh: Mesh, space_type: FunctionSpaceTyp
 
     assert isinstance(spaces.velocity, FunctionSpace)
     assert isinstance(spaces.pressure, FunctionSpace)
+    assert isinstance(spaces.mixed, FunctionSpace)
     assert spaces.velocity.mesh is test_mesh
     assert spaces.pressure.mesh is test_mesh
-
-
-def test_dg_raises_not_implemented(test_mesh: Mesh):
-    """Test that the define_spaces function raises NotImplementedError for DG spaces."""
-    with pytest.raises(NotImplementedError) as err:
-        define_spaces(test_mesh, type=FunctionSpaceType.DG)
-    assert "not yet supported." in str(err)
 
 
 def test_taylor_hood_elements(test_mesh: Mesh):
@@ -119,3 +113,10 @@ def test_mini_elements(test_mesh: Mesh) -> None:
 
     assert vel_elem.reference_value_shape == (test_mesh.geometry.dim,)
     assert pre_elem.reference_value_shape == ()
+
+
+def test_dg_raises_not_implemented(test_mesh: Mesh):
+    """Test that the define_spaces function raises NotImplementedError for DG spaces."""
+    with pytest.raises(NotImplementedError) as err:
+        define_spaces(test_mesh, type=FunctionSpaceType.DG)
+    assert "not yet supported." in str(err)
