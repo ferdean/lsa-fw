@@ -10,7 +10,6 @@ including mass, viscous, convection, shear, pressure, and divergence operators.
 import logging
 from typing import Callable
 import numpy as np
-import scipy.sparse
 
 import dolfinx.fem as dfem
 from ufl import (  # type: ignore[import-untyped]
@@ -34,7 +33,6 @@ from petsc4py import PETSc
 from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace
 from .spaces import FunctionSpaces
 from .bcs import BoundaryConditions, apply_periodic_constraints
-from .plot import plot_mixed_function
 
 
 logger = logging.getLogger(__name__)
@@ -216,16 +214,6 @@ class StokesAssembler:
         """Clear cached PETSc matrices and vectors."""
         self._vec_cache.clear()
         self._mat_cache.clear()
-
-    def solve(
-        self, *, show_plot: bool = True, plot_scale: float = 0.1
-    ):  # TODO: Move this out of here, to the solver. can be used just as a basic solver. Missing Newton.
-        """Solve linear problem."""
-        A, b = self.assemble()
-        A_inv = scipy.sparse.linalg.splu(A.as_scipy_array())
-        self._wh.x.array[:] = A_inv.solve(b.raw.array)
-        if show_plot:
-            plot_mixed_function(self._wh, plot_scale)
 
 
 class LinearizedNavierStokesAssembler:
