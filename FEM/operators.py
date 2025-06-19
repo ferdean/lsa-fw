@@ -8,34 +8,284 @@ including mass, viscous, convection, shear, pressure, and divergence operators.
 """
 
 import logging
+from abc import ABC, abstractmethod
 from typing import Callable
-import numpy as np
 
+import numpy as np
 import dolfinx.fem as dfem
+from dolfinx.fem.petsc import (
+    assemble_matrix,
+    assemble_vector,
+    create_matrix,
+    create_vector,
+)
+from petsc4py import PETSc
 from ufl import (  # type: ignore[import-untyped]
     dx,
     TrialFunction,
-    TrialFunctions,
     TestFunction,
     TestFunctions,
+    TrialFunctions,
+    derivative,
     Form,
     inner,
     grad,
     div,
     dot,
     Measure,
+    split,
     system,
 )
 from ufl.argument import Argument  # type: ignore[import-untyped]
-from dolfinx.fem.petsc import assemble_matrix, assemble_vector
-from petsc4py import PETSc
 
 from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace
 from .spaces import FunctionSpaces
 from .bcs import BoundaryConditions, apply_periodic_constraints
 
-
 logger = logging.getLogger(__name__)
+
+
+class BaseAssembler(ABC):
+    """Abstract base class for finite element operator assemblers."""
+
+    def __init__(self, spaces: FunctionSpaces, bcs: BoundaryConditions | None) -> None:
+        """Initialize base assembler."""
+        (
+            self._u_bcs,
+            self._p_bcs,
+            self._neumann_forms,
+            self._robin_forms,
+            self._u_maps,
+            self._p_maps,
+        ) = self._get_bcs(bcs)
+        self._spaces = spaces
+        self._mat_cache: dict[str, iPETScMatrix] = {}
+        self._vec_cache: dict[str, iPETScVector] = {}
+
+    @property
+    @abstractmethod
+    def residual(self) -> dfem.Form:
+        """Get residual form."""
+        pass
+
+    @property
+    @abstractmethod
+    def jacobian(self) -> dfem.Form:
+        """Get jacobian form."""
+        pass
+
+    @property
+    @abstractmethod
+    def sol(self) -> dfem.Function:
+        """Get solution function."""
+        pass
+
+    @property
+    def bcs(self) -> tuple[dfem.DirichletBC]:
+        return (*self._u_bcs, *self._p_bcs)
+
+    @property
+    def spaces(self) -> FunctionSpaces:
+        """Get the function spaces used by this assembler."""
+        return self._spaces
+
+    @abstractmethod
+    def get_matrix_forms(self) -> tuple[iPETScMatrix, iPETScVector]:
+        """Assemble and return PETSc matrix and vector."""
+        pass
+
+    def clear_cache(self) -> None:
+        """Clear cached PETSc matrices and vectors."""
+        self._mat_cache.clear()
+        self._vec_cache.clear()
+
+    @staticmethod
+    def _get_bcs(
+        bcs: BoundaryConditions | None,
+    ) -> tuple[
+        list[dfem.DirichletBC],
+        list[dfem.DirichletBC],
+        list[Form],
+        list[Form],
+        list[dict[int, int]],
+        list[dict[int, int]],
+    ]:
+        """Extract boundary conditions."""
+        if bcs is None:
+            return [], [], [], [], [], []
+        velocity_bcs = [bc for _, bc in bcs.velocity]
+        pressure_bcs = [bc for _, bc in bcs.pressure]
+        neumann_forms = [form for _, form in bcs.neumann_forms]
+        robin_forms = [form for _, form in bcs.robin_forms]
+        return (
+            velocity_bcs,
+            pressure_bcs,
+            neumann_forms,
+            robin_forms,
+            bcs.velocity_periodic_map,
+            bcs.pressure_periodic_map,
+        )
+
+    def _apply_dirichlet(self, fn: dfem.Function | PETSc.Vec) -> None:
+        """Apply Dirichlet BCs in-place."""
+        array = fn.x.array if isinstance(fn, dfem.Function) else fn.array
+        for bc in self.bcs:
+            bc.set(array)
+
+        if isinstance(fn, dfem.Function):
+            fn.x.scatter_forward()
+        else:
+            fn.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
+
+
+class StokesAssembler(BaseAssembler):
+    """Finite element operator assembler for the steady Stokes equations."""
+
+    def __init__(
+        self,
+        spaces: FunctionSpaces,
+        bcs: BoundaryConditions | None = None,
+        f: dfem.Function | None = None,
+    ) -> None:
+        """Initialize Stokes assembler."""
+        super().__init__(spaces, bcs)
+        self._f = f or dfem.Constant(
+            spaces.velocity.mesh, (0.0,) * spaces.velocity.mesh.topology.dim
+        )
+        self._g = dfem.Constant(
+            spaces.velocity.mesh, (0.0,) * spaces.velocity.mesh.topology.dim
+        )
+
+        self._u, self._p = TrialFunctions(spaces.mixed)
+        self._v, self._q = TestFunctions(spaces.mixed)
+
+        self._wh = dfem.Function(spaces.mixed)
+        self._apply_dirichlet(self._wh)
+
+        # TODO: check handling of neumann and robin conditions
+        # TODO: handle periodic constraints
+
+        self._jacobian, self._residual = self._build_forms()
+
+    @property
+    def residual(self) -> dfem.Form:
+        return dfem.form(self._residual)
+
+    @property
+    def jacobian(self) -> dfem.Form:
+        return dfem.form(self._jacobian)
+
+    @property
+    def sol(self) -> dfem.Function:
+        return self._wh
+
+    def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
+        form = (
+            inner(grad(self._u), grad(self._v)) * dx
+            + inner(self._p, div(self._v)) * dx
+            + inner(div(self._u), self._q) * dx
+            - inner(self._f, self._v) * dx
+        )
+
+        for bc in self._neumann_forms:
+            form += bc
+
+        return system(form)
+
+    def get_matrix_forms(self) -> tuple[iPETScMatrix, iPETScVector]:
+        """Assemble the jacobian and residual forms of the Stokes equations."""
+        key_jac = f"jac_{id(self._jacobian)}"
+        key_res = f"res_{id(self._residual)}"
+
+        if key_jac not in self._mat_cache:
+            A = assemble_matrix(dfem.form(self._jacobian), bcs=self.bcs)
+            A.assemble()
+            self._mat_cache[key_jac] = iPETScMatrix(A)
+
+        if key_res not in self._vec_cache:
+            b = assemble_vector(dfem.form(self._residual))
+            dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [self.bcs])
+            self._apply_dirichlet(b)
+            self._vec_cache[key_res] = iPETScVector(b)
+
+        return self._mat_cache[key_jac], self._vec_cache[key_res]
+
+
+class StationaryNavierStokesAssembler(BaseAssembler):
+    """Finite element operator assembler for stationary Navier-Stokes equations."""
+
+    def __init__(
+        self,
+        spaces: FunctionSpaces,
+        re: float,
+        f: dfem.Function | None = None,
+        bcs: BoundaryConditions | None = None,
+        initial_guess: dfem.Function | None = None,
+    ):
+        """Initialize."""
+        super().__init__(spaces, bcs)
+        self._re = re
+        self._f = f or dfem.Constant(
+            spaces.velocity.mesh, (0.0,) * spaces.velocity.mesh.topology.dim
+        )
+
+        self._v, self._q = TestFunctions(spaces.mixed)
+        self._wh = dfem.Function(spaces.mixed)  # sol
+
+        if initial_guess is not None:
+            self._wh.x.array[:] = initial_guess.x.array
+            self._wh.x.scatter_forward()
+
+        self._u, self._p = split(self._wh)
+        self._apply_dirichlet(self._wh)
+
+        self._residual, self._jacobian = self._build_forms()
+
+        logger.info("Stationary Navier Stokes assembler has been initialized.")
+
+    @property
+    def residual(self) -> dfem.Form:
+        return self._residual
+
+    @property
+    def jacobian(self) -> dfem.Form:
+        return self._jacobian
+
+    @property
+    def sol(self) -> dfem.Function:
+        return self._wh
+
+    def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
+        convection = inner(dot(self._u, grad(self._u)), self._v) * dx
+        diffusion = (1 / self._re) * inner(grad(self._u), grad(self._v)) * dx
+        pressure = (
+            -inner(self._p, div(self._v)) * dx + inner(div(self._u), self._q) * dx
+        )
+        forcing = -inner(self._f, self._v) * dx
+
+        form = convection + diffusion + pressure + forcing
+
+        for bc in self._neumann_forms:
+            form += bc
+
+        return dfem.form(form), dfem.form(derivative(form, self._wh))
+
+    def get_matrix_forms(
+        self, *, key_jac: str | int | None = None, key_res: str | int | None = None
+    ) -> tuple[iPETScMatrix, iPETScVector]:
+        """Get the matrix and vector forms for the linearized Navier-Stokes equations."""
+        key_jac = key_jac or f"jac_{id(self._jacobian)}"
+        key_res = key_res or f"res_{id(self._residual)}"
+
+        if key_jac not in self._mat_cache:
+            A = create_matrix(self._jacobian)
+            self._mat_cache[key_jac] = iPETScMatrix(A)
+
+        if key_res not in self._vec_cache:
+            b = create_vector(self._residual)
+            self._vec_cache[key_res] = iPETScVector(b)
+
+        return self._mat_cache[key_jac], self._vec_cache[key_res]
 
 
 class VariationalForms:
@@ -89,133 +339,6 @@ class VariationalForms:
         return inner(grad(u), grad(v)) * dx
 
 
-class StokesAssembler:
-    """Finite element operator assembler for the steady Stokes equations."""
-
-    def __init__(
-        self,
-        spaces: FunctionSpaces,
-        re: float,
-        bcs: BoundaryConditions | None = None,
-        f: dfem.Function | None = None,
-    ) -> None:
-        """Initialize the assembler."""
-        self._spaces = spaces
-        self._re = re
-        (
-            self._u_bcs,
-            self._p_bcs,
-            self._neumann_bcs,
-            self._robin_bcs,
-        ) = self._get_bcs(bcs)
-
-        self._f = f or dfem.Constant(  # Defaults to 0.0
-            spaces.velocity.mesh, (0.0,) * spaces.velocity.mesh.topology.dim
-        )
-        self._g = dfem.Constant(
-            spaces.velocity.mesh, (0.0,) * spaces.velocity.mesh.topology.dim
-        )
-
-        # Mixed trial/test functions
-        self._u, self._p = TrialFunctions(spaces.mixed)
-        self._v, self._q = TestFunctions(spaces.mixed)
-
-        # Solution
-        self._wh = dfem.Function(spaces.mixed)
-        self._apply_dirichlet(self._wh)
-        # TODO: self._apply_neumann(...)
-
-        # Variational forms
-        self._jacobian, self._residual = self._build_forms()
-
-        # Caches for PETSc objects
-        self._vec_cache: dict[str, iPETScVector] = {}
-        self._mat_cache: dict[str, iPETScMatrix] = {}
-
-    @staticmethod
-    def _get_bcs(bcs: BoundaryConditions | None):
-        if bcs is None:
-            return [], [], [], []
-        vel_bcs = [bc for _, bc in bcs.velocity]
-        pres_bcs = [bc for _, bc in bcs.pressure]
-        neumann = [form for _, form in bcs.neumann_forms]
-        robin = [form for _, form in bcs.robin_forms]
-        return vel_bcs, pres_bcs, neumann, robin
-
-    @property
-    def residual(self) -> dfem.Form:
-        """Get residual form."""
-        return self._residual
-
-    @property
-    def jacobian(self) -> dfem.Form:
-        """Get jacobian."""
-        return self._jacobian
-
-    @property
-    def sol(self) -> dfem.Function:
-        """Get solution function."""
-        return self._wh
-
-    @property
-    def bcs(self) -> tuple[dfem.DirichletBC]:
-        """Return all Dirichlet BC objects (velocity + pressure)."""
-        return (*self._u_bcs, *self._p_bcs)
-
-    def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
-        """Build the variational forms and return it split in bi-linear and linear forms."""
-        form = (
-            inner(grad(self._u), grad(self._v)) * dx
-            + inner(self._p, div(self._v)) * dx
-            + 1.0 / self._re * inner(div(self._u), self._q) * dx
-            - inner(self._f, self._v) * dx
-        )
-
-        for bc in self._neumann_bcs:
-            # TODO: Handle Neumann BCs properly
-            form += bc
-
-        return system(form)
-
-    def _apply_dirichlet(self, fn: dfem.Function | PETSc.Vec) -> None:
-        """Apply Dirichlet BC."""
-        array = fn.x.array if isinstance(fn, dfem.Function) else fn.array
-        for bc in (*self._u_bcs, *self._p_bcs):
-            bc.set(array)
-
-        if isinstance(fn, dfem.Function):
-            fn.x.scatter_forward()
-        else:
-            fn.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-
-    def assemble(self) -> tuple[iPETScMatrix, iPETScVector]:
-        """Assemble and return the PETSc Jacobian matrix and PETSc residual vector."""
-        key_jac = f"jac_{id(self._jacobian)}"
-        key_res = f"res_{id(self._residual)}"
-
-        if key_jac not in self._mat_cache:
-            A = assemble_matrix(
-                dfem.form(self._jacobian), bcs=[*self._u_bcs, *self._p_bcs]
-            )
-            A.assemble()
-            self._mat_cache[key_jac] = iPETScMatrix(A)
-
-        if key_res not in self._vec_cache:
-            b = assemble_vector(dfem.form(self._residual))
-            dfem.apply_lifting(
-                b.array, [dfem.form(self._jacobian)], [[*self._u_bcs, *self._p_bcs]]
-            )
-            self._apply_dirichlet(b)
-            self._vec_cache[key_res] = iPETScVector(b)
-
-        return self._mat_cache[key_jac], self._vec_cache[key_res]
-
-    def clear_cache(self) -> None:
-        """Clear cached PETSc matrices and vectors."""
-        self._vec_cache.clear()
-        self._mat_cache.clear()
-
-
 class LinearizedNavierStokesAssembler:
     """Finite element operator assembler for linearized Navier-Stokes equations."""
 
@@ -242,15 +365,6 @@ class LinearizedNavierStokesAssembler:
         self._u, self._p = self._get_trial_functions(spaces)
         self._v, self._q = self._get_test_functions(spaces)
 
-        (
-            self._u_bcs,
-            self._p_bcs,
-            self._neumann_forms,
-            self._robin_forms,
-            self._u_maps,
-            self._p_maps,
-        ) = self._get_bcs(bcs)
-
         self._matrix_cache: dict[str, iPETScMatrix] = {}
 
     @staticmethod
@@ -264,32 +378,6 @@ class LinearizedNavierStokesAssembler:
         spaces: FunctionSpaces,
     ) -> tuple[Argument, Argument]:
         return TrialFunction(spaces.velocity), TrialFunction(spaces.pressure)
-
-    @staticmethod
-    def _get_bcs(
-        bcs: BoundaryConditions | None,
-    ) -> tuple[
-        list[dfem.DirichletBC],
-        list[dfem.DirichletBC],
-        list[Form],
-        list[Form],
-        list[dict[int, int]],
-        list[dict[int, int]],
-    ]:
-        if bcs is None:
-            return [], [], [], [], [], []
-        velocity_bcs = [bc for _, bc in bcs.velocity]
-        pressure_bcs = [bc for _, bc in bcs.pressure]
-        neumann_forms = [form for _, form in bcs.neumann_forms]
-        robin_forms = [form for _, form in bcs.robin_forms]
-        return (
-            velocity_bcs,
-            pressure_bcs,
-            neumann_forms,
-            robin_forms,
-            bcs.velocity_periodic_map,
-            bcs.pressure_periodic_map,
-        )
 
     @staticmethod
     def _assemble(
@@ -485,7 +573,3 @@ class LinearizedNavierStokesAssembler:
             self._nullspace = iPETScNullSpace.create_constant_and_vectors(vectors=[vec])
 
         mat.attach_nullspace(self._nullspace)
-
-
-class SteadyNavierStokesAssembler:
-    pass
