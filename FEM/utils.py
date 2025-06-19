@@ -108,11 +108,6 @@ class iPETScMatrix:
 
     def __init__(self, mat: PETSc.Mat) -> None:
         """Initialize PETSc matrix wrapper."""
-        try:
-            mat.assemble()
-        except Exception:
-            logger.warning("PETSc matrix could not be assembled upon initialization.")
-
         self._mat: PETSc.Mat = mat
         self._csr_mat: PETSc.Mat | None = None
 
