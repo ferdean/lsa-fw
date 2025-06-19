@@ -581,11 +581,10 @@ class iPETScMatrix:
 
     def export(self, path: Path) -> None:
         """Export the matrix to a binary file."""
-        # FIXME: This is currently not working
         viewer = PETSc.Viewer().createBinary(
             str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self.comm
         )
-        viewer(self.raw)
+        self.raw.view(viewer)
         viewer.destroy()
 
 
@@ -816,6 +815,7 @@ class iPETScVector:
             str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self._vec.comm
         )
         self._vec.view(viewer)
+        viewer.destroy()
 
 
 class iComplexPETScVector:
