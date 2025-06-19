@@ -96,7 +96,7 @@ class CylinderFlowGeometryConfig:
     height: float
     """Height of the channel (y-direction)."""
     cylinder_radius: float
-    """Radius of teh cylinder."""
+    """Radius of the cylinder."""
     cylinder_center: tuple[float]
     """Coordinates of the cylinder center, as (x, y, [z])."""
     resolution: float
