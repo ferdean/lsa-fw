@@ -6,14 +6,15 @@ such as those for velocity and pressure fields.
 
 from __future__ import annotations
 
+import logging
+from typing import assert_never
 from dataclasses import dataclass
 from functools import cached_property
 from enum import StrEnum, auto
+
 from dolfinx.fem import functionspace, FunctionSpace
 import dolfinx.mesh as dmesh
-from basix.ufl import element, enriched_element
-import logging
-from typing import assert_never
+from basix.ufl import element, enriched_element, mixed_element
 
 from Meshing.utils import iCellType
 
@@ -30,6 +31,8 @@ class FunctionSpaces:
     """Velocity function space."""
     pressure: FunctionSpace
     """Pressure function space."""
+    mixed: FunctionSpace
+    """Mixed function space."""
 
     @cached_property
     def quad_degree(self, offset: int = 1) -> int:
@@ -107,6 +110,7 @@ def define_spaces(
     Args:
         mesh: The mesh on which to define the function spaces.
         type (optional): The type of function space to create. Defaults to Taylor-Hood.
+        gdim (optional): Geometric dimensions of the space. Defaults to the value embedded in the mesh.
     """
     cell = iCellType.from_dolfinx(mesh.topology.cell_type).to_basix()
     match type:
@@ -131,7 +135,7 @@ def define_spaces(
                 degree=1,
                 shape=(gdim or mesh.geometry.dim,),
             )
-            p1 = element(
+            p1_p = element(
                 family=iElementFamily.LAGRANGE.to_dolfinx(), cell=cell, degree=1
             )
             bubble = element(
@@ -143,7 +147,7 @@ def define_spaces(
             enriched = enriched_element([p1_v, bubble])
 
             velocity = functionspace(mesh, enriched)
-            pressure = functionspace(mesh, p1)
+            pressure = functionspace(mesh, p1_p)
 
         case FunctionSpaceType.SIMPLE:
             logger.warning(
@@ -171,4 +175,8 @@ def define_spaces(
         case _:
             assert_never(type)
 
-    return FunctionSpaces(velocity=velocity, pressure=pressure)
+    mixed = functionspace(
+        mesh, mixed_element([velocity.ufl_element(), pressure.ufl_element()])
+    )
+
+    return FunctionSpaces(velocity=velocity, pressure=pressure, mixed=mixed)

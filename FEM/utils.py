@@ -108,11 +108,6 @@ class iPETScMatrix:
 
     def __init__(self, mat: PETSc.Mat) -> None:
         """Initialize PETSc matrix wrapper."""
-        try:
-            mat.assemble()
-        except Exception:
-            logger.warning("PETSc matrix could not be assembled upon initialization.")
-
         self._mat: PETSc.Mat = mat
         self._csr_mat: PETSc.Mat | None = None
 
@@ -552,6 +547,11 @@ class iPETScMatrix:
                 j = ja[idx]
                 arr[i, j] = aa[idx]
         return arr
+
+    def as_scipy_array(self) -> sparse.csr_matrix:
+        """Return the matrix as a Scipy array (sparse)."""
+        ia, ja, aa = self.raw.getValuesCSR()
+        return sparse.csr_matrix((aa, ja, ia), shape=self.shape)
 
     def zero_row_columns(
         self, rows: list[int], diag: int | float | complex = 0.0

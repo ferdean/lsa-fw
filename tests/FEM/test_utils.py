@@ -250,6 +250,7 @@ class TestMatrix:
         cols = np.array([2, 0, 1])
         sp = sparse.coo_matrix((data, (rows, cols)), shape=(4, 4))
         M = iPETScMatrix.from_matrix(sp, comm=PETSc.COMM_SELF)
+        M.assemble()
 
         assert isinstance(M, iPETScMatrix)
         assert M.shape == (4, 4)
