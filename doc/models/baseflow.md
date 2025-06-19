@@ -43,36 +43,37 @@ $$
 \end{align*}
 $$
 
-Here’s the updated version of your documentation section, revised carefully to match the **current** solver behavior (iterative GMRES + Hypre setup, not direct LU):
+The solver now employs Newton's method with a **Stokes flow** initial guess and solves the resulting linear systems using sparse **LU factorization**.
+For improved robustness, especially at larger Reynolds numbers, the Reynolds number can be ramped from 1 to the target value over a user-defined number of steps.
 
-## Nonlinear Solver
+## Nonlinear Solver (Newton)
 
-Two nonlinear solvers are supported, Newton's method and Piccard's iteration.
+At iteration $k$ the Navier--Stokes residual is linearized around the current approximation $(\mathbf{u}^{(k)},p^{(k)})$.
+The Jacobian therefore contains the derivative of the convective term with respect to both the transported and transporting velocity fields.
+The Newton update $(\Delta\mathbf{u},\Delta p)$ is obtained from
+\[
+  J\,\Delta w = -R(\mathbf{u}^{(k)},p^{(k)}),
+\]
+and the iterate is updated with an optional damping factor $\alpha \in (0,1]$,
+\[
+  (\mathbf{u}^{(k+1)},p^{(k+1)}) = (\mathbf{u}^{(k)},p^{(k)}) + \alpha\,\Delta w.
+\]
 
-- **Newton's Method:**
-  The full residual is linearized at each iteration.
-  This includes the derivative of the convective term with respect to both the transported and transporting velocity fields, resulting in the full Jacobian.
-  Newton's method typically converges quadratically near the solution but may require a good initial guess, especially at high Reynolds numbers.
+### Stokes Initial Guess
 
-- **Picard Iteration:**
-  This is a fixed-point iteration where the convecting velocity in the nonlinear term $(\mathbf{u}\cdot\nabla)\mathbf{u}$ is lagged.
-  Specifically, $(\mathbf{u}^{(k)}\cdot\nabla)\mathbf{u}$ is used at iteration $k$, with $\mathbf{u}^{(k)}$ treated as given and $\mathbf{u}$ as unknown. 
-  This simplifies the Jacobian, making the method more robust and ensuring monotonic convergence, although it often converges more slowly than Newton.
+Before running Newton iterations the solver assembles and solves the associated Stokes problem,
+\[
+  -\tfrac{1}{\mathrm{Re}}\Delta\mathbf{u} + \nabla p = \mathbf{0},\qquad
+  \nabla \cdot \mathbf{u} = 0,
+\]
+subject to the same boundary conditions.
+The Stokes solution provides a physically meaningful and smooth starting point for the nonlinear iterations.
 
-Solver parameters such as
+### Linear Solver
 
-- Reynolds number,
-- nonlinear solver type,
-- convergence tolerance,
-- maximum number of iterations,
-- linear solver type, and
-- preconditioner type
-
-are encapsulated in a configuration file. 
-This allows full configurability.
-
-At each nonlinear iteration, the resulting linear system is solved using an iterative PETSc Krylov solver combined with a preconditioner.
-The system matrix and residual vector are assembled at every step, and Dirichlet boundary conditions are enforced strongly during assembly.
+Both the Stokes solve and all Newton steps are performed via direct LU factorization using `scipy.sparse.linalg.splu`.
+While this approach is memory intensive, it yields robust convergence for the moderate mesh sizes used in the included examples and avoids the need for preconditioners.
+Solver options such as the target Reynolds number, number of ramping steps and damping factor are passed directly to `BaseFlowSolver.solve`.
 
 ## API
 
@@ -89,56 +90,57 @@ In the project workflow, if no precomputed base flow is available, the code can 
 ### Example
 
 ```python
-from lib import base_flow
+from Meshing import Mesher, Geometry
+from FEM.spaces import define_spaces, FunctionSpaceType
+from FEM.bcs import BoundaryCondition, define_bcs
+from Solver.baseflow import BaseFlowSolver
 
-from FEM.spaces import FunctionSpaceType, define_spaces
-from FEM.bcs import BoundaryCondition, BoundaryConditions, define_bcs
+# Generate mesh and mark boundaries (omitted for brevity)
+mesher = Mesher.from_geometry(Geometry.CYLINDER_FLOW, cfg)
+mesher.mark_boundary_facets(marker_fn)
 
-# Mesh and spaces
-mesh = ...
-tags = ...
-spaces = define_spaces(mesh, FunctionSpaceType.TAYLOR_HOOD)
-bc_configs = [...] 
-bcs = define_bcs(mesh, spaces, tags, bc_configs)
+spaces = define_spaces(mesher.mesh, FunctionSpaceType.TAYLOR_HOOD)
+bcs = define_bcs(mesher, spaces, [BoundaryCondition.from_config(c) for c in cfg_bcs])
 
-# Solver configuration
-config = base_flow_solver.BaseFlowSolverConfig(
+solver = BaseFlowSolver(spaces, bcs=bcs)
+baseflow = solver.solve(
     re=100.0,
-    solver_type=base_flow_solver.NonlinearSolverType.NEWTON,
-    tol=1e-8,
-    max_iterations=100,
-    linear_solver_type=base_flow_solver.LinearSolverType.GMRES,
-    preconditioner_type=base_flow_solver.PreconditionerType.HYPRE
+    ramp=True,
+    steps=5,
+    damping_factor=0.8,
 )
-
-# Solve for base flow
-u_base, p_base = base_flow_solver.solve_base_flow(mesh, spaces, bcs, config)
 ```
 
 After solving, `u_base` can be passed to the `LinearizedNavierStokesAssembler` for stability analysis.
 
 ## Implementation Details
 
-- A mixed function space $W = V \times Q$ is created, coupling velocity and pressure into a single system.
-
-- Dirichlet boundary conditions are enforced strongly at every iteration using PETSc tools, ensuring physical and mathematical correctness.
-
-- For each nonlinear iteration:
-  - The residual vector and Jacobian matrix are assembled.
-  - A Krylov iterative solver (e.g., `gmres`) with a preconditioner (e.g., `hypre`) solves the linear system $ J\Delta w = -R$.
-  - The solution update $\Delta w$ is applied to the current iterate.
-  - Convergence is monitored based on the residual norm.
-
-- Logging reports the start of the solve, each iteration’s residual norm, and final convergence status, providing clear feedback for debugging or performance tracking.
+- A mixed function space $W = V \times Q$ couples velocity and pressure into a single unknown.
+- Dirichlet boundary conditions are imposed strongly using PETSc wrappers.
+- The Stokes matrix is assembled once and factorized via LU to obtain the initial guess.
+- At every Newton step the Jacobian and residual are assembled and the linear correction is computed via the cached LU factorization.
+- The residual norm is monitored and logged at each iteration together with the current Reynolds number when ramping is enabled.
 
 
 ## Notes and Assumptions
 
 - It is assumed that the problem has at least one pressure degree of freedom constrained (e.g., a pressure Dirichlet condition or a constraint on the mean pressure) to avoid singularity.
-
-- The linear solver and preconditioner are configurable and can be tuned for larger or stiffer problems.
-The default (`gmres` + `hypre`) is considered robust for general use cases.
-
-- Picard iteration is more robust for higher Reynolds numbers or poor initial guesses, while Newton’s method is faster when convergence is achievable.
+- The LU factorization is cached and reused across Newton iterations, so the method is best suited for small to medium size problems where direct solvers are affordable.
+- Picard iterations are no longer supported; Newton with optional damping is the default strategy.
 
 - Future extensions could introduce under-relaxation strategies.
+
+## CLI Integration
+
+The solver is available through the module `Solver.cli`.  A typical command line invocation is
+
+```bash
+python -m Solver baseflow \
+    --geometry cylinder_flow \
+    --config config_files/2D/cylinder/cylinder_flow.toml \
+    --facet-config config_files/2D/cylinder/mesh_tags.toml \
+    --re 80.0 --steps 5 --damping 0.8 --plot
+```
+
+The command generates the geometry, applies the specified boundary conditions and computes the steady base flow.
+Results can optionally be plotted or exported for later use in the FEM assembly module.
