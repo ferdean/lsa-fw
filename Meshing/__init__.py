@@ -9,7 +9,6 @@ from .geometries import get_geometry
 from .plot import PlotMode, plot_mesh, get_mesh_summary
 from .utils import Format, Geometry, Shape, iCellType
 
-setup_logging(verbose=False)
 
 __all__ = [
     "Shape",

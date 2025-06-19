@@ -100,8 +100,7 @@ def define_bcs(
     spaces: FunctionSpaces,
     configs: Sequence[BoundaryCondition],
 ) -> BoundaryConditions:
-    """
-    Define and construct all boundary conditions.
+    """Define and construct all boundary conditions.
 
     Args:
         mesh: The simulation mesh.
@@ -117,10 +116,13 @@ def define_bcs(
     geom_dim = mesh.geometry.dim
     ds = iMeasure.ds(mesh, tags)
 
-    V, Q = spaces.velocity, spaces.pressure
+    V_sub = spaces.mixed.sub(0)
+    Q_sub = spaces.mixed.sub(1)
+    V, _ = V_sub.collapse()
+    Q, _ = Q_sub.collapse()
 
-    u_trial = ufl.TrialFunction(V)
-    v_test = ufl.TestFunction(V)
+    u_trial, _ = ufl.TrialFunctions(spaces.mixed)
+    v_test, _ = ufl.TestFunctions(spaces.mixed)
 
     velocity_bcs: list[int, dfem.DirichletBC] = []
     pressure_bcs: list[int, dfem.DirichletBC] = []
@@ -144,8 +146,8 @@ def define_bcs(
                 )
                 fn.interpolate(interpolator)
 
-                dofs = dfem.locate_dofs_topological(V, dim - 1, facets)
-                velocity_bcs.append((marker, dfem.dirichletbc(fn, dofs)))
+                dofs = dfem.locate_dofs_topological((V_sub, V), dim - 1, facets)
+                velocity_bcs.append((marker, dfem.dirichletbc(fn, dofs, V_sub)))
 
             case BoundaryConditionType.DIRICHLET_PRESSURE:
                 fn = dfem.Function(Q)
@@ -157,10 +159,11 @@ def define_bcs(
                 )
                 fn.interpolate(interpolator)
 
-                dofs = dfem.locate_dofs_topological(Q, dim - 1, facets)
-                pressure_bcs.append((marker, dfem.dirichletbc(fn, dofs)))
+                dofs = dfem.locate_dofs_topological((Q_sub, Q), dim - 1, facets)
+                pressure_bcs.append((marker, dfem.dirichletbc(fn, dofs, Q_sub)))
 
             case BoundaryConditionType.NEUMANN:
+                # TODO: Check if implementation for pressure is needed
                 g = (
                     cfg.value
                     if callable(cfg.value)
@@ -188,10 +191,14 @@ def define_bcs(
 
             case BoundaryConditionType.PERIODIC:
                 from_marker, to_marker = cfg.value
-                vmap = compute_periodic_dof_pairs(V, mesher, from_marker, to_marker)
-                pmap = compute_periodic_dof_pairs(Q, mesher, from_marker, to_marker)
-                velocity_periodic_map.append(vmap)
-                pressure_periodic_map.append(pmap)
+                v_map = compute_periodic_dof_pairs(
+                    V_sub, mesher, from_marker, to_marker
+                )
+                p_map = compute_periodic_dof_pairs(
+                    Q_sub, mesher, from_marker, to_marker
+                )
+                velocity_periodic_map.append(v_map)
+                pressure_periodic_map.append(p_map)
 
             case _:
                 assert_never(cfg.type)
