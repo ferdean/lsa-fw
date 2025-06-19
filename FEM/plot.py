@@ -24,7 +24,9 @@ def spy(matrix: iPETScMatrix, out_path: Path, dpi: int = 300) -> None:
     _save_plot(csr, out_path.with_suffix(".png"), dpi)
 
 
-def plot_mixed_function(mixed_function: dfem.Function, scale: float = 1.0) -> None:
+def plot_mixed_function(
+    mixed_function: dfem.Function, *, scale: float = 1.0, title: str | None = None
+) -> None:
     """Visualize a function defined in a mixed space (i.e., velocity and pressure), using PyVista."""
     u_c = mixed_function.sub(0).collapse()
     p_c = mixed_function.sub(1).collapse()
@@ -43,6 +45,8 @@ def plot_mixed_function(mixed_function: dfem.Function, scale: float = 1.0) -> No
     u_grid["u"] = u_values
     glyphs = u_grid.glyph(orient="u", factor=scale)
     plotter = pyvista.Plotter()
+    if title:
+        plotter.add_text(f"{title} — vel", position="upper_edge", font_size=12)
     plotter.add_mesh(u_grid, show_edges=False, show_scalar_bar=False)
     plotter.add_mesh(glyphs)
     plotter.view_xy()
@@ -52,6 +56,8 @@ def plot_mixed_function(mixed_function: dfem.Function, scale: float = 1.0) -> No
     p_grid = pyvista.UnstructuredGrid(*vtk_mesh(p_c.function_space))
     p_grid.point_data["p"] = p_c.x.array
     plotter_p = pyvista.Plotter()
+    if title:
+        plotter_p.add_text(f"{title} — pres", position="upper_edge", font_size=12)
     plotter_p.add_mesh(p_grid, show_edges=False)
     plotter_p.view_xy()
     plotter_p.show()

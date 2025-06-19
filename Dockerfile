@@ -33,6 +33,13 @@ FROM dolfinx/dolfinx:stable
 # ENV PYTHONPATH=${DOLFINX_BASE}/lib/python3.12/dist-packages:$PYTHONPATH
 # ENV LD_LIBRARY_PATH=${DOLFINX_BASE}/lib:$LD_LIBRARY_PATH
 
+# Silence ZINK + fallback warnings globally
+ENV LIBGL_ALWAYS_SOFTWARE=true \
+    LIBGL_KOPPER_DISABLE=true \
+    MESA_DEBUG=silent \
+    MESA_ERROR_BACKTRACE_DISABLE=1 \
+    MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+
 # Install extra Python packages
 RUN pip install --no-cache-dir \
     numpy \
