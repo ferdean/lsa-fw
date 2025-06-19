@@ -33,7 +33,6 @@ from FEM.bcs import (
 from Solver.eigen import EigensolverConfig, EigenSolver, iEpsProblemType
 from config import load_facet_config, load_bc_config
 
-logging.getLogger().setLevel(logging.WARNING)
 
 _A: Final[float] = 2.0
 _B: Final[float] = 4.0
