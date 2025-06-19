@@ -100,7 +100,7 @@ def assemble_fem(args: argparse.Namespace) -> None:
 
     A, M = assembler.assemble_eigensystem()
 
-    _export_matrices(A, M, args.output_path / "matrices")  # FIXME: this does not work
+    _export_matrices(A, M, args.output_path / "matrices")
 
     if args.plot:
         logger.info(f"Plots will be saved to: {args.output_path}/plots")
