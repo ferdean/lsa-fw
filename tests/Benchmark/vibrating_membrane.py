@@ -11,7 +11,6 @@ H1 space) to apply the framework to the membrane benchmark.
 from pathlib import Path
 from typing import Sequence, Final
 import numpy as np
-import logging
 import matplotlib.pyplot as plt
 
 from basix.ufl import element
@@ -121,6 +120,10 @@ def assemble_eigensystem(
 
     M = _assemble(VariationalForms.mass(u, v))
     A = _assemble(VariationalForms.stiffness(u, v))
+
+    M.assemble()
+    A.assemble()
+
     return M, A
 
 
@@ -256,4 +259,4 @@ def run_convergence_analysis(resolutions: list[tuple[int, int]] | None = None) -
 
 if __name__ == "__main__":
     run_default()
-    run_convergence_analysis([(8, 8), (16, 16), (32, 32), (64, 64), (96, 96)])
+    # run_convergence_analysis([(8, 8), (16, 16), (32, 32), (64, 64), (96, 96)])
