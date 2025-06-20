@@ -68,7 +68,7 @@ def _import_bcs(
     if file_path is None:
         return None
     config = load_bc_config(file_path)
-    return define_bcs(mesher.mesh, spaces, mesher.facet_tags, config)
+    return define_bcs(mesher, spaces, config)
 
 
 def _get_baseflow(
@@ -105,7 +105,7 @@ def assemble_fem(args: argparse.Namespace) -> None:
     mesher = _import_mesh(args.mesh)
     spaces = define_spaces(mesher.mesh, args.space_type)
     bcs = _import_bcs(args.bcs, mesher, spaces)
-    base_flow = _get_baseflow(spaces, args.base_flow)
+    base_flow = _get_baseflow(args.base_flow, args.re, spaces, bcs)
     assembler = LinearizedNavierStokesAssembler(base_flow, spaces, args.re, bcs)
 
     A, M = assembler.assemble_eigensystem()
@@ -157,8 +157,8 @@ def main():
     assemble.add_argument(
         "--re",
         type=float,
-        default=100.0,
-        help="Reynolds number (default: 100)",
+        default=80.0,
+        help="Reynolds number (default: 80)",
     )
     assemble.add_argument(
         "--output_path",

@@ -350,12 +350,12 @@ class LinearizedNavierStokesAssembler:
         bcs: BoundaryConditions | None = None,
     ):
         """Initialize the assembler."""
-        if base_flow.function_space != spaces.velocity:
+        if base_flow.function_space != spaces.mixed:
             raise ValueError(
                 "Base flow must be defined on the same function space as the velocity."
             )
 
-        self._base_flow = base_flow
+        self._base_flow = base_flow  # FIXME: Now that we actually have a baseflow, this assembler seems to be broken.
         self._re = re
         self._dtype = PETSc.ScalarType
 
