@@ -39,6 +39,8 @@ from FEM.operators import LinearizedNavierStokesAssembler
 from FEM.plot import spy
 from FEM.utils import iPETScMatrix
 
+from Solver.baseflow import BaseFlowSolver
+
 console: Console = Console()
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -69,13 +71,21 @@ def _import_bcs(
     return define_bcs(mesher.mesh, spaces, mesher.facet_tags, config)
 
 
-def _import_base_flow(
-    spaces: FunctionSpaces, base_flow_path: Path | None
+def _get_baseflow(
+    base_flow_path: Path | None = None,
+    re: float | None = None,
+    spaces: FunctionSpaces | None = None,
+    bcs: BoundaryConditions | None = None,
 ) -> dfem.Function:
     u_base = dfem.Function(spaces.velocity)
     if base_flow_path is None:
-        logger.info("No base flow file provided; using zero velocity.")
-        u_base.x.array[:] = 0.0
+        if not re or not spaces or not bcs:
+            raise ValueError(
+                "If no path to a disk-saved baseflow is given, enough data to compute it must be provided."
+            )
+        logger.info("No base flow file provided; computing it from scratch.")
+        baseflow_solver = BaseFlowSolver(spaces, bcs=bcs)
+        u_base = baseflow_solver.solve(re=re)
     else:
         logger.info(f"Loading base flow from {base_flow_path}")
         with dfem.Function.load(spaces.velocity, base_flow_path) as f:
@@ -95,12 +105,12 @@ def assemble_fem(args: argparse.Namespace) -> None:
     mesher = _import_mesh(args.mesh)
     spaces = define_spaces(mesher.mesh, args.space_type)
     bcs = _import_bcs(args.bcs, mesher, spaces)
-    base_flow = _import_base_flow(spaces, args.base_flow)
+    base_flow = _get_baseflow(spaces, args.base_flow)
     assembler = LinearizedNavierStokesAssembler(base_flow, spaces, args.re, bcs)
 
     A, M = assembler.assemble_eigensystem()
 
-    _export_matrices(A, M, args.output_path / "matrices")  # FIXME: this does not work
+    _export_matrices(A, M, args.output_path / "matrices")
 
     if args.plot:
         logger.info(f"Plots will be saved to: {args.output_path}/plots")

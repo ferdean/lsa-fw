@@ -585,7 +585,7 @@ class iPETScMatrix:
         viewer = PETSc.Viewer().createBinary(
             str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self.comm
         )
-        viewer(self.raw)
+        self.raw.view(viewer)
         viewer.destroy()
 
 
