@@ -9,13 +9,14 @@ Subcommands:
 - ``baseflow``: build geometry, define spaces and boundary conditions and
   compute the steady flow.
 
-Example usage::
+Example usage:
 
-    python -m Solver baseflow \
+    python -m Solver -p baseflow \
         --geometry cylinder_flow \
         --config config_files/2D/cylinder/cylinder_flow.toml \
         --facet-config config_files/2D/cylinder/mesh_tags.toml \
-        --re 80 --steps 5 --damping 0.8 --plot
+        --bcs config_files/2D/cylinder/bcs.toml \
+        --re 80 --steps 3
 
 The command can be parallelised with ``mpirun -n <np>`` as all operations are
 MPI-aware.
@@ -62,8 +63,7 @@ def _run_baseflow(args: argparse.Namespace) -> None:
     spaces = define_spaces(mesher.mesh, FunctionSpaceType.TAYLOR_HOOD)
 
     bc_cfgs = [
-        BoundaryCondition.from_config(cfg)
-        for cfg in load_bc_config(args.bc_config)
+        BoundaryCondition.from_config(cfg) for cfg in load_bc_config(args.bc_config)
     ]
     bcs = define_bcs(mesher, spaces, bc_cfgs)
 
@@ -103,7 +103,7 @@ def main() -> None:
         help="Facet tags config file",
     )
     base.add_argument(
-        "--bc-config",
+        "--bcs",
         dest="bc_config",
         type=Path,
         required=True,
@@ -117,6 +117,8 @@ def main() -> None:
         default=1.0,
         help="Newton damping factor",
     )
+    # FIXME: implement a `--output-path` argument and allow to export the baseflow function (or, at least, the vector)
+    # to the local disk
     base.set_defaults(func=_run_baseflow)
 
     args = parser.parse_args()
@@ -124,10 +126,10 @@ def main() -> None:
 
     try:
         args.func(args)
-    except Exception as exc:  # pragma: no cover - CLI
+    except Exception as exc:
         logger.exception("Error during CLI execution: %s", exc)
         raise SystemExit(1)
 
 
-if __name__ == "__main__":  # pragma: no cover - CLI
+if __name__ == "__main__":
     main()
