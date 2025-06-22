@@ -14,6 +14,7 @@ Example usage:
     # Assemble using Taylor-Hood spaces and plot sparsity
     python -m FEM -p assemble --mesh path/to/mesh \
                            --space taylor_hood \
+                           --bcs path/to/bcs \
                            --re 500 \
                            --output_path path/for/output
 

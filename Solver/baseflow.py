@@ -27,8 +27,10 @@ baseflow = solver.solve(
 """
 
 import logging
+from pathlib import Path
 
 import dolfinx.fem as dfem
+from petsc4py import PETSc
 
 from FEM.bcs import BoundaryConditions
 from FEM.operators import StokesAssembler, StationaryNavierStokesAssembler
@@ -106,3 +108,52 @@ class BaseFlowSolver:
             )
 
         return sol
+
+
+# HACK: In theory, the dolfinx API should be sufficient to export/import function objects. However, up to now,
+# we found several issues when exporting the actual function values (`write_function` method). These functions
+# are workarounds
+
+
+def export_baseflow(baseflow: dfem.Function, output_path: Path) -> None:
+    """Export baseflow function."""
+    if output_path.suffix != ".dat":
+        raise ValueError(f"Output path {output_path!r} must end with '.dat'")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    viewer = PETSc.Viewer().createBinary(str(output_path), mode=PETSc.Viewer.Mode.WRITE)
+    try:
+        baseflow.x.petsc_vec.view(viewer)
+        logger.info("Baseflow properly exported to '%s'", output_path)
+    except Exception as e:
+        logger.error("Baseflow could not be exported to disk.")
+        raise e
+    finally:
+        viewer.destroy()
+
+
+def load_baseflow(input_path: Path, spaces: FunctionSpaces) -> dfem.Function:
+    """Import baseflow function."""
+    if (
+        not input_path.exists()
+        or not input_path.is_file()
+        or input_path.suffix != ".dat"
+    ):
+        raise ValueError(f"Input path {input_path!r} is not a valid file.")
+
+    baseflow = dfem.Function(spaces.mixed)
+    viewer = PETSc.Viewer().createBinary(str(input_path), mode=PETSc.Viewer.Mode.READ)
+    try:
+        baseflow.x.petsc_vec.load(viewer)
+        logger.info("Baseflow properly imported from '%s'", input_path)
+    except Exception as e:
+        logger.error("Baseflow could not be exported from %s.", input_path)
+        raise e
+    finally:
+        viewer.destroy()
+
+    baseflow.x.petsc_vec.ghostUpdate(
+        addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.FORWARD
+    )
+
+    return baseflow
