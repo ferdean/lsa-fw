@@ -115,7 +115,7 @@ class TestLinearizedAssembler:
 
         n_u, _ = test_assembler.spaces.velocity_dofs
 
-        Mv = blocks["vv"]
+        Mv = blocks[0, 0]
 
         assert Mv.shape == (n_u, n_u)
         assert Mv.is_numerically_symmetric()
@@ -125,9 +125,9 @@ class TestLinearizedAssembler:
             assert y.dot(Mv @ y) > 0
 
         # All other blocks should be zero
-        assert blocks["vp"].norm < 1e-10
-        assert blocks["pv"].norm < 1e-10
-        assert blocks["pp"].norm < 1e-10
+        assert blocks[0, 1].norm < 1e-10  # vp
+        assert blocks[1, 0].norm < 1e-10  # pv
+        assert blocks[1, 1].norm < 1e-10  # pp
 
     def test_linear_operator_subblocks(
         self, test_assembler: LinearizedNavierStokesAssembler
@@ -139,12 +139,12 @@ class TestLinearizedAssembler:
 
         blocks = test_assembler.extract_subblocks(L)
         # Velocity–velocity block must be non-zero
-        assert blocks["vv"].norm > 0
+        assert blocks[0, 0].norm > 0
         # Gradient and divergence blocks should both be non-zero
-        assert blocks["vp"].norm > 0
-        assert blocks["pv"].norm > 0
+        assert blocks[1, 0].norm > 0
+        assert blocks[0, 1].norm > 0
         # Pressure–pressure block should be zero
-        assert blocks["pp"].norm < 1e-10
+        assert blocks[1, 1].norm < 1e-10
 
     def test_gradient_divergence_adjoints(
         self, test_assembler: LinearizedNavierStokesAssembler
@@ -156,8 +156,8 @@ class TestLinearizedAssembler:
         L = test_assembler.assemble_linear_operator()
         subblocks = test_assembler.extract_subblocks(L)
 
-        G = subblocks["vp"]
-        D = subblocks["pv"]
+        G = subblocks[0, 1]
+        D = subblocks[1, 0]
 
         D.axpy(1.0, G.T)  # D + G^T
         assert D.norm < 1e-10

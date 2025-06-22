@@ -1289,6 +1289,113 @@ class iPETScNullSpace:
             logger.warning(f"NullSpace.destroy failed: {e}")
 
 
+class iPETScBlockMatrix:
+    """Minimal wrapper around a PETSc nested matrix to provide a consistent interface.
+
+    Accepts a two-dimensional list of iPETScMatrix blocks (or None) and builds a PETSc MatNest.
+    Allows block access by indexing and delegates raw PETSc operations to the nested matrix.
+    """
+
+    def __init__(
+        self,
+        blocks: list[list[iPETScMatrix | None]],
+        comm: PETSc.Comm = PETSc.COMM_WORLD,
+    ) -> None:
+        """Initialize block matrix from a 2D list of iPETScMatrix or None."""
+        # Validate input shape
+        if not blocks or not all(isinstance(row, list) for row in blocks):
+            raise ValueError("`blocks` must be a non-empty 2D list")
+        ncols = len(blocks[0])
+        for row in blocks:
+            if len(row) != ncols:
+                raise ValueError("All block rows must have the same length")
+
+        # Extract raw PETSc.Mat objects (or None) for createNest
+        raw_blocks: list[list[PETSc.Mat | None]] = []
+        for row in blocks:
+            raw_row: list[PETSc.Mat | None] = []
+            for block in row:
+                if block is None:
+                    raw_row.append(None)
+                elif isinstance(block, iPETScMatrix):
+                    raw_row.append(block.raw)
+                else:
+                    raise TypeError(
+                        f"Block entries must be iPETScMatrix or None, got {type(block)}"
+                    )
+            raw_blocks.append(raw_row)
+
+        # Create the nested PETSc matrix
+        mat = PETSc.Mat().createNest(raw_blocks, comm=comm)
+        mat.assemble()
+
+        self._mat = mat
+        self._blocks = blocks  # store original wrappers for user access
+
+    @classmethod
+    def from_nested(
+        cls,
+        raw: PETSc.Mat,
+        blocks: list[list[iPETScMatrix | None]],
+    ) -> iPETScBlockMatrix:
+        """Wrap an existing MatNest with known block wrappers."""
+        obj = cls.__new__(cls)
+        obj._mat = raw
+        obj._blocks = blocks
+        return obj
+
+    @property
+    def raw(self) -> PETSc.Mat:
+        """Return the underlying PETSc nested matrix."""
+        return self._mat
+
+    @property
+    def comm(self) -> PETSc.Comm:
+        """Return the communicator associated with the block matrix."""
+        return self._mat.comm
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        """Return the global shape of the nested matrix."""
+        return self._mat.getSize()
+
+    def __getitem__(self, idx: tuple[int, int]) -> iPETScMatrix | None:
+        """Allow block access via B[i, j] to get the (i,j) subblock."""
+        i, j = idx
+        # Use stored wrappers if available
+        try:
+            block = self._blocks[i][j]
+        except IndexError:
+            raise IndexError(f"Block index out of range: {idx}")
+
+        if block is not None:
+            return block
+
+        # If None, check raw Nest for a zero block
+        raw_sub = self._mat.getNestSubMatrix(i, j)
+        if raw_sub.handle == 0:
+            return None
+        return iPETScMatrix(raw_sub)
+
+    def sub(self, i: int, j: int) -> iPETScMatrix | None:
+        """Explicit method to get the (i,j)-th nested submatrix."""
+        return self[i, j]
+
+    def to_aij(self) -> iPETScMatrix:
+        """Convert the nested block matrix to a flat AIJ matrix."""
+        aij = self._mat.convert("aij")
+        aij.assemble()
+        return iPETScMatrix(aij)
+
+    def assemble(self) -> None:
+        """(Re)assemble the nested matrix and all subblocks."""
+        self._mat.assemble()
+        # Note: PETSc automatically propagates assembly to subblocks
+
+    def __str__(self) -> str:
+        return f"iPETScBlockMatrix(shape={self.shape}, blocks={len(self._blocks)}x{len(self._blocks[0])})"
+
+
 _MAP_TO_DOLFINX: dict[iElementFamily, DolfinxElementFamily] = {
     iElementFamily.LAGRANGE: DolfinxElementFamily.P,
     iElementFamily.P: DolfinxElementFamily.P,

@@ -36,7 +36,7 @@ from ufl import (  # type: ignore[import-untyped]
 )
 from ufl.argument import Argument  # type: ignore[import-untyped]
 
-from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace
+from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace, iPETScBlockMatrix
 from .spaces import FunctionSpaces
 from .bcs import BoundaryConditions, apply_periodic_constraints
 
@@ -464,7 +464,7 @@ class LinearizedNavierStokesAssembler:
         """Clear cached PETSc matrices and vectors."""
         self._cache.clear()
 
-    def extract_subblocks(self, mat: iPETScMatrix) -> dict[str, iPETScMatrix]:
+    def extract_subblocks(self, mat: iPETScMatrix) -> iPETScBlockMatrix:
         """Extract and return (vv, vp, pv, pp) from any mixed-space matrix."""
         if self._dofs_u is None or self._dofs_p is None:
             _, self._dofs_u = self._spaces.mixed.sub(0).collapse()
@@ -478,4 +478,9 @@ class LinearizedNavierStokesAssembler:
         pv = iPETScMatrix(mat.raw.createSubMatrix(is_p, is_v))
         pp = iPETScMatrix(mat.raw.createSubMatrix(is_p, is_p))
 
-        return {"vv": vv, "vp": vp, "pv": pv, "pp": pp}
+        return iPETScBlockMatrix(
+            [
+                [vv, vp],
+                [pv, pp],
+            ]
+        )
