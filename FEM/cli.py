@@ -36,7 +36,7 @@ from Meshing import Mesher, Shape
 from FEM.spaces import FunctionSpaceType, define_spaces, FunctionSpaces
 from FEM.bcs import define_bcs, BoundaryConditions
 from FEM.operators import LinearizedNavierStokesAssembler
-from FEM.plot import spy
+from FEM.plot import spy, plot_mixed_function
 from FEM.utils import iPETScMatrix
 
 from Solver.baseflow import BaseFlowSolver
@@ -76,6 +76,8 @@ def _get_baseflow(
     re: float | None = None,
     spaces: FunctionSpaces | None = None,
     bcs: BoundaryConditions | None = None,
+    *,
+    show_plot: bool = False,
 ) -> dfem.Function:
     u_base = dfem.Function(spaces.velocity)
     if base_flow_path is None:
@@ -90,6 +92,8 @@ def _get_baseflow(
         logger.info(f"Loading base flow from {base_flow_path}")
         with dfem.Function.load(spaces.velocity, base_flow_path) as f:
             u_base.x.array[:] = f.x.array[:]
+    if show_plot:
+        plot_mixed_function(u_base, scale=0.025, title="Base flow")
     return u_base
 
 
@@ -105,7 +109,7 @@ def assemble_fem(args: argparse.Namespace) -> None:
     mesher = _import_mesh(args.mesh)
     spaces = define_spaces(mesher.mesh, args.space_type)
     bcs = _import_bcs(args.bcs, mesher, spaces)
-    base_flow = _get_baseflow(args.base_flow, args.re, spaces, bcs)
+    base_flow = _get_baseflow(args.base_flow, args.re, spaces, bcs, show_plot=args.plot)
     assembler = LinearizedNavierStokesAssembler(base_flow, spaces, args.re, bcs)
 
     A, M = assembler.assemble_eigensystem()
@@ -114,8 +118,10 @@ def assemble_fem(args: argparse.Namespace) -> None:
 
     if args.plot:
         logger.info(f"Plots will be saved to: {args.output_path}/plots")
-        spy(A.to_aij(), args.output_path / "plots" / "A.svg")
-        spy(M.to_aij(), args.output_path / "plots" / "M.svg")
+        A_block = assembler.extract_subblocks(A)
+        M_block = assembler.extract_subblocks(M)
+        spy(A_block, args.output_path / "plots" / "A.png")
+        spy(M_block, args.output_path / "plots" / "M.png")
 
 
 def main():

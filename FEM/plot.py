@@ -12,11 +12,16 @@ import pyvista
 import dolfinx.fem as dfem
 from dolfinx.plot import vtk_mesh
 
-from .utils import iPETScMatrix
+from .utils import iPETScMatrix, iPETScBlockMatrix
 
 
-def spy(matrix: iPETScMatrix, out_path: Path, dpi: int = 300) -> None:
+def spy(
+    matrix: iPETScMatrix | iPETScBlockMatrix, out_path: Path, dpi: int = 300
+) -> None:
     """Plot the sparsity pattern of an iPETScMatrix as a static PNG."""
+    if isinstance(matrix, iPETScBlockMatrix):
+        matrix = matrix.to_aij()
+
     if not _is_root(matrix):
         return
 
