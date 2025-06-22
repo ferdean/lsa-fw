@@ -466,12 +466,12 @@ class TestMatrix:
             ns_vec[i] = 1.0
         ns_vec.assemble()
 
-        ns = iPETScNullSpace.create_constant_and_vectors([ns_vec])
+        ns = iPETScNullSpace.create_constant_and_vectors(A.comm, [ns_vec])
         A.attach_nullspace(ns)
 
         ns_retrieved = A.get_nullspace()
         assert ns_retrieved is not None
-        assert ns_retrieved.test(A)
+        assert ns_retrieved.test_matrix(A)
 
     def test_export_matrix(self, tmp_path: Path) -> None:
         """Test exporting matrix to binary format."""
@@ -584,14 +584,14 @@ class TestNullSpace:
         A = self._build_tridiag_matrix()
         v1 = iPETScVector.from_array(np.array([1.0, 1.0, 1.0]))
         ns = iPETScNullSpace.from_vectors([v1])
-        assert ns.test(A)
+        assert ns.test_matrix(A)
 
     def test_create_constant_and_test(self) -> None:
         """Test that create_constant() yields the all-ones nullspace for this A."""
         A = self._build_tridiag_matrix()
         ns = iPETScNullSpace.create_constant(comm=A.comm)
         assert ns.has_constant()
-        assert ns.test(A)
+        assert ns.test_matrix(A)
 
     def test_remove_constant(self) -> None:
         """Test that removing a constant nullspace subtracts the mean from the vector."""
@@ -606,10 +606,10 @@ class TestNullSpace:
         """Test that create_constant_and_vectors should include both constant and extra modes."""
         A = self._build_tridiag_matrix()
         v2 = iPETScVector.from_array(np.array([2.0, 2.0, 2.0]))
-        ns = iPETScNullSpace.create_constant_and_vectors([v2], comm=A.comm)
+        ns = iPETScNullSpace.create_constant_and_vectors(A.comm, [v2])
 
         assert ns.has_constant()
-        assert ns.test(A)
+        assert ns.test_matrix(A)
 
 
 class TestComplexVector:
