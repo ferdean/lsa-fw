@@ -1,0 +1,16 @@
+# Face tags for backward step flow
+
+[[FaceTag]]
+# Outlet
+marker = 1
+when = { axis = "x", equals = 0.0 }
+
+[[FaceTag]]
+# Inlet
+marker = 2
+when = { axis = "x", equals = 5.0 }
+
+[[FaceTag]]
+# Fallback for unmatched surfaces (e.g, walls)
+marker = 3
+otherwise = true
