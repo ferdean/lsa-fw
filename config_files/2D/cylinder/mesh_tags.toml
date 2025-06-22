@@ -8,7 +8,7 @@ when = { axis = "x", equals = 0.0 }
 [[FaceTag]]
 # Right face
 marker = 2
-when = { axis = "x", equals = 2.2 }
+when = { axis = "x", equals = 4.4 }
 
 [[FaceTag]]
 # Bottom face
