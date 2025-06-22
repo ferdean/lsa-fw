@@ -581,7 +581,6 @@ class iPETScMatrix:
 
     def export(self, path: Path) -> None:
         """Export the matrix to a binary file."""
-        # FIXME: This is currently not working
         viewer = PETSc.Viewer().createBinary(
             str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self.comm
         )
@@ -1168,7 +1167,11 @@ class iPETScNullSpace:
         self._comm = raw.getComm()
 
     def __repr__(self) -> str:
-        info = "constant" if self.has_constant() else "vector-based"
+        dim = self.dimension
+        has_const = self.has_constant()
+        info = f"{dim}-vector"
+        if has_const:
+            info = "constant + " + info
         return f"<iPETScNullSpace {info}, comm={self._comm}>"
 
     @property
@@ -1181,11 +1184,24 @@ class iPETScNullSpace:
         """MPI communicator for the null space."""
         return self._comm
 
+    @property
+    def dimension(self) -> int:
+        """Total number of basis vectors in the nullspace (including the constant, if any)."""
+        return len(self._raw.getVecs()) + (1 if self.has_constant() else 0)
+
+    @property
+    def basis(self) -> list[iPETScVector]:
+        """List of basis vectors spanning the nullspace."""
+        raw_vecs = self._raw.getVecs()
+        return [iPETScVector(v) for v in raw_vecs]
+
     @classmethod
     def from_vectors(cls, vectors: list[iPETScVector]) -> iPETScNullSpace:
         """Create a NullSpace from a list of iPETScVector basis vectors (no constant)."""
         if not vectors:
             raise ValueError("Cannot create NullSpace from empty vector list")
+        if not all(isinstance(v, iPETScVector) for v in vectors):
+            raise TypeError("from_vectors requires a list of iPETScVector")
         # Ensure all vectors share the same communicator
         comm = vectors[0].raw.comm
         for v in vectors:
@@ -1203,44 +1219,74 @@ class iPETScNullSpace:
 
     @classmethod
     def create_constant_and_vectors(
-        cls, vectors: list[iPETScVector], comm: PETSc.Comm | None = PETSc.COMM_WORLD
+        cls,
+        comm: PETSc.Comm = PETSc.COMM_WORLD,
+        vectors: list[iPETScVector] | None = None,
     ) -> iPETScNullSpace:
-        """Create a NullSpace with the constant vector and additional basis vectors."""
+        """Create a NullSpace with the constant vector and optional additional basis vectors."""
         if not vectors:
             return cls.create_constant(comm=comm)
-        base_comm = comm
-        if comm is None:
-            base_comm = vectors[0].raw.comm
+        if not all(isinstance(v, iPETScVector) for v in vectors):
+            raise TypeError(
+                "create_constant_and_vectors requires a list of iPETScVector or None"
+            )
+        # Ensure consistent communicator
+        base_comm = comm or vectors[0].raw.comm
         raw_vecs = [v.raw for v in vectors]
         ns = PETSc.NullSpace().create(constant=True, vectors=raw_vecs, comm=base_comm)
         return cls(ns)
 
     def has_constant(self) -> bool:
         """Return whether this nullspace contains the constant vector."""
-        return self.raw.hasConstant()
+        return self._raw.hasConstant()
 
-    def test(self, matrix: iPETScMatrix) -> bool:
-        """Test if this nullspace is valid for the given matrix.
+    def test_vector(
+        self, mat: iPETScMatrix, vec: iPETScVector, tol: float = 1e-12
+    ) -> tuple[bool, float]:
+        """Check if A*x ≈ 0 for one nullspace vector, returning (ok, norm)."""
+        if not isinstance(vec, iPETScVector):
+            raise TypeError("test_vector requires an iPETScVector")
+        r = mat @ vec
+        norm = r.norm
+        return (norm < tol), norm
 
-        Returns True if A*x = 0 for all nullspace vectors.
-        """
+    def test_matrix(self, mat: iPETScMatrix, tol: float = 1e-12) -> tuple[bool, float]:
+        """Test whether A*x ≈ 0 for all nullspace basis vectors, returning (ok, max_norm)."""
+        max_norm = 0.0
+        ok = True
+        for v in self.basis:
+            ok_v, n = self.test_vector(mat, v, tol=tol)
+            if not ok_v:
+                ok = False
+            max_norm = max(max_norm, n)
+        return ok, max_norm
+
+    def remove(self, vec: iPETScVector) -> None:
+        """Project out the nullspace component of vec."""
+        if not isinstance(vec, iPETScVector):
+            raise TypeError("remove requires an iPETScVector")
         try:
-            return self._raw.test(matrix.raw)
+            self._raw.remove(vec.raw)
         except Exception as e:
-            logger.warning(f"NullSpace.test failed: {e}")
-            return False
-
-    def remove(self, vector: iPETScVector) -> None:
-        """Remove all components of the null space from the given vector in-place."""
-        try:
-            self._raw.remove(vector.raw)
-        except Exception as e:
-            logger.warning(f"NullSpace.test failed: {e}")
+            logger.exception(f"NullSpace.remove failed: {e}")
+            raise
 
     def attach_to(self, mat: iPETScMatrix) -> None:
         """Attach this nullspace to an iPETScMatrix (sets both NullSpace and NearNullSpace)."""
-        mat.raw.setNullSpace(self.raw)
-        mat.raw.setNearNullSpace(self.raw)
+        mat.raw.setNullSpace(self._raw)
+        mat.raw.setNearNullSpace(self._raw)
+
+    def detach_from(self, mat: iPETScMatrix) -> None:
+        """Detach this nullspace from an iPETScMatrix."""
+        mat.raw.setNullSpace(None)
+        mat.raw.setNearNullSpace(None)
+
+    def destroy(self) -> None:
+        """Destroy the PETSc NullSpace object, freeing underlying resources."""
+        try:
+            self._raw.destroy()
+        except Exception as e:
+            logger.warning(f"NullSpace.destroy failed: {e}")
 
 
 _MAP_TO_DOLFINX: dict[iElementFamily, DolfinxElementFamily] = {
