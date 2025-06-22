@@ -1,7 +1,8 @@
 dim = 2
-# FIXME: inlet/outlet name are wrong
 inlet_length = 3.0
-step_height = 0.4
-outlet_length = 2.0
-channel_height = 1.5
-resolution = 0.1
+step_height = 0.5
+# width = 0.4
+outlet_length = 5.5
+channel_height = 0.9
+resolution = 0.075
+refinement_factor = 0.5

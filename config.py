@@ -134,6 +134,8 @@ class StepFlowGeometryConfig:
     """Base mesh element size."""
     width: float | None = None
     """Width of the channel (required only for 3D)."""
+    refinement_factor: float | None = None
+    """Refinement factor in the step area."""
 
 
 def load_step_flow_config(path: Path) -> StepFlowGeometryConfig:
