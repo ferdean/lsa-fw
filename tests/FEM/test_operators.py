@@ -1,6 +1,7 @@
 """Tests for FEM.operators module."""
 
 import pytest
+import numpy as np
 
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
@@ -9,7 +10,6 @@ from Meshing import Mesher, Shape, iCellType
 
 from FEM.operators import LinearizedNavierStokesAssembler
 from FEM.spaces import FunctionSpaces, define_spaces, FunctionSpaceType
-from FEM.utils import iMeasure
 from FEM.bcs import (
     BoundaryCondition,
     BoundaryConditionType,
@@ -55,7 +55,7 @@ def test_bcs(test_mesher: Mesher, test_spaces: FunctionSpaces) -> None:
 @pytest.fixture(scope="module")
 def zero_base_flow(test_spaces: FunctionSpaces) -> dfem.Function:
     """Define a zero velocity field on the velocity space."""
-    u_base = dfem.Function(test_spaces.velocity)
+    u_base = dfem.Function(test_spaces.mixed)
     u_base.x.array[:] = 0.0
     return u_base
 
@@ -72,173 +72,161 @@ def test_assembler(
     )
 
 
-# @pytest.fixture
-# def steady_assembler(
-#     test_spaces: FunctionSpaces, test_bcs: BoundaryConditions
-# ) -> SteadyNavierStokesAssembler:
-#     """Define a steady NavierStokes assembler with zero body force."""
-#     return SteadyNavierStokesAssembler(spaces=test_spaces, re=10.0, bcs=test_bcs)
-
-
-@pytest.mark.skip
 class TestLinearizedAssembler:
     """Tests for the perturbed flow assembler."""
 
-    def test_shapes(
-        self,
-        test_assembler: LinearizedNavierStokesAssembler,
-        test_spaces: FunctionSpaces,
-    ) -> None:
-        """Test that all assembled operator shapes match the expected dimensions."""
-        u_dofs, _ = test_spaces.velocity_dofs
-        p_dofs, _ = test_spaces.pressure_dofs
-
-        viscous = test_assembler.assemble_viscous_matrix()
-        convection = test_assembler.assemble_convection_matrix()
-        shear = test_assembler.assemble_shear_matrix()
-        grad = test_assembler.assemble_pressure_gradient_matrix()
-        div = test_assembler.assemble_divergence_matrix()
-        mass = test_assembler.assemble_mass_matrix()
-
-        assert viscous.shape == (u_dofs, u_dofs)
-        assert convection.shape == (u_dofs, u_dofs)
-        assert shear.shape == (u_dofs, u_dofs)
-        assert grad.shape == (u_dofs, p_dofs)
-        assert div.shape == (p_dofs, u_dofs)
-        assert mass.shape == (u_dofs, u_dofs)
-
-    def test_operator_nonzero_entries(
+    def test_linear_operator_shape(
         self, test_assembler: LinearizedNavierStokesAssembler
-    ):
-        """Test that all assembled operators have non-zero entries."""
-        assert test_assembler.assemble_mass_matrix().nonzero_entries > 0
-        assert test_assembler.assemble_viscous_matrix().nonzero_entries > 0
-        assert (
-            test_assembler.assemble_convection_matrix().nonzero_entries
-            >= 0  # u_base = 0
-        )
-        assert test_assembler.assemble_shear_matrix().nonzero_entries >= 0  # u_base = 0
-        assert test_assembler.assemble_pressure_gradient_matrix().nonzero_entries > 0
-        assert test_assembler.assemble_divergence_matrix().nonzero_entries > 0
-
-    def test_matrix_symmetry_stokes(
-        self,
-        test_assembler: LinearizedNavierStokesAssembler,
     ) -> None:
-        """Test that the assembled viscous matrix is (numerically) symmetric."""
-        A = test_assembler.assemble_viscous_matrix()
-        assert A.is_numerically_symmetric()
+        """Test that the assembled linear operator shapes match the expected dimensions."""
+        n_u, _ = test_assembler.spaces.velocity_dofs
+        n_p, _ = test_assembler.spaces.pressure_dofs
+
+        L = test_assembler.assemble_linear_operator()
+
+        assert L.shape == (n_u + n_p, n_u + n_p)
+
+    def test_mass_shape(self, test_assembler: LinearizedNavierStokesAssembler) -> None:
+        """Test that the assembled linear operator shapes match the expected dimensions."""
+        n_u, _ = test_assembler.spaces.velocity_dofs
+        n_p, _ = test_assembler.spaces.pressure_dofs
+
+        M = test_assembler.assemble_mass_matrix()
+
+        assert M.shape == (n_u + n_p, n_u + n_p)
 
     def test_mass_matrix_positive_definite(
-        self,
-        test_assembler: LinearizedNavierStokesAssembler,
+        self, test_assembler: LinearizedNavierStokesAssembler
     ) -> None:
         """Verify that the mass matrix is symmetric positive definite."""
         M = test_assembler.assemble_mass_matrix()
 
-        x = M.create_vector_right()
-        x.set_random()
-
         assert M.is_numerically_symmetric()
-        assert x.dot(M @ x) > 0
+        for _ in range(10):
+            x = M.create_vector_right()
+            x.set_random()
+            assert x.dot(M @ x) > 0
+            del x  # Garbage-collect vector to ensure randomization
+
+    def test_mass_subblocks(self, test_assembler: LinearizedNavierStokesAssembler):
+        """Check mass subblocks."""
+        M = test_assembler.assemble_mass_matrix()
+        blocks = test_assembler.extract_subblocks(M)
+
+        n_u, _ = test_assembler.spaces.velocity_dofs
+
+        Mv = blocks[0, 0]
+
+        assert Mv.shape == (n_u, n_u)
+        assert Mv.is_numerically_symmetric()
+        for _ in range(10):
+            y = Mv.create_vector_right()
+            y.set_random()
+            assert y.dot(Mv @ y) > 0
+
+        # All other blocks should be zero
+        assert blocks[0, 1].norm < 1e-10  # vp
+        assert blocks[1, 0].norm < 1e-10  # pv
+        assert blocks[1, 1].norm < 1e-10  # pp
+
+    def test_linear_operator_subblocks(
+        self, test_assembler: LinearizedNavierStokesAssembler
+    ) -> None:
+        """Check that the assembled operator and its true sub-blocks are non-empty where expected."""
+        L = test_assembler.assemble_linear_operator()
+        # The full operator must have non-zero entries
+        assert L.norm > 0
+
+        blocks = test_assembler.extract_subblocks(L)
+        # Velocity–velocity block must be non-zero
+        assert blocks[0, 0].norm > 0
+        # Gradient and divergence blocks should both be non-zero
+        assert blocks[1, 0].norm > 0
+        assert blocks[0, 1].norm > 0
+        # Pressure–pressure block should be zero
+        assert blocks[1, 1].norm < 1e-10
 
     def test_gradient_divergence_adjoints(
-        self,
-        zero_base_flow: dfem.Function,
-        test_spaces: FunctionSpaces,
+        self, test_assembler: LinearizedNavierStokesAssembler
     ) -> None:
-        """Test that the gradient and divergence matrices are adjoint to each other."""
-        assembler = LinearizedNavierStokesAssembler(
-            base_flow=zero_base_flow, spaces=test_spaces, re=1.0
-        )
+        """Test that the gradient and divergence matrices are adjoint to each other.
 
-        G = assembler.assemble_pressure_gradient_matrix()
-        D = assembler.assemble_divergence_matrix()
+        Note that, since the pressure is defined with a negative sign, the adjoint condition is actually D = - G^T.
+        """
+        L = test_assembler.assemble_linear_operator()
+        subblocks = test_assembler.extract_subblocks(L)
 
-        D.axpy(-1.0, G.T)  # D - G^T
+        G = subblocks[0, 1]
+        D = subblocks[1, 0]
+
+        D.axpy(1.0, G.T)  # D + G^T
         assert D.norm < 1e-10
 
-    def test_robin_matrix_zero_if_none(
+    def test_pressure_nullspace(
         self, test_assembler: LinearizedNavierStokesAssembler
-    ):
-        """Test that the Robin matrix is zero if no Robin forms are provided."""
-        R = test_assembler.assemble_robin_matrix()
-        assert R.nonzero_entries == 0
-        assert R.norm == 0.0
+    ) -> None:
+        """Test that the attached nullspace contains exactly the constant-pressure mode."""
+        A, _ = test_assembler.assemble_eigensystem()
+        ns = A.get_nullspace()
+        assert ns is not None
 
-    def test_assemble_linear_operator_structure(
-        self,
-        test_assembler: LinearizedNavierStokesAssembler,
-        test_spaces: FunctionSpaces,
-    ):
-        """Test that the linear operator is a 2x2 block with correct submatrix shapes."""
-        mat = test_assembler.assemble_linear_operator()
-        n_u, _ = test_spaces.velocity_dofs
-        n_p, _ = test_spaces.pressure_dofs
+        # Should be exactly one null vector (the constant-pressure mode)
+        assert ns.dimension == 1
+        basis = ns.basis
+        assert len(basis) == 1
 
-        A_block = mat.sub(0, 0)
-        G_block = mat.sub(0, 1)
-        D_block = mat.sub(1, 0)
-        zero_block = mat.sub(1, 1)
+        # Build a 'pure' pressure vector: ones on p-dofs, zero elsewhere
+        mixed = test_assembler.spaces.mixed
+        _, dofs_p = mixed.sub(1).collapse()
+        x = A.create_vector_right()
+        arr = np.zeros((x.size,), dtype=float)
+        arr[dofs_p] = 1.0
+        x.set_array(arr)
+        x.ghost_update()
 
-        assert A_block is not None
-        assert G_block is not None
-        assert D_block is not None
-        # PETSc creates an uninitialized submatrix for the zero block. Trying to access any of its expected properties
-        # or methods would raise a runtime error at c++ level (then, a natural check for .nonzero_entries == 0 or
-        # .norm() == 0.0 cannot be done)
-        assert zero_block is None
+        # Test that the basis vector itself is in the nullspace
+        ok_b, norm_b = ns.test_vector(A, basis[0])
+        assert ok_b, f"Basis vector failed nullspace test (residual norm={norm_b:.2e})"
 
-        assert mat.shape == (n_u + n_p, n_u + n_p)
-        assert A_block.shape == (n_u, n_u)
-        assert G_block.shape == (n_u, n_p)
-        assert D_block.shape == (n_p, n_u)
+        # Test that the constructed pressure-only vector is in the nullspace
+        ok_x, norm_x = ns.test_vector(A, x)
+        assert (
+            ok_x
+        ), f"Pressure vector failed nullspace test (residual norm={norm_x:.2e})"
 
-    def test_assemble_eigensystem_properties(
-        self,
-        test_assembler: LinearizedNavierStokesAssembler,
-    ):
-        """Test shape and symmetry of eigenvalue system components."""
-        A, M = test_assembler.assemble_eigensystem()
-        assert A.shape == M.shape
+        # Test the whole nullspace against the matrix
+        ok_all, norm_all = ns.test_matrix(A)
+        assert (
+            ok_all
+        ), f"NullSpace.test_matrix failed (max residual norm={norm_all:.2e})"
 
-        M_v_block = M.sub(0, 0)
-        M_v = test_assembler.assemble_mass_matrix()
+        # Remove the nullspace component from x and check it goes to zero
+        ns.remove(x)
+        x.ghost_update()
+        assert x.norm < 1e-12, f"NullSpace.remove left nonzero norm={x.norm:.2e}"
 
-        assert M_v_block is not None
-        assert M_v == M_v_block
-        # Note that M_v has been tested to be SPD in `test_mass_matrix_positive_definite`
+    def test_cache(self, test_assembler: LinearizedNavierStokesAssembler) -> None:
+        """Verify that specifying the same key reuses the cache, and different keys give new objects."""
+        A1 = test_assembler.assemble_linear_operator(key="A")
+        A2 = test_assembler.assemble_linear_operator(key="A")
+        assert A1 is A2, "Same key should return the cached matrix"
 
-    def test_assemble_neumann_rhs_format(
-        self,
-        zero_base_flow: dfem.Function,
-        test_spaces: FunctionSpaces,
-        test_mesher: Mesher,
-    ):
-        """Test assembly of Neumann RHS with dummy function."""
-        test_mesher.mark_boundary_facets(
-            lambda x: 1  # Mark all boundary facets with marker '1'
-        )
-        g = dfem.Function(test_spaces.velocity)
-        g.x.array[:] = 1.0  # Constant vector field
-        ds = iMeasure.ds(test_mesher.mesh, test_mesher.facet_tags)
+        A3 = test_assembler.assemble_linear_operator(key="B")
+        assert A3 is not A1, "Different key should force a rebuild"
 
-        assembler = LinearizedNavierStokesAssembler(
-            base_flow=zero_base_flow, spaces=test_spaces, re=1.0
-        )
+        # After clear_cache, even same key must rebuild
+        test_assembler.clear_cache()
+        A4 = test_assembler.assemble_linear_operator(key="A")
+        assert A4 is not A1, "clear_cache should invalidate previous entries"
 
-        rhs = assembler.assemble_neumann_rhs(g, ds)
-        n_u, _ = test_spaces.velocity_dofs
-        assert rhs.size == n_u
+        # Repeat for mass matrix
+        M1 = test_assembler.assemble_mass_matrix(key="M")
+        M2 = test_assembler.assemble_mass_matrix(key="M")
+        assert M1 is M2, "Same key should return the cached mass matrix"
 
-    def test_clear_cache(self, test_assembler: LinearizedNavierStokesAssembler):
-        """Test that clearing the cache causes recomputation."""
-        mat_1 = test_assembler.assemble_viscous_matrix()
-        id_before = mat_1.raw.handle
+        M3 = test_assembler.assemble_mass_matrix(key="N")
+        assert M3 is not M1, "Different key should force rebuild of mass matrix"
 
         test_assembler.clear_cache()
-
-        mat_2 = test_assembler.assemble_viscous_matrix()
-        id_after = mat_2.raw.handle
-
-        assert id_before != id_after  # PETSc handle should change after recomputation
+        M4 = test_assembler.assemble_mass_matrix(key="M")
+        assert M4 is not M1, "clear_cache should also invalidate mass matrix entries"

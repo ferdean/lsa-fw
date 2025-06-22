@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 setup_logging(verbose=True)
 
 _CFG_DIR: typing.Final[Path] = Path("config_files/2D/cylinder")
-_RE: typing.Final[float] = 80.0
+_RE: typing.Final[float] = 100.0
 
 # Generate mesh
 cylinder_cfg = load_cylinder_flow_config(_CFG_DIR / "cylinder_flow.toml")
@@ -41,7 +41,7 @@ baseflow_solver = BaseFlowSolver(spaces, bcs=bcs)
 baseflow = baseflow_solver.solve(
     _RE,
     ramp=True,
-    steps=5,
+    steps=3,
     damping_factor=1.0,  # Undamped Newton solve
     show_plot=True,
 )

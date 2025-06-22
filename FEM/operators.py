@@ -9,7 +9,6 @@ including mass, viscous, convection, shear, pressure, and divergence operators.
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Callable
 
 import numpy as np
 import dolfinx.fem as dfem
@@ -22,10 +21,9 @@ from dolfinx.fem.petsc import (
 from petsc4py import PETSc
 from ufl import (  # type: ignore[import-untyped]
     dx,
-    TrialFunction,
-    TestFunction,
     TestFunctions,
     TrialFunctions,
+    nabla_grad,
     derivative,
     Form,
     inner,
@@ -38,11 +36,35 @@ from ufl import (  # type: ignore[import-untyped]
 )
 from ufl.argument import Argument  # type: ignore[import-untyped]
 
-from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace
+from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace, iPETScBlockMatrix
 from .spaces import FunctionSpaces
 from .bcs import BoundaryConditions, apply_periodic_constraints
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_bcs(bcs: BoundaryConditions | None) -> tuple[
+    list[dfem.DirichletBC],
+    list[dfem.DirichletBC],
+    list[Form],
+    list[Form],
+    list[dict[int, int]],
+    list[dict[int, int]],
+]:
+    if bcs is None:
+        return [], [], [], [], [], []
+    velocity_bcs = [bc for _, bc in bcs.velocity]
+    pressure_bcs = [bc for _, bc in bcs.pressure]
+    neumann_forms = [form for _, form in bcs.neumann_forms]
+    robin_forms = [form for _, form in bcs.robin_forms]
+    return (
+        velocity_bcs,
+        pressure_bcs,
+        neumann_forms,
+        robin_forms,
+        bcs.velocity_periodic_map,
+        bcs.pressure_periodic_map,
+    )
 
 
 class BaseAssembler(ABC):
@@ -55,9 +77,9 @@ class BaseAssembler(ABC):
             self._p_bcs,
             self._neumann_forms,
             self._robin_forms,
-            self._u_maps,
-            self._p_maps,
-        ) = self._get_bcs(bcs)
+            self._uaps,
+            self._paps,
+        ) = _extract_bcs(bcs)
         self._spaces = spaces
         self._mat_cache: dict[str, iPETScMatrix] = {}
         self._vec_cache: dict[str, iPETScVector] = {}
@@ -98,33 +120,6 @@ class BaseAssembler(ABC):
         """Clear cached PETSc matrices and vectors."""
         self._mat_cache.clear()
         self._vec_cache.clear()
-
-    @staticmethod
-    def _get_bcs(
-        bcs: BoundaryConditions | None,
-    ) -> tuple[
-        list[dfem.DirichletBC],
-        list[dfem.DirichletBC],
-        list[Form],
-        list[Form],
-        list[dict[int, int]],
-        list[dict[int, int]],
-    ]:
-        """Extract boundary conditions."""
-        if bcs is None:
-            return [], [], [], [], [], []
-        velocity_bcs = [bc for _, bc in bcs.velocity]
-        pressure_bcs = [bc for _, bc in bcs.pressure]
-        neumann_forms = [form for _, form in bcs.neumann_forms]
-        robin_forms = [form for _, form in bcs.robin_forms]
-        return (
-            velocity_bcs,
-            pressure_bcs,
-            neumann_forms,
-            robin_forms,
-            bcs.velocity_periodic_map,
-            bcs.pressure_periodic_map,
-        )
 
     def _apply_dirichlet(self, fn: dfem.Function | PETSc.Vec) -> None:
         """Apply Dirichlet BCs in-place."""
@@ -187,6 +182,10 @@ class StokesAssembler(BaseAssembler):
             - inner(self._f, self._v) * dx
         )
 
+        # NOTE: the pressure term seems to have the incorrect sign. This is done deliberately, so that the resulting
+        # block system is symmetric. This symmetry lets us reuse later symmetric solvers and pre-conditioners for both
+        # the Stokes and Navier–Stokes operators.
+
         for bc in self._neumann_forms:
             form += bc
 
@@ -198,12 +197,12 @@ class StokesAssembler(BaseAssembler):
         key_res = f"res_{id(self._residual)}"
 
         if key_jac not in self._mat_cache:
-            A = assemble_matrix(dfem.form(self._jacobian), bcs=self.bcs)
+            A = assemble_matrix(self.jacobian, bcs=self.bcs)
             A.assemble()
             self._mat_cache[key_jac] = iPETScMatrix(A)
 
         if key_res not in self._vec_cache:
-            b = assemble_vector(dfem.form(self._residual))
+            b = assemble_vector(self.residual)
             dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [self.bcs])
             self._apply_dirichlet(b)
             self._vec_cache[key_res] = iPETScVector(b)
@@ -239,6 +238,9 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         self._u, self._p = split(self._wh)
         self._apply_dirichlet(self._wh)
 
+        # TODO: check handling of neumann and robin conditions
+        # TODO: handle periodic constraints
+
         self._residual, self._jacobian = self._build_forms()
 
         logger.info("Stationary Navier Stokes assembler has been initialized.")
@@ -256,14 +258,16 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         return self._wh
 
     def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
-        convection = inner(dot(self._u, grad(self._u)), self._v) * dx
+        convection = inner(dot(self._u, nabla_grad(self._u)), self._v) * dx
         diffusion = (1 / self._re) * inner(grad(self._u), grad(self._v)) * dx
         pressure = (
-            -inner(self._p, div(self._v)) * dx + inner(div(self._u), self._q) * dx
+            +inner(self._p, div(self._v)) * dx + inner(div(self._u), self._q) * dx
         )
         forcing = -inner(self._f, self._v) * dx
 
         form = convection + diffusion + pressure + forcing
+
+        # NOTE: If the pressure sign seems incorrect, refer to StokesAssembler._build_forms
 
         for bc in self._neumann_forms:
             form += bc
@@ -303,7 +307,7 @@ class VariationalForms:
     @staticmethod
     def convection(u: Argument, v: Argument, u_base: dfem.Function) -> Form:
         """Convection operator."""
-        return inner(dot(u_base, grad(u)), v) * dx
+        return inner(dot(u_base, nabla_grad(u)), v) * dx
 
     @staticmethod
     def shear(u: Argument, v: Argument, u_base: dfem.Function) -> Form:
@@ -315,12 +319,16 @@ class VariationalForms:
         """Pressure gradient operator.
 
         Refer to the module documentation and to the unit tests to understand the sign convention.
+        Leading minus makes the G block =-D^T and yields a symmetric saddle point.
         """
-        return p * div(v) * dx
+        return -inner(p, div(v)) * dx
 
     @staticmethod
     def viscous(u: Argument, v: Argument, re: float) -> Form:
         """Viscous operator."""
+        # TODO: Determine whether the scalar `re` must be wrapped as a UFL object (e.g., Constant or Parameter) to
+        # support differentiation. We would need dL/dRe for the adjoint analysis, so ensure the linear operator assembly
+        # is compatible with UFL's automatic differentiation
         return (1.0 / re) * inner(grad(u), grad(v)) * dx
 
     @staticmethod
@@ -340,7 +348,11 @@ class VariationalForms:
 
 
 class LinearizedNavierStokesAssembler:
-    """Finite element operator assembler for linearized Navier-Stokes equations."""
+    """FEM assembler for the linearized Navier-Stokes operator around a stationary base flow.
+
+    Builds each operator block on the corresponding mixed subspace so that the original mixed-space BCs apply
+    correctly.
+    """
 
     def __init__(
         self,
@@ -348,228 +360,127 @@ class LinearizedNavierStokesAssembler:
         spaces: FunctionSpaces,
         re: float,
         bcs: BoundaryConditions | None = None,
-    ):
-        """Initialize the assembler."""
-        if base_flow.function_space != spaces.velocity:
+    ) -> None:
+        """Initialize."""
+        if base_flow.function_space != spaces.mixed:
             raise ValueError(
-                "Base flow must be defined on the same function space as the velocity."
+                "Base flow must live on the same mixed space as the solution."
             )
 
-        self._base_flow = base_flow
+        (
+            self._u_bcs,
+            self._p_bcs,
+            self._neumann_forms,
+            self._robin_forms,
+            self._uaps,
+            self._paps,
+        ) = _extract_bcs(bcs)
+
+        self._u_base = base_flow.sub(0)  # Base flow velocity component
+        self._spaces = spaces
         self._re = re
         self._dtype = PETSc.ScalarType
-
-        self._spaces = spaces
+        self._cache: dict[str, iPETScMatrix] = {}
         self._nullspace: iPETScNullSpace | None = None
 
-        self._u, self._p = self._get_trial_functions(spaces)
-        self._v, self._q = self._get_test_functions(spaces)
+        self._u, self._p = TrialFunctions(self._spaces.mixed)
+        self._v, self._q = TestFunctions(self._spaces.mixed)
 
-        self._matrix_cache: dict[str, iPETScMatrix] = {}
+        self._dofs_u: list[int] | None = None
+        self._dofs_p: list[int] | None = None
 
-    @staticmethod
-    def _get_test_functions(
-        spaces: FunctionSpaces,
-    ) -> tuple[Argument, Argument]:
-        return TestFunction(spaces.velocity), TestFunction(spaces.pressure)
+    @property
+    def bcs(self) -> tuple[dfem.DirichletBC]:
+        return (*self._u_bcs, *self._p_bcs)
 
-    @staticmethod
-    def _get_trial_functions(
-        spaces: FunctionSpaces,
-    ) -> tuple[Argument, Argument]:
-        return TrialFunction(spaces.velocity), TrialFunction(spaces.pressure)
+    @property
+    def spaces(self) -> FunctionSpaces:
+        return self._spaces
 
-    @staticmethod
-    def _assemble(
-        bilinear_form: Form, dirichlet_bcs: list[dfem.DirichletBC], dtype: np.dtype
-    ) -> iPETScMatrix:
-        ufl_form = dfem.form(bilinear_form, dtype=dtype)
-        a_petsc = assemble_matrix(ufl_form, bcs=dirichlet_bcs)
-        return iPETScMatrix(a_petsc)
+    def assemble_linear_operator(self, *, key: str | int | None = None) -> iPETScMatrix:
+        """Assemble the full linear operator."""
+        key = key or f"lin_ns_{id(self)}"
+        if key not in self._cache:
+            shear = VariationalForms.shear(self._u, self._v, self._u_base)
+            convection = VariationalForms.convection(self._u, self._v, self._u_base)
+            viscous = VariationalForms.viscous(self._u, self._v, self._re)
+            gradient = VariationalForms.pressure_gradient(self._p, self._v)
+            divergence = VariationalForms.divergence(self._u, self._q)
 
-    def _get_or_compute_matrix(
-        self, key: str, assembler: Callable[[], iPETScMatrix]
-    ) -> iPETScMatrix:
-        if key not in self._matrix_cache:
-            logger.debug(f"Computing and caching matrix: {key}")
-            self._matrix_cache[key] = assembler()
-        return self._matrix_cache[key]
+            full_form = shear + convection + viscous + gradient + divergence
 
-    def _apply_periodic_constraint(
-        self, obj: iPETScMatrix | iPETScVector
-    ) -> iPETScMatrix | iPETScVector:
-        for pmap in self._u_maps + self._p_maps:
-            apply_periodic_constraints(obj, pmap)
-        return obj
+            mat = assemble_matrix(dfem.form(full_form, dtype=self._dtype), bcs=self.bcs)
+            mat.assemble()
+            A = iPETScMatrix(mat)
 
-    def assemble_mass_matrix(self) -> iPETScMatrix:
-        """Assemble mass matrix."""
-        logger.info("Assembling mass matrix.")
-        return self._get_or_compute_matrix(
-            "mass",
-            lambda: self._assemble(
-                VariationalForms.mass(self._u, self._v),
-                self._u_bcs,
-                self._dtype,
-            ),
-        )
+            for pmap in (*self._uaps, *self._paps):
+                apply_periodic_constraints(A, pmap)
 
-    def assemble_convection_matrix(self) -> iPETScMatrix:
-        """Assemble convection matrix."""
-        return self._get_or_compute_matrix(
-            "convection",
-            lambda: self._assemble(
-                VariationalForms.convection(self._u, self._v, self._base_flow),
-                self._u_bcs,
-                self._dtype,
-            ),
-        )
+            self._cache[key] = A
+        return self._cache[key]
 
-    def assemble_shear_matrix(self) -> iPETScMatrix:
-        """Assemble shear matrix."""
-        return self._get_or_compute_matrix(
-            "shear",
-            lambda: self._assemble(
-                VariationalForms.shear(self._u, self._v, self._base_flow),
-                self._u_bcs,
-                self._dtype,
-            ),
-        )
+    def assemble_mass_matrix(self, *, key: str | int | None = None) -> iPETScMatrix:
+        """Assemble the mass matrix."""
+        key = key or f"mass_ns_{id(self)}"
+        if key not in self._cache:
+            mass_form = VariationalForms.mass(self._u, self._v)
 
-    def assemble_pressure_gradient_matrix(self) -> iPETScMatrix:
-        """Assemble pressure gradient matrix."""
-        return self._get_or_compute_matrix(
-            "pressure_gradient",
-            lambda: self._assemble(
-                VariationalForms.pressure_gradient(self._p, self._v),
-                self._p_bcs,
-                self._dtype,
-            ),
-        )
+            mat = assemble_matrix(dfem.form(mass_form, dtype=self._dtype), bcs=self.bcs)
+            mat.assemble()
+            M = iPETScMatrix(mat)
 
-    def assemble_viscous_matrix(self) -> iPETScMatrix:
-        """Assemble viscous matrix."""
-        return self._get_or_compute_matrix(
-            "viscous",
-            lambda: self._assemble(
-                VariationalForms.viscous(self._u, self._v, self._re),
-                self._u_bcs,
-                self._dtype,
-            ),
-        )
+            for pmap in (*self._uaps, *self._paps):
+                apply_periodic_constraints(M, pmap)
 
-    def assemble_divergence_matrix(self) -> iPETScMatrix:
-        """Assemble divergence matrix."""
-        return self._get_or_compute_matrix(
-            "divergence",
-            lambda: self._assemble(
-                VariationalForms.divergence(self._u, self._q),
-                self._u_bcs,
-                self._dtype,
-            ),
-        )
+            self._cache[key] = M
 
-    def assemble_robin_matrix(self) -> iPETScMatrix:
-        """Assemble matrix contribution from Robin boundary conditions.
-
-        If Robin forms are defined separately per boundary (as is typical), this assumes they are summed at runtime.
-        """
-        return self._get_or_compute_matrix(
-            "robin",
-            lambda: (
-                iPETScMatrix.zeros(
-                    (self._spaces.velocity_dofs[0], self._spaces.velocity_dofs[0]),
-                    comm=self._base_flow.function_space.mesh.comm,
-                )
-                if not self._robin_forms
-                else self._assemble(sum(self._robin_forms), self._u_bcs)
-            ),
-        )
-
-    def assemble_linear_operator(self) -> iPETScMatrix:
-        """Assemble the full linear operator. Refer to the module documentation for nomenclature details."""
-        logger.info("Assembling full linear NS operator.")
-
-        # @FIXME: This matrix addition gives problems when running in different ranks (MPI),
-        # as the addition finds matrix size mismatches
-
-        A = (
-            self.assemble_shear_matrix()  # C1
-            + self.assemble_convection_matrix()  # C2
-            + self.assemble_viscous_matrix()  # B
-            + self.assemble_robin_matrix()  # R
-        )
-
-        G = self.assemble_pressure_gradient_matrix()
-        D = self.assemble_divergence_matrix()
-
-        L = iPETScMatrix.from_nested(
-            [
-                [A.raw, G.raw],
-                [D.raw, None],
-            ]
-        )
-
-        return self._apply_periodic_constraint(L)
+        return self._cache[key]
 
     def assemble_eigensystem(self) -> tuple[iPETScMatrix, iPETScMatrix]:
-        """Assemble the generalized eigenvalue system (A, M).
-
-        Refer to the module documentation for nomenclature details.
-        """
-        logger.info("Assembling generalized eigenvalue system (A, M).")
-
-        n_p, _ = self._spaces.pressure_dofs
-
+        """Return (A, M) for eigenproblem; attach constant-pressure nullspace."""
         A = self.assemble_linear_operator()
-        M_v = self.assemble_mass_matrix()
-        M_p = iPETScMatrix.zeros((n_p, n_p), comm=M_v.comm)
-
-        M = iPETScMatrix.from_nested(
-            [
-                [M_v.raw, None],
-                [None, M_p.raw],
-            ]
-        )
-        M = self._apply_periodic_constraint(M)
-
+        M = self.assemble_mass_matrix()
         self.attach_pressure_nullspace(A)
         self.attach_pressure_nullspace(M)
-
         return A, M
 
-    def assemble_neumann_rhs(self, g: dfem.Function, ds: Measure) -> iPETScVector:
-        """Assemble the Neumann boundary condition RHS contribution."""
-        logger.info("Assembling Neumann boundary condition RHS.")
-        form = dfem.form(
-            VariationalForms.neumann_rhs(self._v, g, ds), dtype=self._dtype
-        )
-        vec = assemble_vector(form)
-        dfem.apply_lifting(vec, [form], bcs=[self._u_bcs])
-        vec.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-        for bc in self._u_bcs:
-            bc.set(vec)
+    def attach_pressure_nullspace(self, mat: iPETScMatrix) -> None:
+        """Attach constant-pressure nullspace to a mixed-space matrix."""
+        if self._nullspace is None:
+            if self._dofs_u is None or self._dofs_p is None:
+                _, self._dofs_u = self._spaces.mixed.sub(0).collapse()
+                _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
 
-        return self._apply_periodic_constraint(iPETScVector(vec))
+            arr = np.zeros((len(self._dofs_u + self._dofs_p),), dtype=self._dtype)
+            arr[self._dofs_p] = 1.0
+            vec = iPETScVector.from_array(arr, comm=mat.comm)
+            vec.scale(1 / vec.norm)
+
+            self._nullspace = iPETScNullSpace.from_vectors([vec])
+
+        self._nullspace.attach_to(mat)
 
     def clear_cache(self) -> None:
-        """Clear the internal matrix cache."""
-        logger.info("Clearing matrix cache.")
-        self._matrix_cache.clear()
+        """Clear cached PETSc matrices and vectors."""
+        self._cache.clear()
 
-    def attach_pressure_nullspace(self, mat: iPETScMatrix) -> None:
-        """Attach constant-pressure nullspace to PETSc matrix.
+    def extract_subblocks(self, mat: iPETScMatrix) -> iPETScBlockMatrix:
+        """Extract and return (vv, vp, pv, pp) from any mixed-space matrix."""
+        if self._dofs_u is None or self._dofs_p is None:
+            _, self._dofs_u = self._spaces.mixed.sub(0).collapse()
+            _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
 
-        This method informs PETSc that the matrix has a known nullspace (constant pressure mode), allowing compatible
-        Krylov solvers to handle it correctly without pinning.
-        """
-        logger.info("Attaching constant-pressure nullspace to matrix %s.", mat)
+        is_v = PETSc.IS().createGeneral(self._dofs_u, comm=mat.comm)
+        is_p = PETSc.IS().createGeneral(self._dofs_p, comm=mat.comm)
 
-        if self._nullspace is None:
-            n_v, _ = self._spaces.velocity_dofs
-            n_p, _ = self._spaces.pressure_dofs
-            arr = np.concatenate([np.zeros(n_v), np.ones(n_p)])
-            vec = iPETScVector.from_array(arr, comm=mat.comm)
-            self._nullspace = iPETScNullSpace.create_constant_and_vectors(vectors=[vec])
+        vv = iPETScMatrix(mat.raw.createSubMatrix(is_v, is_v))
+        vp = iPETScMatrix(mat.raw.createSubMatrix(is_v, is_p))
+        pv = iPETScMatrix(mat.raw.createSubMatrix(is_p, is_v))
+        pp = iPETScMatrix(mat.raw.createSubMatrix(is_p, is_p))
 
-        mat.attach_nullspace(self._nullspace)
+        return iPETScBlockMatrix(
+            [
+                [vv, vp],
+                [pv, pp],
+            ]
+        )
