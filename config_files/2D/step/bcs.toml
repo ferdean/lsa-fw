@@ -1,12 +1,12 @@
 [[BC]]
 # Inlet
-marker = 2
+marker = 1
 type = "dirichlet_velocity"
-value = [-3.0, 0.0]
+value = [3.0, 0.0]
 
 [[BC]]
 # Outlet
-marker = 1
+marker = 2
 type = "dirichlet_pressure"
 value = 0.0
 
