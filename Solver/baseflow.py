@@ -35,7 +35,7 @@ from petsc4py import PETSc
 from FEM.bcs import BoundaryConditions
 from FEM.operators import StokesAssembler, StationaryNavierStokesAssembler
 from FEM.plot import plot_mixed_function
-from FEM.spaces import FunctionSpaces
+from FEM.spaces import FunctionSpaces, define_spaces, FunctionSpaceType
 
 from .linear import LinearSolver
 from .nonlinear import NewtonSolver
@@ -111,49 +111,85 @@ class BaseFlowSolver:
 
 
 # HACK: In theory, the dolfinx API should be sufficient to export/import function objects. However, up to now,
-# we found several issues when exporting the actual function values (`write_function` method). These functions
-# are workarounds
+# writing or reading a mixed-function (e.g., a Taylor–Hood mixed P2/P1) directly can lead to low-level crashes
+# or mismatches because PETSc binary views and XDMF I/O expect a single continuous Lagrange field of matching
+# polynomial degree. Mixed spaces must be split into their subcomponents (velocity and pressure), and even
+# then the degree of the output must match the mesh degree to avoid I/O failures. As a workaround, we optionally
+# interpolate the P2 velocity to a P1 vector space for safe export. Importing back into the original mixed
+# space may still fail or lose fidelity if the exported data does not exactly match the mixed DOF layout.
 
 
-def export_baseflow(baseflow: dfem.Function, output_path: Path) -> None:
+def export_baseflow(
+    baseflow: dfem.Function, output_folder: Path, *, linear_velocity_ok: bool = False
+) -> None:
     """Export baseflow function."""
-    if output_path.suffix != ".dat":
-        raise ValueError(f"Output path {output_path!r} must end with '.dat'")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_folder.mkdir(parents=True, exist_ok=True)
+    mesh = baseflow.function_space.mesh
 
-    viewer = PETSc.Viewer().createBinary(str(output_path), mode=PETSc.Viewer.Mode.WRITE)
-    try:
-        baseflow.x.petsc_vec.view(viewer)
-        logger.info("Baseflow properly exported to '%s'", output_path)
-    except Exception as e:
-        logger.error("Baseflow could not be exported to disk.")
-        raise e
-    finally:
-        viewer.destroy()
+    if baseflow.function_space.sub(0).ufl_element().degree > 1 and linear_velocity_ok:
+        u_p2, p = baseflow.split()
+        linear_spaces = define_spaces(mesh, type=FunctionSpaceType.SIMPLE)
+        u = dfem.Function(linear_spaces.velocity)
+        u.interpolate(u_p2)
+        logger.warning(
+            "Interpolated P2 velocity to P1 vector space for safe export. Exported baseflow may lose precision."
+        )
+    else:
+        u, p = baseflow.split()
+        logger.warning(
+            "Exporting full mixed function vector. Import back into mixed space may fail or lose fidelity"
+            " due to mixed DOF layout limitations."
+        )
+
+    for function, function_name in ((u, "velocity"), (p, "pressure")):
+        path = output_folder / f"{function_name}.xdmf"
+        viewer = PETSc.Viewer().createBinary(str(path), mode=PETSc.Viewer.Mode.WRITE)
+        try:
+            function.x.petsc_vec.view(viewer)
+            logger.info("Baseflow %s properly exported to '%s'", function_name, path)
+        except Exception as e:
+            logger.error("Baseflow %s could not be exported to disk.", function_name)
+            raise e
+        finally:
+            viewer.destroy()
 
 
-def load_baseflow(input_path: Path, spaces: FunctionSpaces) -> dfem.Function:
+def load_baseflow(input_folder: Path, spaces: FunctionSpaces) -> dfem.Function:
     """Import baseflow function."""
-    if (
-        not input_path.exists()
-        or not input_path.is_file()
-        or input_path.suffix != ".dat"
-    ):
-        raise ValueError(f"Input path {input_path!r} is not a valid file.")
+    if not input_folder.exists() or not input_folder.is_dir():
+        raise ValueError(f"Input path {input_folder!r} is not a valid folder.")
+
+    logger.warning(
+        "Importing full mixed function vector may cause lose fidelity, as the function spaces may have been "
+        "linearized during the export process. Refer to `export_baseflow` for further details."
+    )
+
+    _, dofs_u = spaces.mixed.sub(0).collapse()
+    _, dofs_p = spaces.mixed.sub(1).collapse()
 
     baseflow = dfem.Function(spaces.mixed)
-    viewer = PETSc.Viewer().createBinary(str(input_path), mode=PETSc.Viewer.Mode.READ)
-    try:
-        baseflow.x.petsc_vec.load(viewer)
-        logger.info("Baseflow properly imported from '%s'", input_path)
-    except Exception as e:
-        logger.error("Baseflow could not be exported from %s.", input_path)
-        raise e
-    finally:
-        viewer.destroy()
+    u = dfem.Function(spaces.mixed)
+    p = dfem.Function(spaces.mixed)
 
-    baseflow.x.petsc_vec.ghostUpdate(
-        addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.FORWARD
-    )
+    for function, function_name in ((u, "velocity"), (p, "pressure")):
+        path = input_folder / f"{function_name}.xdmf"
+        viewer = PETSc.Viewer().createBinary(str(path), mode=PETSc.Viewer.Mode.READ)
+        try:
+            function.x.petsc_vec.load(viewer)
+            logger.info("Baseflow %s properly imported from '%s'", function_name, path)
+        except Exception as e:
+            logger.error(
+                "Baseflow %s could not be imported from %s.", function_name, path
+            )
+            raise e
+        finally:
+            viewer.destroy()
+
+        function.x.petsc_vec.ghostUpdate(
+            addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.FORWARD
+        )
+
+    baseflow.x.array[dofs_u] = u.x.array[dofs_u]
+    baseflow.x.array[dofs_p] = p.x.array[dofs_p]
 
     return baseflow
