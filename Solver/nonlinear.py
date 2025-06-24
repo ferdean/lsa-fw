@@ -40,8 +40,6 @@ class NewtonSolver:
         self._solver = PETSc.KSP().create(assembler.spaces.mixed.mesh.comm)
         self._solver.setOperators(self._A.raw)
 
-        self._residual_history: list[float] = []
-
     def _reassemble(self) -> None:
         with self._b.raw.localForm() as loc_b:
             loc_b.set(0)

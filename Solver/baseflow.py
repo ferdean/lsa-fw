@@ -160,7 +160,7 @@ def load_baseflow(input_folder: Path, spaces: FunctionSpaces) -> dfem.Function:
         raise ValueError(f"Input path {input_folder!r} is not a valid folder.")
 
     logger.warning(
-        "Importing full mixed function vector may cause lose fidelity, as the function spaces may have been "
+        "Importing full mixed function vector may cause loss of fidelity, as the function spaces may have been "
         "linearized during the export process. Refer to `export_baseflow` for further details."
     )
 
