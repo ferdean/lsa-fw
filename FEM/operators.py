@@ -7,6 +7,8 @@ It supports eigenvalue and time-dependent formulations using PETSc block matrice
 including mass, viscous, convection, shear, pressure, and divergence operators.
 """
 
+from __future__ import annotations
+
 import logging
 from abc import ABC, abstractmethod
 
@@ -38,6 +40,7 @@ from ufl.argument import Argument  # type: ignore[import-untyped]
 
 from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace, iPETScBlockMatrix
 from .spaces import FunctionSpaces
+from lib.cache import CacheStore
 from .bcs import BoundaryConditions, apply_periodic_constraints
 
 logger = logging.getLogger(__name__)
@@ -397,10 +400,25 @@ class LinearizedNavierStokesAssembler:
     def spaces(self) -> FunctionSpaces:
         return self._spaces
 
-    def assemble_linear_operator(self, *, key: str | int | None = None) -> iPETScMatrix:
-        """Assemble the full linear operator."""
+    def assemble_linear_operator(
+        self,
+        *,
+        key: str | int | None = None,
+        cache: CacheStore | None = None,
+    ) -> iPETScMatrix:
+        """Assemble the full linear operator.
+
+        If a :class:`CacheStore` is provided, matrices are loaded from or written
+        to disk using ``key``.
+        """
         key = key or f"lin_ns_{id(self)}"
         if key not in self._cache:
+            if cache is not None:
+                loaded = cache.load_matrix(str(key))
+                if loaded is not None:
+                    self._cache[key] = iPETScMatrix(loaded)
+                    return self._cache[key]
+
             shear = VariationalForms.shear(self._u, self._v, self._u_base)
             convection = VariationalForms.convection(self._u, self._v, self._u_base)
             viscous = VariationalForms.viscous(self._u, self._v, self._re)
@@ -417,12 +435,25 @@ class LinearizedNavierStokesAssembler:
                 apply_periodic_constraints(A, pmap)
 
             self._cache[key] = A
+            if cache is not None:
+                cache.save_matrix(str(key), A.raw)
         return self._cache[key]
 
-    def assemble_mass_matrix(self, *, key: str | int | None = None) -> iPETScMatrix:
+    def assemble_mass_matrix(
+        self,
+        *,
+        key: str | int | None = None,
+        cache: CacheStore | None = None,
+    ) -> iPETScMatrix:
         """Assemble the mass matrix."""
         key = key or f"mass_ns_{id(self)}"
         if key not in self._cache:
+            if cache is not None:
+                loaded = cache.load_matrix(str(key))
+                if loaded is not None:
+                    self._cache[key] = iPETScMatrix(loaded)
+                    return self._cache[key]
+
             mass_form = VariationalForms.mass(self._u, self._v)
 
             mat = assemble_matrix(dfem.form(mass_form, dtype=self._dtype), bcs=self.bcs)
@@ -433,13 +464,17 @@ class LinearizedNavierStokesAssembler:
                 apply_periodic_constraints(M, pmap)
 
             self._cache[key] = M
+            if cache is not None:
+                cache.save_matrix(str(key), M.raw)
 
         return self._cache[key]
 
-    def assemble_eigensystem(self) -> tuple[iPETScMatrix, iPETScMatrix]:
-        """Return (A, M) for eigenproblem; attach constant-pressure nullspace."""
-        A = self.assemble_linear_operator()
-        M = self.assemble_mass_matrix()
+    def assemble_eigensystem(
+        self, *, cache: CacheStore | None = None
+    ) -> tuple[iPETScMatrix, iPETScMatrix]:
+        """Return ``(A, M)`` for eigenproblem; attach constant-pressure nullspace."""
+        A = self.assemble_linear_operator(cache=cache)
+        M = self.assemble_mass_matrix(cache=cache)
         self.attach_pressure_nullspace(A)
         self.attach_pressure_nullspace(M)
         return A, M
