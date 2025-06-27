@@ -67,6 +67,7 @@ def load_bc_config(path: Path) -> Sequence[BoundaryConditionsConfig]:
                 value = (raw_value[0], raw_value[1])
             else:
                 raise TypeError("Periodic BC value must be two integer markers.")
+
         elif isinstance(raw_value, list):
             value = tuple(float(v) for v in raw_value)
         elif isinstance(raw_value, (int, float)):

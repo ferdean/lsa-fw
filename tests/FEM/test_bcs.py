@@ -117,7 +117,7 @@ def test_neumann_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     configs = [
         BoundaryCondition(
             marker=1,
-            type=BoundaryConditionType.NEUMANN,
+            type=BoundaryConditionType.NEUMANN_VELOCITY,
             value=(0.0, -1.0),
         )
     ]
@@ -158,7 +158,7 @@ def test_mixed_bcs(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
             marker=1, type=BoundaryConditionType.DIRICHLET_VELOCITY, value=(1.0, 0.0)
         ),
         BoundaryCondition(
-            marker=1, type=BoundaryConditionType.NEUMANN, value=(0.0, -1.0)
+            marker=1, type=BoundaryConditionType.NEUMANN_VELOCITY, value=(0.0, -1.0)
         ),
         BoundaryCondition(
             marker=1,

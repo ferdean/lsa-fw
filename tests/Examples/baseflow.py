@@ -1,4 +1,4 @@
-"""Solve a driven cavity flow using the BaseFlowSolver."""
+"""Solve the baseflow of a typical flow-over-a-cylinder problem."""
 
 from __future__ import annotations
 
