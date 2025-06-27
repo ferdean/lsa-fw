@@ -30,7 +30,6 @@ class CacheStore:
     def _path(self, key: str, suffix: str) -> Path:
         return self.cache_dir / f"{self._hash(key)}.{suffix}"
 
-    # Mesh ---------------------------------------------------------
     def load_mesh(
         self, key: str, comm: MPI.Intracomm = MPI.COMM_WORLD
     ) -> Tuple[dmesh.Mesh, dmesh.MeshTags | None, dmesh.MeshTags | None] | None:
@@ -69,7 +68,6 @@ class CacheStore:
             if cell is not None:
                 xdmf.write_meshtags(cell, mesh.geometry)
 
-    # Function ------------------------------------------------------
     def load_function(
         self, key: str, V: dfem.FunctionSpace, comm: MPI.Intracomm = MPI.COMM_WORLD
     ) -> dfem.Function | None:
@@ -88,7 +86,6 @@ class CacheStore:
         with dio.XDMFFile(comm, str(path), "w") as xdmf:
             xdmf.write_function(fn, name="function")
 
-    # Matrix --------------------------------------------------------
     def load_matrix(
         self, key: str, comm: MPI.Comm = PETSc.COMM_WORLD
     ) -> PETSc.Mat | None:
