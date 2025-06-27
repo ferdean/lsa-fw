@@ -34,6 +34,7 @@ from petsc4py import PETSc
 
 from FEM.bcs import BoundaryConditions
 from FEM.operators import StokesAssembler, StationaryNavierStokesAssembler
+from lib.cache import CacheStore
 from FEM.plot import plot_mixed_function
 from FEM.spaces import FunctionSpaces, define_spaces, FunctionSpaceType
 
@@ -82,8 +83,19 @@ class BaseFlowSolver:
         damping_factor: float = 1.0,
         show_plot: bool = False,
         plot_scale: float = 0.01,
+        cache: CacheStore | None = None,
+        key: str | None = None,
     ) -> dfem.Function:
-        """Assemble and solve the stationary Navier-Stokes equations for a given Reynolds number."""
+        """Assemble and solve the stationary Navier-Stokes equations for a given Reynolds number.
+
+        If ``cache`` and ``key`` are provided, the solver attempts to read a cached
+        solution before computing. After solving, the result is stored in the cache.
+        """
+        if cache is not None and key is not None:
+            cached = cache.load_function(key, self._spaces.mixed)
+            if cached is not None:
+                self._initial_guess = cached
+                return cached
         if self._initial_guess is None:
             # Use Stokes flow as initial guess for the Newton solver
             self._initial_guess = self._solve_stokes_flow()
@@ -106,6 +118,9 @@ class BaseFlowSolver:
             plot_mixed_function(
                 sol, scale=plot_scale, title=f"Baseflow (Re = {re:.2f})"
             )
+
+        if cache is not None and key is not None:
+            cache.save_function(key, sol)
 
         return sol
 

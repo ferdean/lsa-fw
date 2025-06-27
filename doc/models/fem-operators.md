@@ -187,7 +187,9 @@ The assembler provides the following key methods:
 - `assemble_neumann_rhs(g, ds)` — RHS vector from Neumann boundary data
 
 For the sake of efficiency, all matrices are cached internally on first use.
-The `clear_cache()` method invalidates the cache.
+`LinearizedNavierStokesAssembler` also accepts a `CacheStore` object to persist
+assembled matrices to disk using HDF5/XDMF files. The `clear_cache()` method
+invalidates the in-memory cache only.
 
 ### Discrete System Assembly
 
@@ -234,7 +236,8 @@ This function ensures Krylov solvers (e.g. MINRES) handle the system correctly.
 
 - All forms are assembled with DOLFINx's `assemble_matrix` and respect supplied Dirichlet BCs.
 - Block systems are returned as `iPETScMatrix` wrappers over PETSc `MatNest`.
-- Matrices are cached internally; use `clear_cache()` to recompute.
+- Matrices are cached internally; use `clear_cache()` to recompute. A
+  persistent cache can be enabled by providing a `CacheStore`.
 - Integration with SLEPc is supported via `assemble_eigensystem()`.
 
 ## Further Notes

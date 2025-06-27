@@ -13,6 +13,7 @@ from dolfinx.io import gmshio
 from dolfinx.mesh import MeshTags, compute_midpoints, locate_entities_boundary, meshtags
 
 from .utils import Format, Shape, iCellType, Geometry
+from lib.cache import CacheStore
 from .geometries import get_geometry, GeometryConfig
 
 logger = logging.getLogger(__name__)
@@ -138,14 +139,46 @@ class Mesher:
 
     @classmethod
     def from_geometry(
-        cls, geometry: Geometry, config: GeometryConfig, comm: MPI.Intracomm = _COMM
+        cls,
+        geometry: Geometry,
+        config: GeometryConfig,
+        comm: MPI.Intracomm = _COMM,
+        *,
+        cache: CacheStore | None = None,
+        key: str | None = None,
     ) -> Self:
         """Generate via one of the prebuilt generators, then wrap in a Mesher."""
-        mesh = get_geometry(geometry, config, comm)
-        return cls.from_mesh(mesh)
+        if cache is not None and key is not None:
+            cached = cache.load_mesh(key, comm)
+            if cached is not None:
+                mesh, facet, cell = cached
+                return cls.from_mesh(mesh, facet_tags=facet, cell_tags=cell)
 
-    def generate(self, comm: MPI.Intracomm = _COMM) -> dmesh.Mesh:
-        """Generate the mesh according to shape."""
+        mesh = get_geometry(geometry, config, comm)
+        obj = cls.from_mesh(mesh)
+        if cache is not None and key is not None:
+            cache.save_mesh(key, obj.mesh, obj.facet_tags, obj.cell_tags, comm)
+        return obj
+
+    def generate(
+        self,
+        comm: MPI.Intracomm = _COMM,
+        *,
+        cache: "CacheStore | None" = None,
+        key: str | None = None,
+    ) -> dmesh.Mesh:
+        """Generate the mesh according to shape.
+
+        If ``cache`` and ``key`` are provided, the method will attempt to load
+        the mesh from disk before generating it. The newly generated mesh is
+        also written back to the cache.
+        """
+
+        if cache is not None and key is not None:
+            cached = cache.load_mesh(key, comm)
+            if cached is not None:
+                self._mesh, self._facet_tags, self._cell_tags = cached
+                return self._mesh
         match self._shape:
             case Shape.UNIT_INTERVAL:
                 self._mesh = dmesh.create_unit_interval(comm, self._n[0], np.float64)
@@ -176,6 +209,9 @@ class Mesher:
 
             case _:
                 assert_never(self._shape)
+
+        if cache is not None and key is not None:
+            cache.save_mesh(key, self._mesh, self._facet_tags, self._cell_tags, comm)
 
         return self._mesh
 

@@ -38,9 +38,10 @@ from config import (
 )
 from lib.loggingutils import setup_logging
 
-from Meshing import Mesher, Geometry, Shape
+from Meshing import Mesher, Geometry
 from FEM.spaces import define_spaces, FunctionSpaceType
 from FEM.bcs import BoundaryCondition, define_bcs
+from lib.cache import CacheStore
 
 from .baseflow import BaseFlowSolver
 
@@ -56,12 +57,13 @@ def _run_baseflow(args: argparse.Namespace) -> None:
         else:
             raise NotImplementedError(f"Unsupported geometry: {args.geometry}")
 
-        mesher = Mesher.from_geometry(args.geometry, geo_cfg, comm=MPI.COMM_WORLD)
-        if args.facet_config:
-            marker_fn = load_facet_config(args.facet_config)
-            mesher.mark_boundary_facets(marker_fn)
-    else:
-        mesher = Mesher.from_file(path=args.mesh, shape=Shape.CUSTOM_XDMF)
+    cache = CacheStore(args.output_path) if args.output_path else None
+    mesher = Mesher.from_geometry(
+        args.geometry, geo_cfg, comm=MPI.COMM_WORLD, cache=cache, key="mesh"
+    )
+    if args.facet_config:
+        marker_fn = load_facet_config(args.facet_config)
+        mesher.mark_boundary_facets(marker_fn)
 
     spaces = define_spaces(mesher.mesh, FunctionSpaceType.TAYLOR_HOOD)
 
@@ -77,6 +79,8 @@ def _run_baseflow(args: argparse.Namespace) -> None:
         steps=args.steps,
         damping_factor=args.damping,
         show_plot=args.plot,
+        cache=cache,
+        key=f"baseflow_{args.re}",
     )
 
 
@@ -117,8 +121,11 @@ def main() -> None:
         default=1.0,
         help="Newton damping factor",
     )
-    # FIXME: implement a `--output-path` argument and allow to export the baseflow function (or, at least, the vector)
-    # to the local disk
+    base.add_argument(
+        "--output-path",
+        type=Path,
+        help="Directory for caching meshes and baseflow solutions",
+    )
     base.set_defaults(func=_run_baseflow)
 
     args = parser.parse_args()
