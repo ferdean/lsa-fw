@@ -1,0 +1,8 @@
+dim = 2
+length = 4.4
+height = 3.3
+cylinder_radius = 0.05
+cylinder_center = [0.5, 1.65]
+resolution = 0.1
+resolution_around_cylinder = 0.02
+influence_radius = 0.15

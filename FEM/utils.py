@@ -211,6 +211,16 @@ class iPETScMatrix:
             f"Cannot construct iPETScMatrix from object of type {type(matrix)}"
         )
 
+    @classmethod
+    def load(cls, path: Path, comm=PETSc.COMM_WORLD) -> iPETScMatrix:
+        """Load a matrix from disk."""
+        viewer = PETSc.Viewer().createBinary(
+            str(path), mode=PETSc.Viewer.Mode.READ, comm=comm
+        )
+        A = PETSc.Mat().load(viewer)
+        viewer.destroy()
+        return cls(A)
+
     def __str__(self) -> str:
         return f"iPETScMatrix(shape={self.shape}, nnz={self.nonzero_entries})"
 

@@ -1,0 +1,29 @@
+[[BC]]
+# Inlet
+marker = 1
+type = "dirichlet_velocity"
+value = [3.0, 0.0]
+
+[[BC]]
+# Outlet
+marker = 2
+type = "dirichlet_pressure"
+value = 0.0
+
+[[BC]]
+# Free-flow
+marker = 3
+type = "neumann_velocity"
+value = [0.0, 0.0]
+
+[[BC]]
+# Free-flow
+marker = 4
+type = "neumann_velocity"
+value = [0.0, 0.0]
+
+[[BC]]
+# Wall (cylinder)
+marker = 5
+type = "dirichlet_velocity"
+value = [0.0, 0.0]

@@ -207,8 +207,10 @@ def test_from_geometry_step_flow_2d():
     mesher = Mesher.from_geometry(Geometry.STEP_FLOW, cfg)
     mesh = mesher.mesh
     domain = mesher.domain
-    expected_xmax = cfg.inlet_length + cfg.outlet_length
-    expected_domain = ((0.0, 0.0), (expected_xmax, cfg.channel_height))
+    expected_domain = (
+        (-cfg.inlet_length, -cfg.step_height),
+        (cfg.outlet_length, cfg.channel_height - cfg.step_height),
+    )
 
     assert mesh.topology.dim == 2
     assert mesher._shape == Shape.PREDEFINED

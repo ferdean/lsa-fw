@@ -20,7 +20,7 @@ GeometryConfig = CylinderFlowGeometryConfig | StepFlowGeometryConfig
 def cylinder_flow(
     cfg: CylinderFlowGeometryConfig,
     comm: MPI.Intracomm,
-    _: iCellType = iCellType.TRIANGLE,  # Currently unused, placeholder for future extension
+    _: iCellType = iCellType.TRIANGLE,  # FIXME: Currently unused, placeholder for future extension
 ) -> dmesh.Mesh:
     """Generate a mesh for cylinder flow in a rectangular channel.
 
@@ -134,7 +134,7 @@ def cylinder_flow(
 def step_flow(
     cfg: StepFlowGeometryConfig,
     comm: MPI.Intracomm,
-    _: iCellType = iCellType.TRIANGLE,  # Currently unused, placeholder for future extension
+    _: iCellType = iCellType.TRIANGLE,  # FIXME: Currently unused, placeholder for future extension
 ) -> dmesh.Mesh:
     """Generate a backward-facing step flow domain.
 
@@ -152,18 +152,21 @@ def step_flow(
         geo = _initialize_model("step2d")
         pts = [
             geo.addPoint(0, 0, 0, cfg.resolution),
-            geo.addPoint(cfg.inlet_length, 0, 0, cfg.resolution),
-            geo.addPoint(cfg.inlet_length, cfg.step_height, 0, cfg.resolution),
+            geo.addPoint(-cfg.inlet_length, 0, 0, cfg.resolution),
             geo.addPoint(
-                cfg.inlet_length + cfg.outlet_length, cfg.step_height, 0, cfg.resolution
-            ),
-            geo.addPoint(
-                cfg.inlet_length + cfg.outlet_length,
-                cfg.channel_height,
+                -cfg.inlet_length,
+                cfg.channel_height - cfg.step_height,
                 0,
                 cfg.resolution,
             ),
-            geo.addPoint(0, cfg.channel_height, 0, cfg.resolution),
+            geo.addPoint(
+                cfg.outlet_length,
+                cfg.channel_height - cfg.step_height,
+                0,
+                cfg.resolution,
+            ),
+            geo.addPoint(cfg.outlet_length, -cfg.step_height, 0, cfg.resolution),
+            geo.addPoint(0, -cfg.step_height, 0, cfg.resolution),
         ]
         lines = [geo.addLine(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
         lines.append(geo.addLine(pts[-1], pts[0]))
@@ -172,42 +175,47 @@ def step_flow(
         gmsh.model.addPhysicalGroup(2, [surface], tag=1)
         gmsh.model.setPhysicalName(2, 1, "Fluid")
         geo.synchronize()
+        _add_step_refinement(cfg)
         return _finalize_and_extract(comm, gdim=2)
 
     elif cfg.dim == 3:
         if cfg.width is None:
             raise ValueError("Width must be provided for 3D step flow.")
         occ = _initialize_model("step3d", use_occ=True)
-        base_pts = [
+        pts = [
             occ.addPoint(0, 0, 0, cfg.resolution),
-            occ.addPoint(cfg.inlet_length, 0, 0, cfg.resolution),
-            occ.addPoint(cfg.inlet_length, cfg.step_height, 0, cfg.resolution),
+            occ.addPoint(-cfg.inlet_length, 0, 0, cfg.resolution),
             occ.addPoint(
-                cfg.inlet_length + cfg.outlet_length, cfg.step_height, 0, cfg.resolution
-            ),
-            occ.addPoint(
-                cfg.inlet_length + cfg.outlet_length,
-                cfg.channel_height,
+                -cfg.inlet_length,
+                cfg.channel_height - cfg.step_height,
                 0,
                 cfg.resolution,
             ),
-            occ.addPoint(0, cfg.channel_height, 0, cfg.resolution),
+            occ.addPoint(
+                cfg.outlet_length,
+                cfg.channel_height - cfg.step_height,
+                0,
+                cfg.resolution,
+            ),
+            occ.addPoint(cfg.outlet_length, -cfg.step_height, 0, cfg.resolution),
+            occ.addPoint(0, -cfg.step_height, 0, cfg.resolution),
         ]
-        wire = [
-            occ.addLine(base_pts[i], base_pts[i + 1]) for i in range(len(base_pts) - 1)
-        ]
-        wire.append(occ.addLine(base_pts[-1], base_pts[0]))
-        loop = occ.addCurveLoop(wire)
+        lines = [occ.addLine(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
+        lines.append(occ.addLine(pts[-1], pts[0]))
+        loop = occ.addCurveLoop(lines)
         surface = occ.addPlaneSurface([loop])
+
+        # Extrude the 2D surface into 3D
         vol = occ.extrude([(2, surface)], 0, 0, cfg.width)
         occ.synchronize()
-
         top_tags = [tag for dim, tag in vol if dim == 3]
         gmsh.model.addPhysicalGroup(3, top_tags, tag=1)
         gmsh.model.setPhysicalName(3, 1, "Fluid")
+
         return _finalize_and_extract(comm, gdim=3, use_occ=True)
 
-    raise ValueError("Only 2D or 3D supported.")
+    else:
+        raise ValueError("Only 2D or 3D supported.")
 
 
 def _initialize_model(name: str, use_occ: bool = False):
@@ -266,6 +274,27 @@ def _define_refinement_faces(
     gmsh.model.mesh.field.setNumber(2, "DistMin", 0.0)
     gmsh.model.mesh.field.setNumber(2, "DistMax", delta)
     gmsh.model.mesh.field.setAsBackgroundMesh(2)
+
+
+def _add_step_refinement(cfg: StepFlowGeometryConfig):
+    if cfg.refinement_factor is None:
+        return
+    h_in = cfg.resolution * cfg.refinement_factor
+
+    field_id = gmsh.model.mesh.field.add("Box")
+    gmsh.model.mesh.field.setNumber(field_id, "VIn", h_in)
+    gmsh.model.mesh.field.setNumber(field_id, "VOut", cfg.resolution)
+    gmsh.model.mesh.field.setNumber(field_id, "XMin", 0.0)
+    gmsh.model.mesh.field.setNumber(field_id, "XMax", cfg.outlet_length / 2)
+    gmsh.model.mesh.field.setNumber(field_id, "YMin", -cfg.step_height)
+    gmsh.model.mesh.field.setNumber(field_id, "YMax", 0.0)
+    if cfg.dim == 3:
+        # If 3D, limit Z as well
+        gmsh.model.mesh.field.setNumber(field_id, "ZMin", 0.0)
+        gmsh.model.mesh.field.setNumber(field_id, "ZMax", cfg.width)
+
+    # Make this the background mesh size field
+    gmsh.model.mesh.field.setAsBackgroundMesh(field_id)
 
 
 _GEOMETRY_MAP: dict[Geometry, Callable[..., dmesh.Mesh]] = {

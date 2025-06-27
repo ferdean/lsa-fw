@@ -54,7 +54,7 @@ class LinearSolver:
         wh.x.scatter_forward()
 
         if show_plot:
-            plot_mixed_function(wh, plot_scale)
+            plot_mixed_function(wh, scale=plot_scale)
 
         logger.info("Direct LU solve completed.")
         return wh

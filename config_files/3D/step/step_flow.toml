@@ -1,7 +1,7 @@
-dim = 2
+dim = 3
 inlet_length = 3.0
 step_height = 0.5
-# width = 0.4
+width = 0.4
 outlet_length = 5.5
 channel_height = 0.9
 resolution = 0.075
