@@ -28,12 +28,14 @@ class BoundaryConditionType(StrEnum):
     """Strong Dirichlet BC for velocity."""
     DIRICHLET_PRESSURE = auto()
     """Strong Dirichlet BC for pressure."""
-    NEUMANN = auto()
-    """Weak Neumann BC."""
-    ROBIN = auto()
-    """Weak Robin BC."""
+    NEUMANN_VELOCITY = auto()
+    """Weak Neumann BC for velocity (traction)."""
+    NEUMANN_PRESSURE = auto()
+    """Weak Neumann BC for pressure (flux)."""
     PERIODIC = auto()
     """Periodic BC."""
+    ROBIN = auto()
+    """Weak Robin BC."""
 
     @classmethod
     def from_string(cls, value: str) -> BoundaryConditionType:
@@ -96,20 +98,9 @@ class BoundaryConditions:
 
 
 def define_bcs(
-    mesher: Mesher,
-    spaces: FunctionSpaces,
-    configs: Sequence[BoundaryCondition],
+    mesher: Mesher, spaces: FunctionSpaces, configs: Sequence[BoundaryCondition]
 ) -> BoundaryConditions:
-    """Define and construct all boundary conditions.
-
-    Args:
-        mesh: The simulation mesh.
-        spaces: Function space container.
-        tags: Boundary facet tags.
-        u_trial: Trial function used in variational form.
-        v_test: Test function.
-        configs: List of boundary condition configurations.
-    """
+    """Define and construct all boundary conditions."""
     mesh = mesher.mesh
     tags = mesher.facet_tags
     dim = mesh.topology.dim
@@ -118,11 +109,11 @@ def define_bcs(
 
     V_sub = spaces.mixed.sub(0)
     Q_sub = spaces.mixed.sub(1)
-    V, _ = V_sub.collapse()
-    Q, _ = Q_sub.collapse()
+    V = spaces.velocity
+    Q = spaces.pressure
 
     u_trial, _ = ufl.TrialFunctions(spaces.mixed)
-    v_test, _ = ufl.TestFunctions(spaces.mixed)
+    v_test, q_test = ufl.TestFunctions(spaces.mixed)
 
     velocity_bcs: list[int, dfem.DirichletBC] = []
     pressure_bcs: list[int, dfem.DirichletBC] = []
@@ -162,15 +153,19 @@ def define_bcs(
                 dofs = dfem.locate_dofs_topological((Q_sub, Q), dim - 1, facets)
                 pressure_bcs.append((marker, dfem.dirichletbc(fn, dofs, Q_sub)))
 
-            case BoundaryConditionType.NEUMANN:
-                # TODO: Check if implementation for pressure is needed
-                g = (
-                    cfg.value
-                    if callable(cfg.value)
-                    else lambda _: np.full(geom_dim, cfg.value)
-                )
-                g_expr = ufl.as_vector(g(ufl.SpatialCoordinate(mesh)))
-                neumann_forms.append((marker, ufl.dot(g_expr, v_test) * ds(marker)))
+            case BoundaryConditionType.NEUMANN_VELOCITY:
+                if callable(cfg.value):
+                    g_vec = ufl.as_vector(cfg.value(ufl.SpatialCoordinate(mesh)))
+                else:
+                    g_vec = dfem.Constant(mesh, cfg.value)  # Constant traction vector
+                neumann_forms.append((marker, ufl.dot(g_vec, v_test) * ds(marker)))
+
+            case BoundaryConditionType.NEUMANN_PRESSURE:
+                if callable(cfg.value):
+                    h_expr = ufl.as_scalar(cfg.value(ufl.SpatialCoordinate(mesh)))
+                else:
+                    h_expr = dfem.Constant(mesh, float(cfg.value))  # Scalar flux
+                neumann_forms.append((marker, ufl.dot(h_expr, q_test) * ds(marker)))
 
             case BoundaryConditionType.ROBIN:
                 if cfg.robin_alpha is None:
@@ -191,12 +186,8 @@ def define_bcs(
 
             case BoundaryConditionType.PERIODIC:
                 from_marker, to_marker = cfg.value
-                v_map = compute_periodic_dof_pairs(
-                    V_sub, mesher, from_marker, to_marker
-                )
-                p_map = compute_periodic_dof_pairs(
-                    Q_sub, mesher, from_marker, to_marker
-                )
+                v_map = compute_periodic_dof_pairs(V, mesher, from_marker, to_marker)
+                p_map = compute_periodic_dof_pairs(Q, mesher, from_marker, to_marker)
                 velocity_periodic_map.append(v_map)
                 pressure_periodic_map.append(p_map)
 

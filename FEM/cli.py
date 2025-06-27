@@ -14,6 +14,7 @@ Example usage:
     # Assemble using Taylor-Hood spaces and plot sparsity
     python -m FEM -p assemble --mesh path/to/mesh \
                            --space taylor_hood \
+                           --bcs path/to/bcs \
                            --re 500 \
                            --output_path path/for/output
 
@@ -39,7 +40,7 @@ from FEM.operators import LinearizedNavierStokesAssembler
 from FEM.plot import spy, plot_mixed_function
 from FEM.utils import iPETScMatrix
 
-from Solver.baseflow import BaseFlowSolver
+from Solver.baseflow import BaseFlowSolver, load_baseflow
 
 console: Console = Console()
 logger: logging.Logger = logging.getLogger(__name__)
@@ -89,9 +90,8 @@ def _get_baseflow(
         baseflow_solver = BaseFlowSolver(spaces, bcs=bcs)
         u_base = baseflow_solver.solve(re=re)
     else:
-        logger.info(f"Loading base flow from {base_flow_path}")
-        with dfem.Function.load(spaces.velocity, base_flow_path) as f:
-            u_base.x.array[:] = f.x.array[:]
+        logger.info("Loading base flow from '%s'", base_flow_path)
+        u_base = load_baseflow(base_flow_path, spaces)
     if show_plot:
         plot_mixed_function(u_base, scale=0.025, title="Base flow")
     return u_base
@@ -127,7 +127,9 @@ def assemble_fem(args: argparse.Namespace) -> None:
 def main():
     """LSA-FW FEM CLI entry point."""
     parser = argparse.ArgumentParser(description="LSA-FW Meshing tool: assemble")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose logging"
+    )
     parser.add_argument(
         "-p",
         "--plot",
@@ -158,7 +160,7 @@ def main():
         "--base_flow",
         type=Path,
         default=None,
-        help="Optional path to base flow file (PETSc format)",
+        help="Optional path to base flow folder (containing velocity and pressure *.xdmf files)",
     )
     assemble.add_argument(
         "--re",
