@@ -11,6 +11,7 @@ from dolfinx.fem.petsc import assemble_matrix, assemble_vector, apply_lifting, s
 from petsc4py import PETSc
 
 from FEM.operators import BaseAssembler
+from lib.loggingutils import log_global, log_rank
 
 
 logger = logging.getLogger(__name__)
@@ -82,13 +83,15 @@ class NewtonSolver:
     ) -> dfem.Function:
         """Solve nonlinear problem."""
         if not (0.0 < damping_factor <= 1.0):
-            logger.warning(
+            log_global(
+                logger,
+                logging.WARNING,
                 "Damping factor should be in the (0, 1] range, but %.2f was given. Using 1.00 (undamped).",
                 damping_factor,
             )
             damping_factor = 1.0
 
-        logger.debug("Newton solver started.")
+        log_global(logger, logging.DEBUG, "Newton solver started.")
 
         it = 0
         while it < max_it:
@@ -99,7 +102,13 @@ class NewtonSolver:
 
                 residual = self._dwh.x.petsc_vec.norm(0)
 
-                logger.debug("Iteration %d - residual = %.2e", it, residual)
+                log_rank(
+                    logger,
+                    logging.DEBUG,
+                    "Iteration %d - residual = %.2e",
+                    it,
+                    residual,
+                )
 
                 if residual < atol:
                     return self._assembler.sol
@@ -114,13 +123,17 @@ class NewtonSolver:
                 last_residual = (
                     self._residual_history[-1] if self._residual_history else 0.0
                 )
-                logger.warning(
+                log_global(
+                    logger,
+                    logging.WARNING,
                     "Solver was interrupted by the user. Newton did not fully converge (last residual: %.6f)",
                     last_residual,
                 )
                 break
 
-        logger.warning(
+        log_global(
+            logger,
+            logging.WARNING,
             "Newton did not converge after %d iterations (last residual: %.6f)",
             it,
             self._residual_history[-1],
@@ -146,4 +159,4 @@ class NewtonSolver:
         fig.savefig(output_path, dpi=330)
         plt.close(fig)
 
-        logger.info("Residual plot saved to %s", output_path)
+        log_global(logger, logging.INFO, "Residual plot saved to %s", output_path)

@@ -13,6 +13,7 @@ from FEM.operators import BaseAssembler
 from FEM.plot import plot_mixed_function
 from FEM.utils import iPETScMatrix, iPETScVector
 from Solver.utils import iKSP, KSPType, PreconditionerType
+from lib.loggingutils import log_global, log_rank
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,9 @@ class LinearSolver:
         """Direct solve using PETSc LU (parallel) or SciPy splu (serial)."""
         if use_scipy:
             if MPI.COMM_WORLD.size > 1:
-                logger.warning(
+                log_global(
+                    logger,
+                    logging.WARNING,
                     "Requested SciPy direct solver on %d MPI ranks: "
                     "this will run only on rank 0 without parallelism.",
                     MPI.COMM_WORLD.size,
@@ -66,12 +69,14 @@ class LinearSolver:
         key: int | str | None = None,
     ) -> dfem.Function:
         """Serial direct solve using scipy."""
-        logger.info("Serial SciPy LU solve started.")
+        log_global(logger, logging.INFO, "Serial SciPy LU solve started.")
         cache_key = key or "direct_scipy"
 
         # Assemble and cache A, b in SciPy form
         if cache_key not in self._ab_cache:
-            logger.debug("Assembling system matrix and RHS for SciPy LU")
+            log_rank(
+                logger, logging.DEBUG, "Assembling system matrix and RHS for SciPy LU"
+            )
             A_petsc, b_petsc = self.assembler.get_matrix_forms()
             A_petsc.assemble()
             b_petsc.ghost_update()
@@ -83,7 +88,7 @@ class LinearSolver:
 
         # Factor and cache
         if cache_key not in self._lu_cache:
-            logger.debug("Factoring (splu) system matrix.")
+            log_rank(logger, logging.DEBUG, "Factoring (splu) system matrix.")
             self._lu_cache[cache_key] = scipy.sparse.linalg.splu(As)
         lu = self._lu_cache[cache_key]
 
@@ -101,7 +106,7 @@ class LinearSolver:
         if show_plot and MPI.COMM_WORLD.rank == 0:
             plot_mixed_function(sol, scale=plot_scale)
 
-        logger.info("Serial SciPy LU solve completed.")
+        log_global(logger, logging.INFO, "Serial SciPy LU solve completed.")
         return sol
 
     def cg_solve(
@@ -168,7 +173,12 @@ class LinearSolver:
 
         # Assemble and cache system matrix, RHS, and solution vector
         if cache_key not in self._ab_cache:
-            logger.debug("Assembling system matrix and RHS for %s solve", ksp_type.name)
+            log_rank(
+                logger,
+                logging.DEBUG,
+                "Assembling system matrix and RHS for %s solve",
+                ksp_type.name,
+            )
             A, b = self.assembler.get_matrix_forms()
             A.assemble()
             b.ghost_update()
@@ -177,7 +187,12 @@ class LinearSolver:
             x.raw.set(0.0)
             self._ab_cache[cache_key] = (A, b, x)
         else:
-            logger.debug("Using cached A and b for %s solve", ksp_type.name)
+            log_rank(
+                logger,
+                logging.DEBUG,
+                "Using cached A and b for %s solve",
+                ksp_type.name,
+            )
             A, b, x = self._ab_cache[cache_key]
             x.raw.set(0.0)
 
@@ -187,7 +202,7 @@ class LinearSolver:
 
         # Configure or retrieve KSP solver
         if cache_key not in self._ksp_cache:
-            logger.debug("Configuring iKSP for %s", ksp_type.name)
+            log_rank(logger, logging.DEBUG, "Configuring iKSP for %s", ksp_type.name)
             solver = iKSP(A)
             solver.set_type(ksp_type)
             solver.set_preconditioner(pc_type)
@@ -202,15 +217,18 @@ class LinearSolver:
             solver.set_from_options(prefix=f"{cache_key}_")
             self._ksp_cache[cache_key] = solver
         else:
-            logger.debug("Using cached iKSP solver for %s", ksp_type.name)
+            log_rank(
+                logger, logging.DEBUG, "Using cached iKSP solver for %s", ksp_type.name
+            )
             solver = self._ksp_cache[cache_key]
 
         # Solve and time
         t0 = MPI.Wtime()
         solver.solve(b, x)
         t1 = MPI.Wtime()
-        if A.comm.rank == 0:
-            logger.info("%s solve time: %.3f s", ksp_type.name, t1 - t0)
+        log_global(
+            logger, logging.INFO, "%s solve time: %.3f s", ksp_type.name, t1 - t0
+        )
 
         # Scatter and optionally plot
         self.assembler.sol.x.scatter_forward()
@@ -218,7 +236,7 @@ class LinearSolver:
             plot_mixed_function(self.assembler.sol, scale=plot_scale)
             A.comm.barrier()
 
-        logger.info(f"{ksp_type.name} solve completed.")
+        log_global(logger, logging.INFO, f"{ksp_type.name} solve completed.")
         return self.assembler.sol
 
 

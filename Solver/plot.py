@@ -13,6 +13,7 @@ import dolfinx.fem as dfem
 from Meshing import Mesher
 from FEM.utils import iComplexPETScVector
 from FEM.spaces import FunctionSpaces
+from lib.loggingutils import log_global
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +81,11 @@ def plot_eigenvector(
     if background != "transparent":
         plotter.set_background(background)
     elif not off_screen:
-        logger.warning(
+        log_global(
+            logger,
+            logging.WARNING,
             "Transparent background only supported for off-screen export; "
-            "interactive view will use default background."
+            "interactive view will use default background.",
         )
 
     plotter.add_mesh(

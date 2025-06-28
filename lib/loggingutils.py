@@ -27,3 +27,14 @@ def setup_logging(verbose: bool) -> None:
 
     root.setLevel(level)
     root.addHandler(handler)
+
+
+def log_global(logger: logging.Logger, level: int, msg: str, *args, **kwargs) -> None:
+    """Log globally (in parallel runs, this means logging only on rank 0)."""
+    if _rank == 0:
+        logger.log(level, msg, *args, stacklevel=2, **kwargs)
+
+
+def log_rank(logger: logging.Logger, level: int, msg: str, *args, **kwargs) -> None:
+    """Log on all ranks, prefixing the message with the rank."""
+    logger.log(level, f"[{_rank}] {msg}", *args, stacklevel=2, **kwargs)
