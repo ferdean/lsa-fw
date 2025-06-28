@@ -34,7 +34,7 @@ from rich.console import Console
 
 from mpi4py import MPI
 
-from lib.loggingutils import setup_logging
+from lib.loggingutils import setup_logging, log_global
 from config import (
     load_cylinder_flow_config,
     load_step_flow_config,
@@ -62,7 +62,7 @@ def _generate(args: argparse.Namespace) -> None:
             tuple(args.domain[len(resolution) :]),
         )
 
-    logger.info("Generating mesh: %s, resolution=%s", args.shape, resolution)
+    log_global(logger, logging.INFO, "Generating mesh: %s, resolution=%s", args.shape, resolution)
     mesher = Mesher(
         shape=args.shape,
         n=resolution,
@@ -71,7 +71,9 @@ def _generate(args: argparse.Namespace) -> None:
     )
     mesher.generate()
 
-    logger.info(
+    log_global(
+        logger,
+        logging.INFO,
         "Mesh generated with %d cells",
         mesher.mesh.topology.index_map(mesher.mesh.topology.dim).size_local,
     )
@@ -82,9 +84,9 @@ def _generate(args: argparse.Namespace) -> None:
 
     if args.export:
         fmt = args.format or Format.XDMF
-        logger.info("Exporting mesh to: %s as %s", args.export, fmt)
+        log_global(logger, logging.INFO, "Exporting mesh to: %s as %s", args.export, fmt)
         mesher.export(args.export, fmt)
-        logger.info("Export complete.")
+        log_global(logger, logging.INFO, "Export complete.")
 
     if args.plot:
         plot_mesh(mesher.mesh, tags=mesher.facet_tags, show_edges=True)
@@ -92,19 +94,21 @@ def _generate(args: argparse.Namespace) -> None:
 
 def _import(args: argparse.Namespace) -> None:
     """Import a mesh from XDMF or MSH using Mesher.from_file."""
-    logger.info("Importing mesh: %s (%s)", args.path, args.import_type)
+    log_global(logger, logging.INFO, "Importing mesh: %s (%s)", args.path, args.import_type)
     mesher = Mesher.from_file(path=args.path, shape=args.import_type, gdim=args.gdim)
 
-    logger.info(
+    log_global(
+        logger,
+        logging.INFO,
         "Mesh imported with %d cells",
         mesher.mesh.topology.index_map(mesher.mesh.topology.dim).size_local,
     )
 
     if args.export:
         fmt = args.format or Format.XDMF
-        logger.info("Exporting mesh to: %s as %s", args.export, fmt)
+        log_global(logger, logging.INFO, "Exporting mesh to: %s as %s", args.export, fmt)
         mesher.export(args.export, fmt)
-        logger.info("Export complete.")
+        log_global(logger, logging.INFO, "Export complete.")
 
     if args.plot:
         plot_mesh(mesher.mesh)
@@ -112,7 +116,7 @@ def _import(args: argparse.Namespace) -> None:
 
 def _benchmark(args: argparse.Namespace) -> None:
     """Generate a predefined CFD benchmark geometry via Mesher.from_geometry."""
-    logger.info("Generating benchmark geometry: %s", args.geometry)
+    log_global(logger, logging.INFO, "Generating benchmark geometry: %s", args.geometry)
 
     match args.geometry:
         case Geometry.CYLINDER_FLOW:
@@ -124,7 +128,9 @@ def _benchmark(args: argparse.Namespace) -> None:
 
     mesher = Mesher.from_geometry(args.geometry, cfg, comm=MPI.COMM_WORLD)
     mesh = mesher.mesh
-    logger.info(
+    log_global(
+        logger,
+        logging.INFO,
         "Mesh generated with %d cells",
         mesh.topology.index_map(mesh.topology.dim).size_local,
     )
@@ -135,9 +141,9 @@ def _benchmark(args: argparse.Namespace) -> None:
 
     if args.export:
         fmt = args.format or Format.XDMF
-        logger.info("Exporting mesh to: %s as %s", args.export, fmt)
+        log_global(logger, logging.INFO, "Exporting mesh to: %s as %s", args.export, fmt)
         mesher.export(args.export, fmt)
-        logger.info("Export complete.")
+        log_global(logger, logging.INFO, "Export complete.")
 
     if args.plot:
         plot_mesh(mesher.mesh, tags=mesher.facet_tags, show_edges=True)
@@ -225,5 +231,5 @@ def main():
     try:
         args.func(args)
     except Exception as e:
-        logger.exception("Error during CLI execution: %s", e)
+        log_global(logger, logging.ERROR, "Error during CLI execution: %s", e)
         raise SystemExit(1)

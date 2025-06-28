@@ -42,6 +42,7 @@ from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace, iPETScBlockMatri
 from .spaces import FunctionSpaces
 from lib.cache import CacheStore
 from .bcs import BoundaryConditions, apply_periodic_constraints
+from lib.loggingutils import log_global
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +247,7 @@ class StationaryNavierStokesAssembler(BaseAssembler):
 
         self._residual, self._jacobian = self._build_forms()
 
-        logger.info("Stationary Navier Stokes assembler has been initialized.")
+        log_global(logger, logging.INFO, "Stationary Navier Stokes assembler has been initialized.")
 
     @property
     def residual(self) -> dfem.Form:

@@ -37,6 +37,7 @@ from FEM.operators import StokesAssembler, StationaryNavierStokesAssembler
 from lib.cache import CacheStore
 from FEM.plot import plot_mixed_function
 from FEM.spaces import FunctionSpaces, define_spaces, FunctionSpaceType
+from lib.loggingutils import log_global
 
 from .linear import LinearSolver
 from .nonlinear import NewtonSolver
@@ -65,8 +66,10 @@ class BaseFlowSolver:
 
     def _solve_stokes_flow(self) -> dfem.Function:
         """Assemble and solve the stokes flow, to be used as initial guess for the stationary NS flow."""
-        logger.info(
-            "Assembling and solving Stokes flow, to be used as Newton's initial guess."
+        log_global(
+            logger,
+            logging.INFO,
+            "Assembling and solving Stokes flow, to be used as Newton's initial guess.",
         )
         stokes_assembler = StokesAssembler(self._spaces, bcs=self._bcs)
         stokes_solver = LinearSolver(stokes_assembler)
@@ -107,7 +110,7 @@ class BaseFlowSolver:
 
         sol = self._initial_guess
         for re in re_ramp:
-            logger.info("Solving stationary Navier-Stokes at Re=%.2f", re)
+            log_global(logger, logging.INFO, "Solving stationary Navier-Stokes at Re=%.2f", re)
             ns_assembler = StationaryNavierStokesAssembler(
                 self._spaces, re=re, bcs=self._bcs, initial_guess=sol
             )
@@ -146,14 +149,18 @@ def export_baseflow(
         linear_spaces = define_spaces(mesh, type=FunctionSpaceType.SIMPLE)
         u = dfem.Function(linear_spaces.velocity)
         u.interpolate(u_p2)
-        logger.warning(
-            "Interpolated P2 velocity to P1 vector space for safe export. Exported baseflow may lose precision."
+        log_global(
+            logger,
+            logging.WARNING,
+            "Interpolated P2 velocity to P1 vector space for safe export. Exported baseflow may lose precision.",
         )
     else:
         u, p = baseflow.split()
-        logger.warning(
+        log_global(
+            logger,
+            logging.WARNING,
             "Exporting full mixed function vector. Import back into mixed space may fail or lose fidelity"
-            " due to mixed DOF layout limitations."
+            " due to mixed DOF layout limitations.",
         )
 
     for function, function_name in ((u, "velocity"), (p, "pressure")):
@@ -161,9 +168,9 @@ def export_baseflow(
         viewer = PETSc.Viewer().createBinary(str(path), mode=PETSc.Viewer.Mode.WRITE)
         try:
             function.x.petsc_vec.view(viewer)
-            logger.info("Baseflow %s properly exported to '%s'", function_name, path)
+            log_global(logger, logging.INFO, "Baseflow %s properly exported to '%s'", function_name, path)
         except Exception as e:
-            logger.error("Baseflow %s could not be exported to disk.", function_name)
+            log_global(logger, logging.ERROR, "Baseflow %s could not be exported to disk.", function_name)
             raise e
         finally:
             viewer.destroy()
@@ -174,9 +181,11 @@ def load_baseflow(input_folder: Path, spaces: FunctionSpaces) -> dfem.Function:
     if not input_folder.exists() or not input_folder.is_dir():
         raise ValueError(f"Input path {input_folder!r} is not a valid folder.")
 
-    logger.warning(
+    log_global(
+        logger,
+        logging.WARNING,
         "Importing full mixed function vector may cause lose fidelity, as the function spaces may have been "
-        "linearized during the export process. Refer to `export_baseflow` for further details."
+        "linearized during the export process. Refer to `export_baseflow` for further details.",
     )
 
     _, dofs_u = spaces.mixed.sub(0).collapse()
@@ -191,10 +200,14 @@ def load_baseflow(input_folder: Path, spaces: FunctionSpaces) -> dfem.Function:
         viewer = PETSc.Viewer().createBinary(str(path), mode=PETSc.Viewer.Mode.READ)
         try:
             function.x.petsc_vec.load(viewer)
-            logger.info("Baseflow %s properly imported from '%s'", function_name, path)
+            log_global(logger, logging.INFO, "Baseflow %s properly imported from '%s'", function_name, path)
         except Exception as e:
-            logger.error(
-                "Baseflow %s could not be imported from %s.", function_name, path
+            log_global(
+                logger,
+                logging.ERROR,
+                "Baseflow %s could not be imported from %s.",
+                function_name,
+                path,
             )
             raise e
         finally:
