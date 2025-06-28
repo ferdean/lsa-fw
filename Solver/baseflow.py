@@ -70,7 +70,7 @@ class BaseFlowSolver:
         )
         stokes_assembler = StokesAssembler(self._spaces, bcs=self._bcs)
         stokes_solver = LinearSolver(stokes_assembler)
-        return stokes_solver.direct_lu_solve(show_plot=False)
+        return stokes_solver.gmres_solve(show_plot=False)
 
     def solve(
         self,

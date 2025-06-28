@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-import numpy as np
-
 from enum import Enum, StrEnum, auto
 from typing import TypeAlias, Iterator
 
+import numpy as np
+
+import ufl
+import dolfinx.fem as dfem
 from slepc4py import SLEPc
 from petsc4py import PETSc
 
-from FEM.utils import iPETScMatrix, iComplexPETScVector
+
+from FEM.utils import iPETScMatrix, iComplexPETScVector, iPETScVector
 
 Scalar: TypeAlias = PETSc.ScalarType
 """Alias for the base numeric type used throughout the framework (float or complex).
@@ -89,6 +92,41 @@ class PreconditionerType(StrEnum):
     SHELL = auto()
     """User-defined shell preconditioner."""
     # Additional types can be added here, e.g., PILU, PYTHON, PETSC.
+
+
+class KSPType(StrEnum):
+    """KSP solver types."""
+
+    CG = auto()
+    """Conjugate gradient method (symmetric positive-definite)."""
+    GMRES = auto()
+    """Generalized minimal residual method (nonsymmetric)."""
+    BICG = auto()
+    """Biconjugate gradient method (nonsymmetric)."""
+    BICGSTAB = auto()
+    """Biconjugate gradient stabilized method."""
+    RICHARDSON = auto()
+    """Richardson (stationary) iteration."""
+    CHEBYSHEV = auto()
+    """Chebyshev semi-iterative method."""
+    PREONLY = auto()
+    """Use only pre-conditioner (used for direct solvers, like LU or Cholebsky)."""
+    QCG = auto()
+    """Quasi-minimal residual CG."""
+    CGS = auto()
+    """CG squared."""
+    GCR = auto()
+    """Generalized conjugate residual."""
+    LSQR = auto()
+    """Least squares QR method."""
+    LGMRES = auto()
+    """Loose GMRES (recycled Krylov space)."""
+    FGMRES = auto()
+    """Flexible GMRES (variable preconditioning)."""
+
+    def to_petsc(self) -> str:
+        """Convert internal type to a type accepted by PETSc."""
+        return self.name.lower()
 
 
 class iSTType(Enum):
@@ -277,3 +315,99 @@ class iEpsSolver:
         limit = min(nconv, num)
         for i in range(limit):
             yield self.get_eigenpair(i)
+
+
+class iKSP:
+    """Wrapper around PETSc KSP (Krylov Space) linear solver, with a cleaner, type-safe API.
+
+    Provides methods to configure solver type, tolerances, preconditioner,
+    and to execute the solve and retrieve diagnostics.
+    """
+
+    def __init__(
+        self,
+        A: iPETScMatrix | None = None,
+        comm: PETSc.Comm = PETSc.COMM_WORLD,
+    ) -> None:
+        """Initialize a KSP solver."""
+        self._ksp = PETSc.KSP().create(comm=comm)
+        if A is not None:
+            self.set_operators(A)
+
+    @property
+    def raw(self) -> PETSc.KSP:
+        """Access the underlying PETSc KSP object."""
+        return self._ksp
+
+    def set_operators(self, A: iPETScMatrix, P: iPETScMatrix | None = None) -> None:
+        """Set the system matrix A and optional preconditioning matrix P.
+
+        If P is provided, it will be used as the preconditioning operator.
+        """
+        if P is not None:
+            self._ksp.setOperators(A.raw, P.raw)
+        else:
+            self._ksp.setOperators(A.raw)
+
+    def set_type(self, ksp_type: KSPType) -> None:
+        """Choose the iterative solver algorithm."""
+        self._ksp.setType(ksp_type.to_petsc())
+
+    def get_type(self) -> str:
+        """Get the current PETSc KSP type string."""
+        return self._ksp.getType()
+
+    def set_tolerances(
+        self,
+        tol: float = 1e-12,
+        max_it: int = 1000,
+        rtol: float = 1e-8,
+    ) -> None:
+        """Set convergence criteria for the solver."""
+        self._ksp.setTolerances(rtol=rtol, atol=tol, max_it=max_it)
+
+    def set_preconditioner(self, pc_type: PreconditionerType) -> None:
+        """Configure the preconditioner type."""
+        pc = self._ksp.getPC()
+        pc.setType(pc_type)
+
+    def set_initial_guess_nonzero(self, flag: bool) -> None:
+        """Indicate whether the initial guess vector is nonzero."""
+        self._ksp.setInitialGuessNonzero(flag)
+
+    def set_from_options(self, prefix: str | None = None) -> None:
+        """Apply command-line options to this solver."""
+        if prefix is not None:
+            self._ksp.setOptionsPrefix(prefix)
+        self._ksp.setFromOptions()
+
+    def solve(self, b: iPETScVector, x: iPETScVector | None = None) -> iPETScVector:
+        """Solve the linear system Ax = b.
+
+        If x is not provided, a new vector is created.
+        """
+        if x is None:
+            x = b.duplicate()
+        self._ksp.solve(b.raw, x.raw)
+        return iPETScVector(x.raw)
+
+    def get_solution(self) -> iPETScVector:
+        """Retrieve the solution vector from the last solve."""
+        return iPETScVector(self._ksp.getSolution())
+
+    def get_residual_norm(self) -> float:
+        """Get the norm of the residual after solve."""
+        return float(self._ksp.getResidualNorm())
+
+    def get_iteration_number(self) -> int:
+        """Return the number of iterations performed."""
+        return self._ksp.getIterationNumber()
+
+    def reset(self) -> None:
+        """Reset internal solver state for fresh reuse."""
+        self._ksp.reset()
+
+
+def compute_l2_error(f: dfem.Function, f_h: dfem.Function) -> float:
+    """Compute the L2 error between two functions."""
+    return dfem.assemble_scalar(dfem.form(ufl.inner(f_h - f, f_h - f) * ufl.dx))
