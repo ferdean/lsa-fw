@@ -168,7 +168,7 @@ class LinearSolver:
         key: int | str | None,
         restart: int | None = None,
     ) -> dfem.Function:
-        logger.info(f"{ksp_type.name} solve started.")
+        log_global(logger, logging.INFO, f"{ksp_type.name} solve started.")
         cache_key = key or f"{ksp_type.name.lower()}_{id(self)}"
 
         # Assemble and cache system matrix, RHS, and solution vector
