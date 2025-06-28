@@ -110,24 +110,32 @@ class NewtonSolver:
                     residual,
                 )
 
+                self._residual_history.append(residual)
+
                 if residual < atol:
                     return self._assembler.sol
 
                 if math.isinf(residual):
+                    log_rank(
+                        logger,
+                        logging.WARNING,
+                        "Residual became infinite; terminating early.",
+                    )
                     break
 
                 it += 1
                 self._residual_history.append(residual)
 
             except KeyboardInterrupt:
-                last_residual = (
-                    self._residual_history[-1] if self._residual_history else 0.0
-                )
                 log_global(
                     logger,
                     logging.WARNING,
                     "Solver was interrupted by the user. Newton did not fully converge (last residual: %.6f)",
-                    last_residual,
+                    (
+                        self._residual_history[-1]
+                        if self._residual_history
+                        else float("nan")
+                    ),
                 )
                 break
 
@@ -136,7 +144,7 @@ class NewtonSolver:
             logging.WARNING,
             "Newton did not converge after %d iterations (last residual: %.6f)",
             it,
-            self._residual_history[-1],
+            self._residual_history[-1] if self._residual_history else float("nan"),
         )
 
     def plot_residuals(

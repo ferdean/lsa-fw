@@ -91,7 +91,7 @@ class BaseFlowSolver:
     ) -> dfem.Function:
         """Assemble and solve the stationary Navier-Stokes equations for a given Reynolds number.
 
-        If ``cache`` and ``key`` are provided, the solver attempts to read a cached
+        If `cache` and `key` are provided, the solver attempts to read a cached
         solution before computing. After solving, the result is stored in the cache.
         """
         if cache is not None and key is not None:
@@ -102,6 +102,7 @@ class BaseFlowSolver:
         if self._initial_guess is None:
             # Use Stokes flow as initial guess for the Newton solver
             self._initial_guess = self._solve_stokes_flow()
+            self._initial_guess.x.scatter_forward()
 
         if ramp and steps > 1:
             re_ramp = _linspace(1.0, re, steps)
@@ -110,7 +111,9 @@ class BaseFlowSolver:
 
         sol = self._initial_guess
         for re in re_ramp:
-            log_global(logger, logging.INFO, "Solving stationary Navier-Stokes at Re=%.2f", re)
+            log_global(
+                logger, logging.INFO, "Solving stationary Navier-Stokes at Re=%.2f", re
+            )
             ns_assembler = StationaryNavierStokesAssembler(
                 self._spaces, re=re, bcs=self._bcs, initial_guess=sol
             )
@@ -168,9 +171,20 @@ def export_baseflow(
         viewer = PETSc.Viewer().createBinary(str(path), mode=PETSc.Viewer.Mode.WRITE)
         try:
             function.x.petsc_vec.view(viewer)
-            log_global(logger, logging.INFO, "Baseflow %s properly exported to '%s'", function_name, path)
+            log_global(
+                logger,
+                logging.INFO,
+                "Baseflow %s properly exported to '%s'",
+                function_name,
+                path,
+            )
         except Exception as e:
-            log_global(logger, logging.ERROR, "Baseflow %s could not be exported to disk.", function_name)
+            log_global(
+                logger,
+                logging.ERROR,
+                "Baseflow %s could not be exported to disk.",
+                function_name,
+            )
             raise e
         finally:
             viewer.destroy()
@@ -200,7 +214,13 @@ def load_baseflow(input_folder: Path, spaces: FunctionSpaces) -> dfem.Function:
         viewer = PETSc.Viewer().createBinary(str(path), mode=PETSc.Viewer.Mode.READ)
         try:
             function.x.petsc_vec.load(viewer)
-            log_global(logger, logging.INFO, "Baseflow %s properly imported from '%s'", function_name, path)
+            log_global(
+                logger,
+                logging.INFO,
+                "Baseflow %s properly imported from '%s'",
+                function_name,
+                path,
+            )
         except Exception as e:
             log_global(
                 logger,
