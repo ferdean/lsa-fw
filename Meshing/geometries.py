@@ -208,6 +208,7 @@ def step_flow(
         # Extrude the 2D surface into 3D
         vol = occ.extrude([(2, surface)], 0, 0, cfg.width)
         occ.synchronize()
+        _add_step_refinement(cfg)
         top_tags = [tag for dim, tag in vol if dim == 3]
         gmsh.model.addPhysicalGroup(3, top_tags, tag=1)
         gmsh.model.setPhysicalName(3, 1, "Fluid")
