@@ -247,7 +247,11 @@ class StationaryNavierStokesAssembler(BaseAssembler):
 
         self._residual, self._jacobian = self._build_forms()
 
-        log_global(logger, logging.INFO, "Stationary Navier Stokes assembler has been initialized.")
+        log_global(
+            logger,
+            logging.INFO,
+            "Stationary Navier Stokes assembler has been initialized.",
+        )
 
     @property
     def residual(self) -> dfem.Form:
