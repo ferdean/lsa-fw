@@ -30,7 +30,9 @@ import logging
 from pathlib import Path
 
 import dolfinx.fem as dfem
+from dolfinx import la
 from petsc4py import PETSc
+from mpi4py import MPI
 
 from FEM.bcs import BoundaryConditions
 from FEM.operators import StokesAssembler, StationaryNavierStokesAssembler
@@ -40,7 +42,7 @@ from FEM.spaces import FunctionSpaces, define_spaces, FunctionSpaceType
 from lib.loggingutils import log_global
 
 from .linear import LinearSolver
-from .nonlinear import NewtonSolver
+from .nonlinear2 import NewtonSolver
 
 
 logger = logging.getLogger(__name__)
@@ -117,8 +119,11 @@ class BaseFlowSolver:
             ns_assembler = StationaryNavierStokesAssembler(
                 self._spaces, re=re, bcs=self._bcs, initial_guess=sol
             )
-            newton = NewtonSolver(ns_assembler)
-            sol = newton.solve(max_it=max_it, atol=tol, damping_factor=damping_factor)
+            newton = NewtonSolver(ns_assembler, damping=damping_factor)
+
+            sol.x.scatter_reverse(mode=la.InsertMode.add)
+            sol = newton.solve(max_it=max_it, tol=tol)
+            sol.x.scatter_forward()
 
         if show_plot:
             plot_mixed_function(
@@ -138,12 +143,21 @@ class BaseFlowSolver:
 # then the degree of the output must match the mesh degree to avoid I/O failures. As a workaround, we optionally
 # interpolate the P2 velocity to a P1 vector space for safe export. Importing back into the original mixed
 # space may still fail or lose fidelity if the exported data does not exactly match the mixed DOF layout.
+# In parallel runs, the interleaved DOF layout of mixed spaces will either crash the writer/reader or silently corrupt
+# data. Therefore, export_baseflow and load_baseflow must only be called in serial runs.
 
 
 def export_baseflow(
     baseflow: dfem.Function, output_folder: Path, *, linear_velocity_ok: bool = False
 ) -> None:
     """Export baseflow function."""
+    if MPI.COMM_WORLD.size > 1:
+        log_global(
+            logger,
+            logging.WARNING,
+            "Baseflow export is not supported in parallel (MPI size = %d); please run in serial.",
+            MPI.COMM_WORLD.size,
+        )
     output_folder.mkdir(parents=True, exist_ok=True)
     mesh = baseflow.function_space.mesh
 
@@ -192,6 +206,13 @@ def export_baseflow(
 
 def load_baseflow(input_folder: Path, spaces: FunctionSpaces) -> dfem.Function:
     """Import baseflow function."""
+    if MPI.COMM_WORLD.size > 1:
+        log_global(
+            logger,
+            logging.WARNING,
+            "Baseflow load is not supported in parallel (MPI size = %d); please run in serial.",
+            MPI.COMM_WORLD.size,
+        )
     if not input_folder.exists() or not input_folder.is_dir():
         raise ValueError(f"Input path {input_folder!r} is not a valid folder.")
 
