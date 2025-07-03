@@ -17,6 +17,7 @@ import dolfinx.mesh as dmesh
 from basix.ufl import element, enriched_element, mixed_element
 
 from Meshing.utils import iCellType
+from lib.loggingutils import log_global
 
 from .utils import iElementFamily
 
@@ -150,8 +151,10 @@ def define_spaces(
             pressure = functionspace(mesh, p1_p)
 
         case FunctionSpaceType.SIMPLE:
-            logger.warning(
-                "Using equal-order P1-P1 function spaces. This may lead to instability."
+            log_global(
+                logger,
+                logging.WARNING,
+                "Using equal-order P1-P1 function spaces. This may lead to instability.",
             )
 
             p1_v = element(

@@ -19,9 +19,10 @@ from lib.loggingutils import setup_logging
 logger = logging.getLogger(__name__)
 
 setup_logging(verbose=True)
-PETSc.Options().setValue("viewer_binary_skip_info", "")
 
-_CFG_DIR: typing.Final[Path] = Path("config_files/2D/cylinder")
+_TEST_I_O: bool = False
+
+_CFG_DIR: typing.Final[Path] = Path("config_files") / "2D" / "cylinder"
 _RE: typing.Final[float] = 100.0
 
 # Load mesh from disk
@@ -49,10 +50,14 @@ baseflow = baseflow_solver.solve(
 )
 
 # Check export/import
-path = Path("out") / "baseflow" / "2D" / f"cylinder_re_{_RE:.2f}"
-export_baseflow(baseflow, path, linear_velocity_ok=False)
+if _TEST_I_O:
+    PETSc.Options().setValue("viewer_binary_skip_info", "")
 
-del baseflow
+    path = Path("out") / "baseflow" / "2D" / f"cylinder_re_{_RE:.2f}"
+    export_baseflow(baseflow, path, linear_velocity_ok=False)
 
-baseflow_imported = load_baseflow(path, spaces)
-plot_mixed_function(baseflow_imported, scale=0.02)
+    del baseflow  # Ensure data comes only from disk
+
+    baseflow = load_baseflow(path, spaces)
+
+plot_mixed_function(baseflow, scale=0.02)

@@ -168,7 +168,7 @@ class TestMatrix:
     def test_create_aij(self) -> None:
         """Test creating an aij sparse matrix."""
         shape = (3, 4)
-        mat = iPETScMatrix.create_aij(shape, comm=PETSc.COMM_SELF, nnz=2)
+        mat = iPETScMatrix.create_aij(shape, comm=PETSc.COMM_WORLD, nnz=2)
 
         assert isinstance(mat, iPETScMatrix)
         assert mat.shape == shape
@@ -211,13 +211,13 @@ class TestMatrix:
 
     def test_from_matrix_self(self) -> None:
         """Test creating a matrix from another matrix."""
-        A = iPETScMatrix.create_aij((2, 2), comm=PETSc.COMM_SELF, nnz=1)
+        A = iPETScMatrix.create_aij((2, 2), comm=PETSc.COMM_WORLD, nnz=1)
         B = iPETScMatrix.from_matrix(A)
         assert B is A
 
     def test_from_matrix_wraps_petsc_mat(self) -> None:
         """Test that passing a raw PETSc.Mat wraps a iPETScMatrix."""
-        raw = PETSc.Mat().createAIJ((3, 3), comm=PETSc.COMM_SELF)
+        raw = PETSc.Mat().createAIJ((3, 3), comm=PETSc.COMM_WORLD)
         raw.setValue(0, 0, 7.0)
         raw.assemble()
         M = iPETScMatrix.from_matrix(raw)
@@ -235,7 +235,7 @@ class TestMatrix:
                 [0.0, -3.5, 0.0],
             ]
         )
-        M = iPETScMatrix.from_matrix(arr, comm=PETSc.COMM_SELF)
+        M = iPETScMatrix.from_matrix(arr, comm=PETSc.COMM_WORLD)
 
         assert isinstance(M, iPETScMatrix)
         assert M.shape == arr.shape
@@ -249,7 +249,7 @@ class TestMatrix:
         rows = np.array([0, 1, 2])
         cols = np.array([2, 0, 1])
         sp = sparse.coo_matrix((data, (rows, cols)), shape=(4, 4))
-        M = iPETScMatrix.from_matrix(sp, comm=PETSc.COMM_SELF)
+        M = iPETScMatrix.from_matrix(sp, comm=PETSc.COMM_WORLD)
         M.assemble()
 
         assert isinstance(M, iPETScMatrix)
@@ -261,7 +261,7 @@ class TestMatrix:
     def test_from_matrix_invalid_input(self) -> None:
         """Passing an unsupported type should raise a TypeError."""
         with pytest.raises(TypeError):
-            _ = iPETScMatrix.from_matrix("not a matrix", comm=PETSc.COMM_SELF)
+            _ = iPETScMatrix.from_matrix("not a matrix", comm=PETSc.COMM_WORLD)
 
     def test_addition(self) -> None:
         """Test matrix addition and reflected addition."""
@@ -659,7 +659,7 @@ class TestComplexVector:
     def test_is_complex_property(self) -> None:
         """Test .is_complex both in real and complex PETSc builds."""
         real_vec = iComplexPETScVector.from_array(
-            np.array([1.0, 0.0, 3.0]), comm=PETSc.COMM_SELF
+            np.array([1.0, 0.0, 3.0]), comm=PETSc.COMM_WORLD
         )
         # If PETSc itself is built with complex support, is_complex must be True even for real matrices
         if np.dtype(PETSc.ScalarType).kind == "c":
@@ -668,7 +668,7 @@ class TestComplexVector:
             assert not real_vec.is_complex
 
         c_vec = iComplexPETScVector.from_array(
-            np.array([1.0 + 0j, 0.0 + 2j, 3.0 + 0j]), comm=PETSc.COMM_SELF
+            np.array([1.0 + 0j, 0.0 + 2j, 3.0 + 0j]), comm=PETSc.COMM_WORLD
         )
         assert c_vec.is_complex
 
@@ -796,8 +796,8 @@ class TestComplexVector:
     @skip_real
     def test_norm_and_dot_real(self) -> None:
         """Test norm() and dot() in real build."""
-        v = iComplexPETScVector.from_array(np.array([3 + 4j, 0]), comm=PETSc.COMM_SELF)
-        w = iComplexPETScVector.from_array(np.array([3 - 4j, 0]), comm=PETSc.COMM_SELF)
+        v = iComplexPETScVector.from_array(np.array([3 + 4j, 0]), comm=PETSc.COMM_WORLD)
+        w = iComplexPETScVector.from_array(np.array([3 - 4j, 0]), comm=PETSc.COMM_WORLD)
 
         assert v.norm() == pytest.approx(5.0)
         assert w.norm() == pytest.approx(5.0)
@@ -828,7 +828,7 @@ class TestComplexVector:
     def test_copy_and_equality(self) -> None:
         """Test copy() and equality operators using from_array."""
         data = np.array([1.0, 2 + 3j, -4.5])
-        vec = iComplexPETScVector.from_array(data, comm=PETSc.COMM_SELF)
+        vec = iComplexPETScVector.from_array(data, comm=PETSc.COMM_WORLD)
 
         vec_copy = vec.copy()
         assert vec_copy == vec

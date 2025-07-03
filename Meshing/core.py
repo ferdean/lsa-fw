@@ -14,6 +14,7 @@ from dolfinx.mesh import MeshTags, compute_midpoints, locate_entities_boundary, 
 
 from .utils import Format, Shape, iCellType, Geometry
 from lib.cache import CacheStore
+from lib.loggingutils import log_global
 from .geometries import get_geometry, GeometryConfig
 
 logger = logging.getLogger(__name__)
@@ -239,12 +240,12 @@ class Mesher:
                     if self._facet_tags is not None:
                         file.write_meshtags(self._facet_tags, self.mesh.geometry)
                     else:
-                        logger.warning("No facet tags to export.")
+                        log_global(logger, logging.WARNING, "No facet tags to export.")
 
                     if self._cell_tags is not None:
                         file.write_meshtags(self._cell_tags, self.mesh.geometry)
                     else:
-                        logger.warning("No cell tags to export.")
+                        log_global(logger, logging.WARNING, "No cell tags to export.")
 
             case Format.VTK:
                 with dio.VTKFile(comm, str(path), "w") as vtk_file:
@@ -327,12 +328,12 @@ class Mesher:
             try:
                 self._facet_tags = xdmf.read_meshtags(mesh, name="facet_tags")
             except Exception:
-                logger.warning("No facet tags found in XDMF.")
+                log_global(logger, logging.WARNING, "No facet tags found in XDMF.")
 
             try:
                 self._cell_tags = xdmf.read_meshtags(mesh, name="cell_tags")
             except Exception:
-                logger.warning("No cell tags found in XDMF.")
+                log_global(logger, logging.WARNING, "No cell tags found in XDMF.")
 
         return mesh
 

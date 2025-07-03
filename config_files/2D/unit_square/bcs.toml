@@ -7,8 +7,8 @@ value = [1.0, 0.0]
 [[BC]]
 # Outlet
 marker = 2
-type = "periodic"
-value = [2, 1]
+type = "dirichlet_pressure"
+value = 0.0
 
 [[BC]]
 # Wall

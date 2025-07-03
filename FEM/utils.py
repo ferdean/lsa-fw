@@ -16,6 +16,7 @@ from basix import ElementFamily as DolfinxElementFamily
 from dolfinx.mesh import Mesh, MeshTags
 from ufl import Measure  # type: ignore[import-untyped]
 from petsc4py import PETSc
+from lib.loggingutils import log_global
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +153,7 @@ class iPETScMatrix:
     def create_aij(
         cls,
         shape: tuple[int],
-        comm: PETSc.Comm = PETSc.COMM_SELF,
+        comm: PETSc.Comm = PETSc.COMM_WORLD,
         nnz: int | list[int] | None = None,
     ) -> iPETScMatrix:
         """Create an AIJ (sparse) matrix of the given global shape and wrap it.
@@ -357,9 +358,11 @@ class iPETScMatrix:
     def nonzero_entries(self) -> int:
         """Return the number of non-zero entries in the matrix."""
         if "dense" in self.type:
-            logger.warning(
+            log_global(
+                logger,
+                logging.WARNING,
                 "The current matrix is dense, so all the entries are memory-allocated. "
-                "Then, the value returned by this property might not be useful."
+                "Then, the value returned by this property might not be useful.",
             )
 
         if "nest" in self.type:
@@ -611,7 +614,11 @@ class iPETScVector:
         try:
             vec.assemble()
         except Exception:
-            logger.warning("PETSc vector could not be assembled upon initialization.")
+            log_global(
+                logger,
+                logging.WARNING,
+                "PETSc vector could not be assembled upon initialization.",
+            )
         self._vec = vec
 
     @classmethod
@@ -633,7 +640,7 @@ class iPETScVector:
         return cls(vec)
 
     @classmethod
-    def create_seq(cls, size: int, comm: PETSc.Comm = PETSc.COMM_SELF) -> iPETScVector:
+    def create_seq(cls, size: int, comm: PETSc.Comm = PETSc.COMM_WORLD) -> iPETScVector:
         """Create a sequential (non-parallel) vector of the given size."""
         vec = PETSc.Vec().createSeq(size, comm=comm)
         vec.setFromOptions()
@@ -698,9 +705,11 @@ class iPETScVector:
         if not isinstance(other, iPETScVector):
             return NotImplemented
 
-        logger.warning(
+        log_global(
+            logger,
+            logging.WARNING,
             "Vector outer product creates a dense matrix; if you need a sparse result, "
-            "override __matmul__ for sparse vectors."
+            "override __matmul__ for sparse vectors.",
         )
 
         A = PETSc.Mat().createDense([self.size, other.size], comm=self.comm)
@@ -847,9 +856,11 @@ class iComplexPETScVector:
             # In a complex PETSc build, ignore any provided imaginary part
             self._imag = None
             if imag is not None:
-                logger.warning(
+                log_global(
+                    logger,
+                    logging.WARNING,
                     "PETSc is built in a complex-floating point configuration. "
-                    "Please use `iPETScVector`."
+                    "Please use `iPETScVector`.",
                 )
         else:
             # In a real PETSc build, accept or lazy-allocate imag
@@ -861,7 +872,7 @@ class iComplexPETScVector:
 
     @classmethod
     def from_array(
-        cls, data: np.ndarray | sparse.spmatrix, comm: PETSc.Comm = PETSc.COMM_SELF
+        cls, data: np.ndarray | sparse.spmatrix, comm: PETSc.Comm = PETSc.COMM_WORLD
     ) -> iComplexPETScVector:
         """Construct an iComplexPETScVector from
         - a 1-D numpy array or
@@ -1279,7 +1290,7 @@ class iPETScNullSpace:
         try:
             self._raw.remove(vec.raw)
         except Exception as e:
-            logger.exception(f"NullSpace.remove failed: {e}")
+            log_global(logger, logging.ERROR, f"NullSpace.remove failed: {e}")
             raise
 
     def attach_to(self, mat: iPETScMatrix) -> None:
@@ -1297,7 +1308,7 @@ class iPETScNullSpace:
         try:
             self._raw.destroy()
         except Exception as e:
-            logger.warning(f"NullSpace.destroy failed: {e}")
+            log_global(logger, logging.WARNING, f"NullSpace.destroy failed: {e}")
 
 
 class iPETScBlockMatrix:
