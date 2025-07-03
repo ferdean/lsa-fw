@@ -1,15 +1,15 @@
 """LSA-FW Nonlinear Solver."""
 
 import logging
-from pathlib import Path
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
 import math
+from pathlib import Path
 
 import dolfinx.fem as dfem
-from dolfinx.fem.petsc import assemble_matrix, assemble_vector, apply_lifting, set_bc
-from petsc4py import PETSc
+import matplotlib.pyplot as plt
+from dolfinx.fem.petsc import apply_lifting, assemble_matrix, assemble_vector, set_bc
+from matplotlib.ticker import MaxNLocator
 from mpi4py import MPI
+from petsc4py import PETSc
 
 from FEM.operators import BaseAssembler
 from FEM.utils import iPETScVector

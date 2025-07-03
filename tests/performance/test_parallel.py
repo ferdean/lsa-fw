@@ -3,11 +3,12 @@
 """MPI performance analysis for cube.py: measures wall-clock time and memory usage."""
 
 import argparse
-import time
-import pathlib
-import logging
-import psutil
 import csv
+import logging
+import pathlib
+import time
+
+import psutil
 
 from lib.loggingutils import log_global, setup_logging
 

@@ -2,12 +2,12 @@
 
 from .bcs import (
     BoundaryCondition,
-    BoundaryConditionType,
     BoundaryConditions,
+    BoundaryConditionType,
     define_bcs,
 )
 from .operators import LinearizedNavierStokesAssembler, VariationalForms
-from .spaces import FunctionSpaceType, FunctionSpaces, define_spaces
+from .spaces import FunctionSpaces, FunctionSpaceType, define_spaces
 from .utils import iElementFamily, iMeasure, iPETScMatrix, iPETScVector
 
 __author__ = "Ferran de Andres <ferran.de-andres-vert@campus.tu-berlin.de>"

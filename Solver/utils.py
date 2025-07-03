@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 from enum import Enum, StrEnum, auto
-from typing import TypeAlias, Iterator
+from typing import Iterator, TypeAlias
 
 import numpy as np
-
-import ufl
-import dolfinx.fem as dfem
-from slepc4py import SLEPc
 from petsc4py import PETSc
+from slepc4py import SLEPc
 
-
-from FEM.utils import iPETScMatrix, iComplexPETScVector, iPETScVector
+from FEM.utils import iComplexPETScVector, iPETScMatrix, iPETScVector
 
 Scalar: TypeAlias = PETSc.ScalarType
 """Alias for the base numeric type used throughout the framework (float or complex).
@@ -405,8 +401,3 @@ class iKSP:
     def reset(self) -> None:
         """Reset internal solver state for fresh reuse."""
         self._ksp.reset()
-
-
-def compute_l2_error(f: dfem.Function, f_h: dfem.Function) -> float:
-    """Compute the L2 error between two functions."""
-    return dfem.assemble_scalar(dfem.form(ufl.inner(f_h - f, f_h - f) * ufl.dx))

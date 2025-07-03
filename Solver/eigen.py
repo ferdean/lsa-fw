@@ -30,7 +30,7 @@ import logging
 import time
 from dataclasses import dataclass
 
-from FEM.utils import iPETScMatrix, iComplexPETScVector
+from FEM.utils import iComplexPETScVector, iPETScMatrix
 from lib.loggingutils import log_global
 
 from .utils import iEpsProblemType, iEpsSolver

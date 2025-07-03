@@ -4,18 +4,18 @@ import logging
 import pathlib
 from typing import Callable, Self, assert_never
 
-import numpy as np
-from mpi4py import MPI
-
 import dolfinx.io as dio
 import dolfinx.mesh as dmesh
+import numpy as np
 from dolfinx.io import gmshio
 from dolfinx.mesh import MeshTags, compute_midpoints, locate_entities_boundary, meshtags
+from mpi4py import MPI
 
-from .utils import Format, Shape, iCellType, Geometry
 from lib.cache import CacheStore
 from lib.loggingutils import log_global
-from .geometries import get_geometry, GeometryConfig
+
+from .geometries import GeometryConfig, get_geometry
+from .utils import Format, Geometry, Shape, iCellType
 
 logger = logging.getLogger(__name__)
 

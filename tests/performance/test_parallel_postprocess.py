@@ -3,10 +3,11 @@
 """MPI analysis post-process."""
 
 import argparse
-import pandas as pd
-import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Callable
+
+import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def _parse_args():

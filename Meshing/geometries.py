@@ -4,11 +4,12 @@ This module provides geometry generators for standard CFD benchmark cases.
 These generators build fully configurable domains, such as cylinder flow and step flow.
 """
 
-import gmsh  # type: ignore[import-untyped]
-from mpi4py import MPI
-from dolfinx.io import gmshio
-import dolfinx.mesh as dmesh
 from typing import Callable
+
+import dolfinx.mesh as dmesh
+import gmsh  # type: ignore[import-untyped]
+from dolfinx.io import gmshio
+from mpi4py import MPI
 
 from config import CylinderFlowGeometryConfig, StepFlowGeometryConfig
 

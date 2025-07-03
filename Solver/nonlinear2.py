@@ -14,12 +14,12 @@ line-search options—all while retaining compatibility with LSA-FW's `BaseAssem
 
 import logging
 from typing import Any
-import matplotlib.pyplot as plt
 
 import dolfinx.fem as dfem
-from dolfinx.fem.petsc import assemble_matrix, assemble_vector, apply_lifting, set_bc
-from petsc4py import PETSc
+import matplotlib.pyplot as plt
+from dolfinx.fem.petsc import apply_lifting, assemble_matrix, assemble_vector, set_bc
 from mpi4py import MPI
+from petsc4py import PETSc
 
 from FEM.operators import BaseAssembler
 from lib.loggingutils import log_global, log_rank

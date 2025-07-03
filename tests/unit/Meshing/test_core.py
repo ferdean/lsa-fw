@@ -1,15 +1,15 @@
 """Unit tests for Meshing.core module."""
 
-import pytest
-import numpy as np
 from pathlib import Path
 
 import dolfinx
 import dolfinx.mesh as dmesh
+import numpy as np
+import pytest
 from mpi4py import MPI
 
-from Meshing import Shape, Mesher, Format, iCellType, Geometry
-from config import StepFlowGeometryConfig, CylinderFlowGeometryConfig
+from config import CylinderFlowGeometryConfig, StepFlowGeometryConfig
+from Meshing import Format, Geometry, Mesher, Shape, iCellType
 
 
 def test_cell_type_enum_mapping():
