@@ -36,7 +36,7 @@ from config import (
     load_facet_config,
     load_bc_config,
 )
-from lib.loggingutils import setup_logging
+from lib.loggingutils import setup_logging, log_global
 
 from Meshing import Mesher, Geometry
 from FEM.spaces import define_spaces, FunctionSpaceType
@@ -134,7 +134,7 @@ def main() -> None:
     try:
         args.func(args)
     except Exception as exc:
-        logger.exception("Error during CLI execution: %s", exc)
+        log_global(logger, logging.ERROR, "Error during CLI execution: %s", exc)
         raise SystemExit(1)
 
 

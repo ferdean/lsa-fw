@@ -30,16 +30,19 @@ import logging
 from pathlib import Path
 
 import dolfinx.fem as dfem
+from dolfinx import la
 from petsc4py import PETSc
+from mpi4py import MPI
 
 from FEM.bcs import BoundaryConditions
 from FEM.operators import StokesAssembler, StationaryNavierStokesAssembler
 from lib.cache import CacheStore
 from FEM.plot import plot_mixed_function
 from FEM.spaces import FunctionSpaces, define_spaces, FunctionSpaceType
+from lib.loggingutils import log_global
 
 from .linear import LinearSolver
-from .nonlinear import NewtonSolver
+from .nonlinear2 import NewtonSolver
 
 
 logger = logging.getLogger(__name__)
@@ -65,12 +68,14 @@ class BaseFlowSolver:
 
     def _solve_stokes_flow(self) -> dfem.Function:
         """Assemble and solve the stokes flow, to be used as initial guess for the stationary NS flow."""
-        logger.info(
-            "Assembling and solving Stokes flow, to be used as Newton's initial guess."
+        log_global(
+            logger,
+            logging.INFO,
+            "Assembling and solving Stokes flow, to be used as Newton's initial guess.",
         )
         stokes_assembler = StokesAssembler(self._spaces, bcs=self._bcs)
         stokes_solver = LinearSolver(stokes_assembler)
-        return stokes_solver.direct_lu_solve(show_plot=False)
+        return stokes_solver.gmres_solve(show_plot=False)
 
     def solve(
         self,
@@ -88,7 +93,7 @@ class BaseFlowSolver:
     ) -> dfem.Function:
         """Assemble and solve the stationary Navier-Stokes equations for a given Reynolds number.
 
-        If ``cache`` and ``key`` are provided, the solver attempts to read a cached
+        If `cache` and `key` are provided, the solver attempts to read a cached
         solution before computing. After solving, the result is stored in the cache.
         """
         if cache is not None and key is not None:
@@ -99,6 +104,7 @@ class BaseFlowSolver:
         if self._initial_guess is None:
             # Use Stokes flow as initial guess for the Newton solver
             self._initial_guess = self._solve_stokes_flow()
+            self._initial_guess.x.scatter_forward()
 
         if ramp and steps > 1:
             re_ramp = _linspace(1.0, re, steps)
@@ -107,12 +113,17 @@ class BaseFlowSolver:
 
         sol = self._initial_guess
         for re in re_ramp:
-            logger.info("Solving stationary Navier-Stokes at Re=%.2f", re)
+            log_global(
+                logger, logging.INFO, "Solving stationary Navier-Stokes at Re=%.2f", re
+            )
             ns_assembler = StationaryNavierStokesAssembler(
                 self._spaces, re=re, bcs=self._bcs, initial_guess=sol
             )
-            newton = NewtonSolver(ns_assembler)
-            sol = newton.solve(max_it=max_it, atol=tol, damping_factor=damping_factor)
+            newton = NewtonSolver(ns_assembler, damping=damping_factor)
+
+            sol.x.scatter_reverse(mode=la.InsertMode.add)
+            sol = newton.solve(max_it=max_it, tol=tol)
+            sol.x.scatter_forward()
 
         if show_plot:
             plot_mixed_function(
@@ -132,12 +143,21 @@ class BaseFlowSolver:
 # then the degree of the output must match the mesh degree to avoid I/O failures. As a workaround, we optionally
 # interpolate the P2 velocity to a P1 vector space for safe export. Importing back into the original mixed
 # space may still fail or lose fidelity if the exported data does not exactly match the mixed DOF layout.
+# In parallel runs, the interleaved DOF layout of mixed spaces will either crash the writer/reader or silently corrupt
+# data. Therefore, export_baseflow and load_baseflow must only be called in serial runs.
 
 
 def export_baseflow(
     baseflow: dfem.Function, output_folder: Path, *, linear_velocity_ok: bool = False
 ) -> None:
     """Export baseflow function."""
+    if MPI.COMM_WORLD.size > 1:
+        log_global(
+            logger,
+            logging.WARNING,
+            "Baseflow export is not supported in parallel (MPI size = %d); please run in serial.",
+            MPI.COMM_WORLD.size,
+        )
     output_folder.mkdir(parents=True, exist_ok=True)
     mesh = baseflow.function_space.mesh
 
@@ -146,14 +166,18 @@ def export_baseflow(
         linear_spaces = define_spaces(mesh, type=FunctionSpaceType.SIMPLE)
         u = dfem.Function(linear_spaces.velocity)
         u.interpolate(u_p2)
-        logger.warning(
-            "Interpolated P2 velocity to P1 vector space for safe export. Exported baseflow may lose precision."
+        log_global(
+            logger,
+            logging.WARNING,
+            "Interpolated P2 velocity to P1 vector space for safe export. Exported baseflow may lose precision.",
         )
     else:
         u, p = baseflow.split()
-        logger.warning(
+        log_global(
+            logger,
+            logging.WARNING,
             "Exporting full mixed function vector. Import back into mixed space may fail or lose fidelity"
-            " due to mixed DOF layout limitations."
+            " due to mixed DOF layout limitations.",
         )
 
     for function, function_name in ((u, "velocity"), (p, "pressure")):
@@ -161,9 +185,20 @@ def export_baseflow(
         viewer = PETSc.Viewer().createBinary(str(path), mode=PETSc.Viewer.Mode.WRITE)
         try:
             function.x.petsc_vec.view(viewer)
-            logger.info("Baseflow %s properly exported to '%s'", function_name, path)
+            log_global(
+                logger,
+                logging.INFO,
+                "Baseflow %s properly exported to '%s'",
+                function_name,
+                path,
+            )
         except Exception as e:
-            logger.error("Baseflow %s could not be exported to disk.", function_name)
+            log_global(
+                logger,
+                logging.ERROR,
+                "Baseflow %s could not be exported to disk.",
+                function_name,
+            )
             raise e
         finally:
             viewer.destroy()
@@ -171,12 +206,21 @@ def export_baseflow(
 
 def load_baseflow(input_folder: Path, spaces: FunctionSpaces) -> dfem.Function:
     """Import baseflow function."""
+    if MPI.COMM_WORLD.size > 1:
+        log_global(
+            logger,
+            logging.WARNING,
+            "Baseflow load is not supported in parallel (MPI size = %d); please run in serial.",
+            MPI.COMM_WORLD.size,
+        )
     if not input_folder.exists() or not input_folder.is_dir():
         raise ValueError(f"Input path {input_folder!r} is not a valid folder.")
 
-    logger.warning(
+    log_global(
+        logger,
+        logging.WARNING,
         "Importing full mixed function vector may cause lose fidelity, as the function spaces may have been "
-        "linearized during the export process. Refer to `export_baseflow` for further details."
+        "linearized during the export process. Refer to `export_baseflow` for further details.",
     )
 
     _, dofs_u = spaces.mixed.sub(0).collapse()
@@ -191,10 +235,20 @@ def load_baseflow(input_folder: Path, spaces: FunctionSpaces) -> dfem.Function:
         viewer = PETSc.Viewer().createBinary(str(path), mode=PETSc.Viewer.Mode.READ)
         try:
             function.x.petsc_vec.load(viewer)
-            logger.info("Baseflow %s properly imported from '%s'", function_name, path)
+            log_global(
+                logger,
+                logging.INFO,
+                "Baseflow %s properly imported from '%s'",
+                function_name,
+                path,
+            )
         except Exception as e:
-            logger.error(
-                "Baseflow %s could not be imported from %s.", function_name, path
+            log_global(
+                logger,
+                logging.ERROR,
+                "Baseflow %s could not be imported from %s.",
+                function_name,
+                path,
             )
             raise e
         finally:

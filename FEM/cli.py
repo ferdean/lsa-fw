@@ -30,7 +30,7 @@ from rich.console import Console
 import dolfinx.fem as dfem
 
 from config import load_bc_config
-from lib.loggingutils import setup_logging
+from lib.loggingutils import setup_logging, log_global
 
 from Meshing import Mesher, Shape
 
@@ -56,7 +56,9 @@ def _import_mesh(file_path: Path) -> Mesher:
             raise ValueError(f"Meshes of type '{file_path.suffix}' not supported.")
 
     mesher = Mesher.from_file(file_path, shape)
-    logger.info(
+    log_global(
+        logger,
+        logging.INFO,
         "Mesh imported with %d cells",
         mesher.mesh.topology.index_map(mesher.mesh.topology.dim).size_local,
     )
@@ -86,11 +88,15 @@ def _get_baseflow(
             raise ValueError(
                 "If no path to a disk-saved baseflow is given, enough data to compute it must be provided."
             )
-        logger.info("No base flow file provided; computing it from scratch.")
+        log_global(
+            logger,
+            logging.INFO,
+            "No base flow file provided; computing it from scratch.",
+        )
         baseflow_solver = BaseFlowSolver(spaces, bcs=bcs)
         u_base = baseflow_solver.solve(re=re)
     else:
-        logger.info("Loading base flow from '%s'", base_flow_path)
+        log_global(logger, logging.INFO, "Loading base flow from '%s'", base_flow_path)
         u_base = load_baseflow(base_flow_path, spaces)
     if show_plot:
         plot_mixed_function(u_base, scale=0.025, title="Base flow")
@@ -98,7 +104,7 @@ def _get_baseflow(
 
 
 def _export_matrices(A: iPETScMatrix, M: iPETScMatrix, output_path: Path) -> None:
-    logger.info(f"Output will be saved to: {output_path}")
+    log_global(logger, logging.INFO, f"Output will be saved to: {output_path}")
     output_path.mkdir(parents=True, exist_ok=True)
     A.export(output_path / "A.petsc")
     M.export(output_path / "M.petsc")
@@ -117,11 +123,11 @@ def assemble_fem(args: argparse.Namespace) -> None:
     _export_matrices(A, M, args.output_path / "matrices")
 
     if args.plot:
-        logger.info(f"Plots will be saved to: {args.output_path}/plots")
-        A_block = assembler.extract_subblocks(A)
-        M_block = assembler.extract_subblocks(M)
-        spy(A_block, args.output_path / "plots" / "A.png")
-        spy(M_block, args.output_path / "plots" / "M.png")
+        log_global(
+            logger, logging.INFO, f"Plots will be saved to: {args.output_path}/plots"
+        )
+        spy(A, args.output_path / "plots" / "A.png", spaces=spaces)
+        spy(M, args.output_path / "plots" / "M.png", spaces=spaces)
 
 
 def main():
@@ -182,7 +188,7 @@ def main():
         try:
             assemble_fem(args)
         except Exception as e:
-            logger.exception("Error during CLI execution: %s", e)
+            log_global(logger, logging.ERROR, "Error during CLI execution: %s", e)
             raise SystemExit(1)
     else:
         console.print("[red]Unknown command. Use --help for usage info.[/red]")

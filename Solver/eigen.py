@@ -31,6 +31,7 @@ import time
 from dataclasses import dataclass
 
 from FEM.utils import iPETScMatrix, iComplexPETScVector
+from lib.loggingutils import log_global
 
 from .utils import iEpsProblemType, iEpsSolver
 
@@ -62,7 +63,12 @@ class EigenSolver:
     """Solver for the generalized eigenvalue problem Ax = λMx, based on SLEPc."""
 
     def __init__(
-        self, cfg: EigensolverConfig, A: iPETScMatrix, M: iPETScMatrix | None = None
+        self,
+        cfg: EigensolverConfig,
+        A: iPETScMatrix,
+        M: iPETScMatrix | None = None,
+        *,
+        check_hermitian: bool = True,
     ) -> None:
         """Initialize eigensolver."""
         nrows, ncols = A.shape
@@ -75,11 +81,13 @@ class EigenSolver:
                 raise ValueError(
                     f"Operator M shape {M.shape} does not match A's shape {A.shape}"
                 )
-        if cfg.problem_type in _HERMITIAN_TYPES:
+        if cfg.problem_type in _HERMITIAN_TYPES and check_hermitian:
             if not A.is_numerically_hermitian():
-                logger.warning(
+                log_global(
+                    logger,
+                    logging.WARNING,
                     f"Problem type '{cfg.problem_type.name}' assumes Hermitian A,"
-                    " but A is not (numerically) Hermitian."
+                    " but A is not (numerically) Hermitian.",
                 )
             if (
                 M is not None
@@ -87,9 +95,11 @@ class EigenSolver:
                 and not M.is_numerically_hermitian()
             ):
 
-                logger.warning(
+                log_global(
+                    logger,
+                    logging.WARNING,
                     f"Problem type '{cfg.problem_type.name}' assumes Hermitian M,"
-                    " but M is not (numerically) Hermitian."
+                    " but M is not (numerically) Hermitian.",
                 )
 
         self._cfg = cfg
@@ -111,10 +121,12 @@ class EigenSolver:
 
     def solve(self) -> list[tuple[float | complex, iComplexPETScVector]]:
         """Run the solver and return eigenpairs."""
-        logger.info(
+        log_global(
+            logger,
+            logging.INFO,
             f"Starting eigenvalue solve: type={self._cfg.problem_type.name}, "
             f"nev={self._cfg.num_eig}, "
-            f"tol={self._cfg.atol}, max_it={self._cfg.max_it}"
+            f"tol={self._cfg.atol}, max_it={self._cfg.max_it}",
         )
 
         t0 = time.time()
@@ -128,11 +140,13 @@ class EigenSolver:
         except Exception:
             its = None
 
-        logger.info(
+        log_global(
+            logger,
+            logging.INFO,
             f"Solve completed in {elapsed:.2f} s; converged {nconv} eigenpairs"
-            + (f"; iterations={its}" if its is not None else "")
+            + (f"; iterations={its}" if its is not None else ""),
         )
 
         pairs = list(self._solver.get_all_eigenpairs_up_to(self._cfg.num_eig))
-        logger.info(f"Retrieved {len(pairs)} eigenpairs")
+        log_global(logger, logging.INFO, f"Retrieved {len(pairs)} eigenpairs")
         return pairs

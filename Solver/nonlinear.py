@@ -9,9 +9,13 @@ import math
 import dolfinx.fem as dfem
 from dolfinx.fem.petsc import assemble_matrix, assemble_vector, apply_lifting, set_bc
 from petsc4py import PETSc
+from mpi4py import MPI
 
 from FEM.operators import BaseAssembler
+from FEM.utils import iPETScVector
+from lib.loggingutils import log_global, log_rank
 
+from .utils import iKSP
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +25,8 @@ plt.rcParams.update(
         "font.size": 10,
     }
 )
-logging.getLogger("matplotlib.ticker").disabled = True
-logging.getLogger("matplotlib.font_manager").disabled = True
-logging.getLogger("matplotlib.pyplot").disabled = True
+for name in ("matplotlib.ticker", "matplotlib.font_manager", "matplotlib.pyplot"):
+    logging.getLogger(name).disabled = True
 
 
 class NewtonSolver:
@@ -31,16 +34,18 @@ class NewtonSolver:
 
     def __init__(self, assembler: BaseAssembler) -> None:
         """Initialize."""
+        if MPI.COMM_WORLD.Get_size() > 1:
+            log_global(
+                logger,
+                logging.WARNING,
+                "Use `Solver.nonlinear2` for MPI-aware solvers.",
+            )
+
         self._assembler = assembler
         self._residual_history: list[float] = []
-
         self._dwh = dfem.Function(assembler.spaces.mixed)
         self._A, self._b = self._assembler.get_matrix_forms()
-
-        self._solver = PETSc.KSP().create(assembler.spaces.mixed.mesh.comm)
-        self._solver.setOperators(self._A.raw)
-
-        self._residual_history: list[float] = []
+        self._solver = iKSP(self._A, comm=assembler.spaces.mixed.mesh.comm)
 
     def _reassemble(self) -> None:
         with self._b.raw.localForm() as loc_b:
@@ -74,21 +79,23 @@ class NewtonSolver:
         )
 
     def _solve_linear(self) -> None:
-        self._solver.solve(self._b.raw, self._dwh.x.petsc_vec)
+        self._solver.solve(self._b, iPETScVector(self._dwh.x.petsc_vec))
         self._dwh.x.scatter_forward()
 
     def solve(
         self, *, max_it: int = 500, atol: float = 1e-5, damping_factor: float = 1.0
     ) -> dfem.Function:
-        """Solve nonlinear problem."""
+        """Solve the nonlinear problem."""
         if not (0.0 < damping_factor <= 1.0):
-            logger.warning(
+            log_global(
+                logger,
+                logging.WARNING,
                 "Damping factor should be in the (0, 1] range, but %.2f was given. Using 1.00 (undamped).",
                 damping_factor,
             )
             damping_factor = 1.0
 
-        logger.debug("Newton solver started.")
+        log_global(logger, logging.DEBUG, "Newton solver started.")
 
         it = 0
         while it < max_it:
@@ -99,31 +106,49 @@ class NewtonSolver:
 
                 residual = self._dwh.x.petsc_vec.norm(0)
 
-                logger.debug("Iteration %d - residual = %.2e", it, residual)
+                log_rank(
+                    logger,
+                    logging.DEBUG,
+                    "Iteration %d - residual = %.2e",
+                    it,
+                    residual,
+                )
+
+                self._residual_history.append(residual)
 
                 if residual < atol:
                     return self._assembler.sol
 
                 if math.isinf(residual):
+                    log_rank(
+                        logger,
+                        logging.WARNING,
+                        "Residual became infinite; terminating early.",
+                    )
                     break
 
                 it += 1
                 self._residual_history.append(residual)
 
             except KeyboardInterrupt:
-                last_residual = (
-                    self._residual_history[-1] if self._residual_history else 0.0
-                )
-                logger.warning(
+                log_global(
+                    logger,
+                    logging.WARNING,
                     "Solver was interrupted by the user. Newton did not fully converge (last residual: %.6f)",
-                    last_residual,
+                    (
+                        self._residual_history[-1]
+                        if self._residual_history
+                        else float("nan")
+                    ),
                 )
                 break
 
-        logger.warning(
+        log_global(
+            logger,
+            logging.WARNING,
             "Newton did not converge after %d iterations (last residual: %.6f)",
             it,
-            self._residual_history[-1],
+            self._residual_history[-1] if self._residual_history else float("nan"),
         )
 
     def plot_residuals(
@@ -146,4 +171,4 @@ class NewtonSolver:
         fig.savefig(output_path, dpi=330)
         plt.close(fig)
 
-        logger.info("Residual plot saved to %s", output_path)
+        log_global(logger, logging.INFO, "Residual plot saved to %s", output_path)

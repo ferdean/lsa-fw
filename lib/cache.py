@@ -13,6 +13,7 @@ import dolfinx.io as dio
 import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
 
+from lib.loggingutils import log_global
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +46,13 @@ class CacheStore:
             try:
                 facet = xdmf.read_meshtags(mesh, name="facet_tags")
             except Exception:  # noqa: BLE001
-                logger.debug("No facet tags in cache file %s", path)
+                log_global(
+                    logger, logging.DEBUG, "No facet tags in cache file %s", path
+                )
             try:
                 cell = xdmf.read_meshtags(mesh, name="cell_tags")
             except Exception:  # noqa: BLE001
-                logger.debug("No cell tags in cache file %s", path)
+                log_global(logger, logging.DEBUG, "No cell tags in cache file %s", path)
         return mesh, facet, cell
 
     def save_mesh(
