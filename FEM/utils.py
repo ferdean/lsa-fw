@@ -153,7 +153,7 @@ class iPETScMatrix:
     def create_aij(
         cls,
         shape: tuple[int],
-        comm: PETSc.Comm = PETSc.COMM_SELF,
+        comm: PETSc.Comm = PETSc.COMM_WORLD,
         nnz: int | list[int] | None = None,
     ) -> iPETScMatrix:
         """Create an AIJ (sparse) matrix of the given global shape and wrap it.
@@ -614,7 +614,11 @@ class iPETScVector:
         try:
             vec.assemble()
         except Exception:
-            log_global(logger, logging.WARNING, "PETSc vector could not be assembled upon initialization.")
+            log_global(
+                logger,
+                logging.WARNING,
+                "PETSc vector could not be assembled upon initialization.",
+            )
         self._vec = vec
 
     @classmethod
@@ -636,7 +640,7 @@ class iPETScVector:
         return cls(vec)
 
     @classmethod
-    def create_seq(cls, size: int, comm: PETSc.Comm = PETSc.COMM_SELF) -> iPETScVector:
+    def create_seq(cls, size: int, comm: PETSc.Comm = PETSc.COMM_WORLD) -> iPETScVector:
         """Create a sequential (non-parallel) vector of the given size."""
         vec = PETSc.Vec().createSeq(size, comm=comm)
         vec.setFromOptions()
@@ -868,7 +872,7 @@ class iComplexPETScVector:
 
     @classmethod
     def from_array(
-        cls, data: np.ndarray | sparse.spmatrix, comm: PETSc.Comm = PETSc.COMM_SELF
+        cls, data: np.ndarray | sparse.spmatrix, comm: PETSc.Comm = PETSc.COMM_WORLD
     ) -> iComplexPETScVector:
         """Construct an iComplexPETScVector from
         - a 1-D numpy array or
