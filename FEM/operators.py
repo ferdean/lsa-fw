@@ -44,7 +44,7 @@ from lib.cache import CacheStore
 from .bcs import BoundaryConditions, apply_periodic_constraints
 from lib.loggingutils import log_global
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)  # TODO: add logs to linearized assembler
 
 
 def _extract_bcs(bcs: BoundaryConditions | None) -> tuple[
@@ -242,7 +242,7 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         self._u, self._p = split(self._wh)
         self._apply_dirichlet(self._wh)
 
-        # TODO: check handling of neumann and robin conditions
+        # TODO: handle robin conditions
         # TODO: handle periodic constraints
 
         self._residual, self._jacobian = self._build_forms()
