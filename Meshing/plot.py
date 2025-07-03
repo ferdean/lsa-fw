@@ -92,13 +92,20 @@ def plot_mesh(
         elif tags_to_plot.dim == dim - 1:
             _add_facet_tags(plotter, mesh_to_plot, grid, tags_to_plot, show_edges)
         else:
-            log_global(logger, logging.WARNING, "MeshTags dimension %d not supported.", tags.dim)
+            log_global(
+                logger,
+                logging.WARNING,
+                "MeshTags dimension %d not supported.",
+                tags.dim,
+            )
 
     if screenshot_path:
         ext = screenshot_path.suffix.lower()
         if ext == ".svg":
             plotter.save_graphic(str(screenshot_path))
-            log_global(logger, logging.INFO, "Exported mesh to SVG: %s", screenshot_path)
+            log_global(
+                logger, logging.INFO, "Exported mesh to SVG: %s", screenshot_path
+            )
         elif ext == ".png":
             plotter.screenshot(
                 str(screenshot_path),
@@ -173,7 +180,9 @@ def _add_facet_tags(
                 lines.extend([2, *vids.tolist()])
                 vals.append(int(t))
         if not vals:
-            log_global(logger, logging.WARNING, "No 2D facets tagged, skipping facet plot.")
+            log_global(
+                logger, logging.WARNING, "No 2D facets tagged, skipping facet plot."
+            )
             return
         cells = np.array(lines, np.int64)
         types = np.full(len(vals), pv.CellType.LINE, np.uint8)
@@ -210,7 +219,9 @@ def _add_facet_tags(
                 faces.extend([len(local), *local])
                 vals.append(int(t))
         if not vals:
-            log_global(logger, logging.WARNING, "No 3D facets tagged, skipping facet plot.")
+            log_global(
+                logger, logging.WARNING, "No 3D facets tagged, skipping facet plot."
+            )
             return
         poly = pv.PolyData(coords, np.array(faces, np.int64))
         poly.cell_data["facet tags"] = np.array(vals, np.int32)
@@ -229,7 +240,9 @@ def _add_facet_tags(
             },
         )
     else:
-        log_global(logger, logging.WARNING, "Mesh dimension %d not supported for facets.", dim)
+        log_global(
+            logger, logging.WARNING, "Mesh dimension %d not supported for facets.", dim
+        )
 
 
 def _gather_mesh_from_ranks(
@@ -253,7 +266,7 @@ def _gather_mesh_from_ranks(
             xdmf.write_meshtags(tags, mesh.geometry)
 
     if comm.rank == 0:
-        with dio.XDMFFile(MPI.COMM_SELF, str(path), "r") as xdmf:
+        with dio.XDMFFile(MPI.COMM_WORLD, str(path), "r") as xdmf:
             full = xdmf.read_mesh()
             full_tags = None
             if tags:
