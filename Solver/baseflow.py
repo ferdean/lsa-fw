@@ -31,19 +31,18 @@ from pathlib import Path
 
 import dolfinx.fem as dfem
 from dolfinx import la
-from petsc4py import PETSc
 from mpi4py import MPI
+from petsc4py import PETSc
 
 from FEM.bcs import BoundaryConditions
-from FEM.operators import StokesAssembler, StationaryNavierStokesAssembler
-from lib.cache import CacheStore
+from FEM.operators import StationaryNavierStokesAssembler, StokesAssembler
 from FEM.plot import plot_mixed_function
-from FEM.spaces import FunctionSpaces, define_spaces, FunctionSpaceType
+from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
+from lib.cache import CacheStore
 from lib.loggingutils import log_global
 
 from .linear import LinearSolver
 from .nonlinear2 import NewtonSolver
-
 
 logger = logging.getLogger(__name__)
 

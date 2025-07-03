@@ -25,21 +25,18 @@ as all FEM processes within this module are MPI-aware.
 import argparse
 import logging
 from pathlib import Path
-from rich.console import Console
 
 import dolfinx.fem as dfem
+from rich.console import Console
 
 from config import load_bc_config
-from lib.loggingutils import setup_logging, log_global
-
-from Meshing import Mesher, Shape
-
-from FEM.spaces import FunctionSpaceType, define_spaces, FunctionSpaces
-from FEM.bcs import define_bcs, BoundaryConditions
+from FEM.bcs import BoundaryConditions, define_bcs
 from FEM.operators import LinearizedNavierStokesAssembler
-from FEM.plot import spy, plot_mixed_function
+from FEM.plot import plot_mixed_function, spy
+from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
 from FEM.utils import iPETScMatrix
-
+from lib.loggingutils import log_global, setup_logging
+from Meshing import Mesher, Shape
 from Solver.baseflow import BaseFlowSolver, load_baseflow
 
 console: Console = Console()

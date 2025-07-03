@@ -8,13 +8,13 @@ from pathlib import Path
 
 from petsc4py import PETSc
 
-from Meshing import Mesher, Shape
-from FEM.spaces import define_spaces, FunctionSpaceType
+from config import load_bc_config
 from FEM.bcs import BoundaryCondition, define_bcs
 from FEM.plot import plot_mixed_function
-from Solver.baseflow import BaseFlowSolver, export_baseflow, load_baseflow
-from config import load_bc_config
+from FEM.spaces import FunctionSpaceType, define_spaces
 from lib.loggingutils import setup_logging
+from Meshing import Mesher, Shape
+from Solver.baseflow import BaseFlowSolver, export_baseflow, load_baseflow
 
 logger = logging.getLogger(__name__)
 

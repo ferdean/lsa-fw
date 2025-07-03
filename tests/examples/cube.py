@@ -8,15 +8,13 @@ import logging
 import typing
 from pathlib import Path
 
-
-from Meshing import Mesher, Shape, iCellType
-from FEM.spaces import define_spaces, FunctionSpaceType
+from config import load_bc_config, load_facet_config
 from FEM.bcs import BoundaryCondition, define_bcs
 from FEM.operators import LinearizedNavierStokesAssembler
-from Solver.baseflow import BaseFlowSolver
-
-from config import load_bc_config, load_facet_config
+from FEM.spaces import FunctionSpaceType, define_spaces
 from lib.loggingutils import setup_logging
+from Meshing import Mesher, Shape, iCellType
+from Solver.baseflow import BaseFlowSolver
 
 logger = logging.getLogger(__name__)
 

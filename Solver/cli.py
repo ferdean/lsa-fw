@@ -31,17 +31,16 @@ from pathlib import Path
 from mpi4py import MPI
 
 from config import (
-    load_cylinder_flow_config,
-    load_step_flow_config,
-    load_facet_config,
     load_bc_config,
+    load_cylinder_flow_config,
+    load_facet_config,
+    load_step_flow_config,
 )
-from lib.loggingutils import setup_logging, log_global
-
-from Meshing import Mesher, Geometry
-from FEM.spaces import define_spaces, FunctionSpaceType
 from FEM.bcs import BoundaryCondition, define_bcs
+from FEM.spaces import FunctionSpaceType, define_spaces
 from lib.cache import CacheStore
+from lib.loggingutils import log_global, setup_logging
+from Meshing import Geometry, Mesher
 
 from .baseflow import BaseFlowSolver
 

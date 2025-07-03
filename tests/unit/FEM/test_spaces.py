@@ -4,11 +4,11 @@ import pytest
 from dolfinx.fem import FunctionSpace
 from dolfinx.mesh import Mesh
 
-from Meshing import Mesher, Shape, iCellType
 from FEM.spaces import (
-    define_spaces,
     FunctionSpaceType,
+    define_spaces,
 )
+from Meshing import Mesher, Shape, iCellType
 
 
 @pytest.fixture(scope="module")

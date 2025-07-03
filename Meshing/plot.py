@@ -12,12 +12,13 @@ from enum import StrEnum, auto
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+import dolfinx.io as dio
 import numpy as np
 import pyvista as pv
-from mpi4py import MPI
 from dolfinx.mesh import Mesh, MeshTags
 from dolfinx.plot import vtk_mesh
-import dolfinx.io as dio
+from mpi4py import MPI
+
 from lib.loggingutils import log_global
 
 logger = logging.getLogger(__name__)

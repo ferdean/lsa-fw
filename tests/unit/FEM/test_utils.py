@@ -1,13 +1,13 @@
 """Tests for FEM.utils module."""
 
-import pytest
-import numpy as np
-from scipy import sparse
 from pathlib import Path
 
+import numpy as np
+import pytest
 from petsc4py import PETSc
+from scipy import sparse
 
-from FEM.utils import iPETScMatrix, iPETScVector, iPETScNullSpace, iComplexPETScVector
+from FEM.utils import iComplexPETScVector, iPETScMatrix, iPETScNullSpace, iPETScVector
 
 _complex_build = np.issubdtype(PETSc.ScalarType, np.complexfloating)
 

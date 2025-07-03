@@ -4,19 +4,19 @@ Provides helper functions for visualizing FEM data, such as matrix sparsity patt
 """
 
 import logging
+from pathlib import Path
+
+import dolfinx.fem as dfem
 import matplotlib.pyplot as plt
 import numpy as np
-from pathlib import Path
-from scipy.sparse import csr_matrix  # type:ignore[import-untyped]
-
 import pyvista
-import dolfinx.fem as dfem
 from dolfinx.plot import vtk_mesh
+from scipy.sparse import csr_matrix  # type:ignore[import-untyped]
 
 from FEM.spaces import FunctionSpaces
 from lib.loggingutils import log_global
 
-from .utils import iPETScMatrix, iPETScBlockMatrix
+from .utils import iPETScBlockMatrix, iPETScMatrix
 
 logger = logging.getLogger(__name__)
 

@@ -1,22 +1,21 @@
 """Unit tests for FEM.bcs module."""
 
-import pytest
-import numpy as np
-
 import dolfinx.fem as dfem
+import numpy as np
+import pytest
 import ufl
 
-from Meshing import Mesher, Shape
-from Meshing.utils import iCellType
 from FEM.bcs import (
-    define_bcs,
     BoundaryCondition,
     BoundaryConditionType,
-    compute_periodic_dof_pairs,
     apply_periodic_constraints,
+    compute_periodic_dof_pairs,
+    define_bcs,
 )
-from FEM.spaces import define_spaces, FunctionSpaceType, FunctionSpaces
+from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
 from FEM.utils import iPETScMatrix
+from Meshing import Mesher, Shape
+from Meshing.utils import iCellType
 
 
 @pytest.fixture(scope="module")
