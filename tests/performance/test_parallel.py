@@ -1,0 +1,135 @@
+#!/dolfinx-env/bin/python3
+
+"""MPI performance analysis for cube.py: measures wall-clock time and memory usage."""
+
+import argparse
+import time
+import pathlib
+import logging
+import psutil
+import csv
+
+from lib.loggingutils import log_global, setup_logging
+
+logger = logging.getLogger("mpi-analysis")
+setup_logging(verbose=True, output_path=pathlib.Path(".") / "log_parallel.log")
+
+MPI_EXEC = "mpirun"
+MPI_FLAG = "-n"
+INTERPRETER = "/dolfinx-env/bin/python3"
+SCRIPT = "/workspaces/lsa-fw/tests/examples/cube.py"
+RESULTS_FILE = pathlib.Path(__file__).parent / "data" / "mpi_analysis.csv"
+
+
+def _parse_args():
+    p = argparse.ArgumentParser(description="MPI performance analysis for cube.py")
+    p.add_argument(
+        "--cores",
+        nargs="+",
+        type=int,
+        default=list(range(1, 13)),
+        help="MPI core counts to test (default: 1-12).",
+    )
+    p.add_argument(
+        "--repeats",
+        type=int,
+        default=5,
+        help="Number of runs per core count (default: 5).",
+    )
+    return p.parse_args()
+
+
+def sample_tree_memory(proc: psutil.Popen) -> tuple[int, int]:
+    """Aggregate RSS and VMS (bytes) of the MPI tree (parent + children)."""
+    try:
+        root = psutil.Process(proc.pid)
+        processes = [root] + root.children(recursive=True)
+        rss = sum(p.memory_info().rss for p in processes)
+        vms = sum(p.memory_info().vms for p in processes)
+        return rss, vms
+    except psutil.Error:
+        return 0, 0
+
+
+def main():
+    args = _parse_args()
+
+    # Write header if first time
+    if not RESULTS_FILE.exists():
+        with RESULTS_FILE.open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["cores", "run", "time_ns", "peak_rss_MB", "peak_vms_MB"])
+
+    for n in args.cores:
+        for run_idx in range(1, args.repeats + 1):
+            log_global(
+                logger,
+                logging.INFO,
+                "Starting run %d/%d with %d core(s)",
+                run_idx,
+                args.repeats,
+                n,
+            )
+            cmd = [MPI_EXEC, MPI_FLAG, str(n), INTERPRETER, SCRIPT]
+
+            # Launch MPI run under psutil to monitor memory
+            proc = psutil.Popen(cmd)
+            start = time.time()
+            peak_rss = peak_vms = 0
+
+            try:
+                # Poll until completion, sampling memory every 0.2 seconds
+                while True:
+                    try:
+                        # Wait up to 0.2s; raises TimeoutExpired if still running
+                        proc.wait(timeout=0.2)
+                        # One last sample after exit
+                        rss, vms = sample_tree_memory(proc)
+                        peak_rss = max(peak_rss, rss)
+                        peak_vms = max(peak_vms, vms)
+                        break
+                    except psutil.TimeoutExpired:
+                        # Still running: sample memory
+                        rss, vms = sample_tree_memory(proc)
+                        peak_rss = max(peak_rss, rss)
+                        peak_vms = max(peak_vms, vms)
+
+                elapsed = time.time() - start
+            except Exception as e:
+                log_global(logger, logging.ERROR, "Monitoring failed: %s", str(e))
+                continue
+
+            elapsed = time.perf_counter_ns() - start
+
+            # Convert bytes to megabytes
+            peak_rss_mb = peak_rss / (1024**2)
+            peak_vms_mb = peak_vms / (1024**2)
+
+            # Append results
+            with RESULTS_FILE.open("a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    [
+                        n,
+                        run_idx,
+                        elapsed,
+                        f"{peak_rss_mb:.1f}",
+                        f"{peak_vms_mb:.1f}",
+                    ]
+                )
+
+            log_global(
+                logger,
+                logging.INFO,
+                "Completed run %d/%d with %d core(s): time=%d ns, peak_rss=%.1f MB, peak_vms=%.1f MB",
+                run_idx,
+                args.repeats,
+                n,
+                elapsed,
+                peak_rss_mb,
+                peak_vms_mb,
+            )
+
+
+if __name__ == "__main__":
+    main()

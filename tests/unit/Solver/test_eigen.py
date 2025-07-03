@@ -253,7 +253,7 @@ def test_shift_invert_with_epsilon():
     base = np.array([1.0, 1.0 + 1e-8, 1.0 + 2e-8])
     eps = 1e-9
     diag = np.diag(base + eps)
-    A = iPETScMatrix.from_matrix(diag, comm=PETSc.COMM_SELF)
+    A = iPETScMatrix.from_matrix(diag, comm=PETSc.COMM_WORLD)
     cfg = EigensolverConfig(
         num_eig=3, problem_type=iEpsProblemType.HEP, atol=1e-12, max_it=500
     )
