@@ -381,7 +381,7 @@ class iKSP:
             self._ksp.setOptionsPrefix(prefix)
         self._ksp.setFromOptions()
 
-    def solve(self, b: iPETScVector, x: iPETScVector | None = None) -> iPETScVector:
+    def solve(self, b: iPETScVector, x: iPETScVector | None = None) -> None:
         """Solve the linear system Ax = b.
 
         If x is not provided, a new vector is created.
@@ -389,7 +389,6 @@ class iKSP:
         if x is None:
             x = b.duplicate()
         self._ksp.solve(b.raw, x.raw)
-        return iPETScVector(x.raw)
 
     def get_solution(self) -> iPETScVector:
         """Retrieve the solution vector from the last solve."""
