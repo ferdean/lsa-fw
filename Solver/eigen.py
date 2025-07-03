@@ -63,7 +63,12 @@ class EigenSolver:
     """Solver for the generalized eigenvalue problem Ax = λMx, based on SLEPc."""
 
     def __init__(
-        self, cfg: EigensolverConfig, A: iPETScMatrix, M: iPETScMatrix | None = None
+        self,
+        cfg: EigensolverConfig,
+        A: iPETScMatrix,
+        M: iPETScMatrix | None = None,
+        *,
+        check_hermitian: bool = True,
     ) -> None:
         """Initialize eigensolver."""
         nrows, ncols = A.shape
@@ -76,12 +81,13 @@ class EigenSolver:
                 raise ValueError(
                     f"Operator M shape {M.shape} does not match A's shape {A.shape}"
                 )
-        if cfg.problem_type in _HERMITIAN_TYPES:
+        if cfg.problem_type in _HERMITIAN_TYPES and check_hermitian:
             if not A.is_numerically_hermitian():
                 log_global(
                     logger,
                     logging.WARNING,
-                    f"Problem type '{cfg.problem_type.name}' assumes Hermitian A," " but A is not (numerically) Hermitian.",
+                    f"Problem type '{cfg.problem_type.name}' assumes Hermitian A,"
+                    " but A is not (numerically) Hermitian.",
                 )
             if (
                 M is not None
@@ -92,7 +98,8 @@ class EigenSolver:
                 log_global(
                     logger,
                     logging.WARNING,
-                    f"Problem type '{cfg.problem_type.name}' assumes Hermitian M," " but M is not (numerically) Hermitian.",
+                    f"Problem type '{cfg.problem_type.name}' assumes Hermitian M,"
+                    " but M is not (numerically) Hermitian.",
                 )
 
         self._cfg = cfg

@@ -88,7 +88,11 @@ def _get_baseflow(
             raise ValueError(
                 "If no path to a disk-saved baseflow is given, enough data to compute it must be provided."
             )
-        log_global(logger, logging.INFO, "No base flow file provided; computing it from scratch.")
+        log_global(
+            logger,
+            logging.INFO,
+            "No base flow file provided; computing it from scratch.",
+        )
         baseflow_solver = BaseFlowSolver(spaces, bcs=bcs)
         u_base = baseflow_solver.solve(re=re)
     else:
@@ -119,11 +123,11 @@ def assemble_fem(args: argparse.Namespace) -> None:
     _export_matrices(A, M, args.output_path / "matrices")
 
     if args.plot:
-        log_global(logger, logging.INFO, f"Plots will be saved to: {args.output_path}/plots")
-        A_block = assembler.extract_subblocks(A)
-        M_block = assembler.extract_subblocks(M)
-        spy(A_block, args.output_path / "plots" / "A.png")
-        spy(M_block, args.output_path / "plots" / "M.png")
+        log_global(
+            logger, logging.INFO, f"Plots will be saved to: {args.output_path}/plots"
+        )
+        spy(A, args.output_path / "plots" / "A.png", spaces=spaces)
+        spy(M, args.output_path / "plots" / "M.png", spaces=spaces)
 
 
 def main():
