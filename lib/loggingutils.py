@@ -1,6 +1,11 @@
+"""Utilities for logging."""
+
 import logging
+from datetime import datetime
 from rich.logging import RichHandler
 from rich.console import Console
+from pathlib import Path
+import platform
 
 try:
     from mpi4py import MPI
@@ -9,24 +14,55 @@ try:
 except ImportError:
     _rank = 0
 
+_TIME_FORMAT: str = "%d.%m.%Y %H:%M:%S"
 
-def setup_logging(verbose: bool) -> None:
-    """Set up logging so that only rank 0 emits INFO/DEBUG, others only WARNING+."""
+
+def _write_header(file_path: Path) -> None:
+    now = datetime.now().strftime(_TIME_FORMAT)
+    pyver = platform.python_version()
+    hostname = platform.node()
+    size = 1
+    try:
+        size = MPI.COMM_WORLD.Get_size()
+    except Exception:
+        pass
+
+    header_lines = [
+        f"# Session start: {now}",
+        f"# Python: {pyver}",
+        f"# Host: {hostname}",
+        f"# MPI ranks: {size}\n",
+        "",
+    ]
+    file_path.write_text("\n".join(header_lines))
+
+
+def setup_logging(verbose: bool, *, output_path: Path | None = None) -> None:
+    """Set up console + file logging. Only rank 0 emits INFO/DEBUG; others WARN+."""
     root = logging.getLogger()
     if root.handlers:
         return
 
-    if _rank == 0:
-        level = logging.DEBUG if verbose else logging.INFO
-        console = Console(force_terminal=True, color_system="auto")
-        handler = RichHandler(console=console, rich_tracebacks=True, markup=True)
-    else:
-        level = logging.WARNING
-        handler = RichHandler(rich_tracebacks=False, markup=False)
-        handler.setLevel(level)
+    level = logging.DEBUG if verbose else logging.INFO
 
+    console = Console(force_terminal=True, color_system="auto")
+    console_handler = RichHandler(console=console, rich_tracebacks=True, markup=True)
+    console_handler.setLevel(level)
     root.setLevel(level)
-    root.addHandler(handler)
+    root.addHandler(console_handler)
+
+    log_file = output_path or Path(".") / "log.log"
+    _write_header(log_file)
+
+    file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
+    file_handler.setLevel(level)
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt=_TIME_FORMAT,
+        )
+    )
+    root.addHandler(file_handler)
 
 
 def log_global(logger: logging.Logger, level: int, msg: str, *args, **kwargs) -> None:
@@ -37,4 +73,4 @@ def log_global(logger: logging.Logger, level: int, msg: str, *args, **kwargs) ->
 
 def log_rank(logger: logging.Logger, level: int, msg: str, *args, **kwargs) -> None:
     """Log on all ranks, prefixing the message with the rank."""
-    logger.log(level, f"[{_rank}] {msg}", *args, stacklevel=2, **kwargs)
+    logger.log(level, f"[{_rank:d}] {msg}", *args, stacklevel=2, **kwargs)
