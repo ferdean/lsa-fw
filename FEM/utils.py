@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import logging
-
-from enum import Enum, auto
-from typing import overload, TypeAlias
-from pathlib import Path
 from copy import deepcopy
-from scipy import sparse
+from enum import Enum, auto
+from pathlib import Path
+from typing import TypeAlias, overload
+
 import numpy as np
-
-
 from basix import ElementFamily as DolfinxElementFamily
 from dolfinx.mesh import Mesh, MeshTags
-from ufl import Measure  # type: ignore[import-untyped]
 from petsc4py import PETSc
+from scipy import sparse
+from ufl import Measure  # type: ignore[import-untyped]
+
 from lib.loggingutils import log_global
 
 logger = logging.getLogger(__name__)

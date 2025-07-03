@@ -8,14 +8,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from typing import Callable, Sequence, assert_never
-import numpy as np
 
-import ufl  # type: ignore[import-untyped]
 import dolfinx.fem as dfem
+import numpy as np
+import ufl  # type: ignore[import-untyped]
 from petsc4py import PETSc
 
-from Meshing import Mesher
 from config import BoundaryConditionsConfig
+from Meshing import Mesher
 
 from .spaces import FunctionSpaces
 from .utils import iMeasure, iPETScMatrix, iPETScVector

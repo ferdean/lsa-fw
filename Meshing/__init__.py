@@ -6,9 +6,8 @@ from lib.loggingutils import setup_logging
 
 from .core import Mesher
 from .geometries import get_geometry
-from .plot import PlotMode, plot_mesh, get_mesh_summary
+from .plot import PlotMode, get_mesh_summary, plot_mesh
 from .utils import Format, Geometry, Shape, iCellType
-
 
 __all__ = [
     "Shape",

@@ -12,8 +12,8 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 
-import numpy as np
 import dolfinx.fem as dfem
+import numpy as np
 from dolfinx.fem.petsc import (
     assemble_matrix,
     assemble_vector,
@@ -22,27 +22,28 @@ from dolfinx.fem.petsc import (
 )
 from petsc4py import PETSc
 from ufl import (  # type: ignore[import-untyped]
-    dx,
+    Form,
+    Measure,
     TestFunctions,
     TrialFunctions,
-    nabla_grad,
     derivative,
-    Form,
-    inner,
-    grad,
     div,
     dot,
-    Measure,
+    dx,
+    grad,
+    inner,
+    nabla_grad,
     split,
     system,
 )
 from ufl.argument import Argument  # type: ignore[import-untyped]
 
-from .utils import iPETScMatrix, iPETScVector, iPETScNullSpace, iPETScBlockMatrix
-from .spaces import FunctionSpaces
 from lib.cache import CacheStore
-from .bcs import BoundaryConditions, apply_periodic_constraints
 from lib.loggingutils import log_global
+
+from .bcs import BoundaryConditions, apply_periodic_constraints
+from .spaces import FunctionSpaces
+from .utils import iPETScBlockMatrix, iPETScMatrix, iPETScNullSpace, iPETScVector
 
 logger = logging.getLogger(__name__)  # TODO: add logs to linearized assembler
 

@@ -1,13 +1,14 @@
 """Tests for Solver.eigen.py"""
 
-import pytest
 import logging
+
 import numpy as np
+import pytest
 from petsc4py import PETSc
 
-from FEM.utils import iPETScMatrix, iPETScVector, iComplexPETScVector
+from FEM.utils import iComplexPETScVector, iPETScMatrix, iPETScVector
 from Solver.eigen import EigenSolver, EigensolverConfig, iEpsProblemType
-from Solver.utils import iEpsSolver, iEpsWhich, iSTType, PreconditionerType
+from Solver.utils import PreconditionerType, iEpsSolver, iEpsWhich, iSTType
 
 _complex_build = np.issubdtype(PETSc.ScalarType, np.complexfloating)
 

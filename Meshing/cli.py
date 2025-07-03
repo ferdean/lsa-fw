@@ -30,24 +30,33 @@ as all meshing processes within this module are MPI-aware.
 import argparse
 import logging
 from pathlib import Path
-from rich.console import Console
 
 from mpi4py import MPI
+from rich.console import Console
 
-from lib.loggingutils import setup_logging, log_global
 from config import (
     load_cylinder_flow_config,
-    load_step_flow_config,
     load_facet_config,
+    load_step_flow_config,
 )
+from lib.loggingutils import log_global, setup_logging
 
 from .core import Mesher
-from .utils import Shape, Format, iCellType, Geometry
 from .plot import plot_mesh
-
+from .utils import Format, Geometry, Shape, iCellType
 
 console: Console = Console()
 logger: logging.Logger = logging.getLogger(__name__)
+
+
+def _export_mesh(mesher: Mesher, path: Path | None, fmt: Format | None) -> None:
+    """Helper to export a mesh if a path is provided."""
+    if path is None:
+        return
+    fmt = fmt or Format.XDMF
+    log_global(logger, logging.INFO, "Exporting mesh to: %s as %s", path, fmt)
+    mesher.export(path, fmt)
+    log_global(logger, logging.INFO, "Export complete.")
 
 
 def _generate(args: argparse.Namespace) -> None:
@@ -62,7 +71,13 @@ def _generate(args: argparse.Namespace) -> None:
             tuple(args.domain[len(resolution) :]),
         )
 
-    log_global(logger, logging.INFO, "Generating mesh: %s, resolution=%s", args.shape, resolution)
+    log_global(
+        logger,
+        logging.INFO,
+        "Generating mesh: %s, resolution=%s",
+        args.shape,
+        resolution,
+    )
     mesher = Mesher(
         shape=args.shape,
         n=resolution,
@@ -82,11 +97,7 @@ def _generate(args: argparse.Namespace) -> None:
         marker_fn = load_facet_config(args.facet_config)
         mesher.mark_boundary_facets(marker_fn)
 
-    if args.export:
-        fmt = args.format or Format.XDMF
-        log_global(logger, logging.INFO, "Exporting mesh to: %s as %s", args.export, fmt)
-        mesher.export(args.export, fmt)
-        log_global(logger, logging.INFO, "Export complete.")
+    _export_mesh(mesher, args.export, args.format)
 
     if args.plot:
         plot_mesh(mesher.mesh, tags=mesher.facet_tags, show_edges=True)
@@ -94,7 +105,9 @@ def _generate(args: argparse.Namespace) -> None:
 
 def _import(args: argparse.Namespace) -> None:
     """Import a mesh from XDMF or MSH using Mesher.from_file."""
-    log_global(logger, logging.INFO, "Importing mesh: %s (%s)", args.path, args.import_type)
+    log_global(
+        logger, logging.INFO, "Importing mesh: %s (%s)", args.path, args.import_type
+    )
     mesher = Mesher.from_file(path=args.path, shape=args.import_type, gdim=args.gdim)
 
     log_global(
@@ -104,11 +117,7 @@ def _import(args: argparse.Namespace) -> None:
         mesher.mesh.topology.index_map(mesher.mesh.topology.dim).size_local,
     )
 
-    if args.export:
-        fmt = args.format or Format.XDMF
-        log_global(logger, logging.INFO, "Exporting mesh to: %s as %s", args.export, fmt)
-        mesher.export(args.export, fmt)
-        log_global(logger, logging.INFO, "Export complete.")
+    _export_mesh(mesher, args.export, args.format)
 
     if args.plot:
         plot_mesh(mesher.mesh)
@@ -139,11 +148,7 @@ def _benchmark(args: argparse.Namespace) -> None:
         marker_fn = load_facet_config(args.facet_config)
         mesher.mark_boundary_facets(marker_fn)
 
-    if args.export:
-        fmt = args.format or Format.XDMF
-        log_global(logger, logging.INFO, "Exporting mesh to: %s as %s", args.export, fmt)
-        mesher.export(args.export, fmt)
-        log_global(logger, logging.INFO, "Export complete.")
+    _export_mesh(mesher, args.export, args.format)
 
     if args.plot:
         plot_mesh(mesher.mesh, tags=mesher.facet_tags, show_edges=True)

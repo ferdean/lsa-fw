@@ -1,19 +1,19 @@
 """LSA-FW Solution plotter."""
 
 import logging
-import pyvista as pv
-import numpy as np
-from enum import StrEnum, auto, Enum
+from enum import Enum, StrEnum, auto
 from pathlib import Path
 
-from mpi4py import MPI
-from dolfinx.plot import vtk_mesh
 import dolfinx.fem as dfem
+import numpy as np
+import pyvista as pv
+from dolfinx.plot import vtk_mesh
+from mpi4py import MPI
 
-from Meshing import Mesher
-from FEM.utils import iComplexPETScVector
 from FEM.spaces import FunctionSpaces
+from FEM.utils import iComplexPETScVector
 from lib.loggingutils import log_global
+from Meshing import Mesher
 
 logger = logging.getLogger(__name__)
 

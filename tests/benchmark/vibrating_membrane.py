@@ -9,29 +9,28 @@ H1 space) to apply the framework to the membrane benchmark.
 """
 
 from pathlib import Path
-from typing import Sequence, Final
-import numpy as np
-import matplotlib.pyplot as plt
+from typing import Final, Sequence
 
-from basix.ufl import element
-from Solver.utils import iEpsWhich
-import dolfinx.mesh as dmesh
 import dolfinx.fem as dfem
-from ufl import TrialFunction, TestFunction
+import dolfinx.mesh as dmesh
+import matplotlib.pyplot as plt
+import numpy as np
+from basix.ufl import element
 from dolfinx.fem.petsc import assemble_matrix
+from ufl import TestFunction, TrialFunction
 
-from Meshing import Mesher, Shape, iCellType, plot_mesh
-from FEM.spaces import iElementFamily
-from FEM.operators import VariationalForms
-from FEM.utils import iPETScMatrix
+from config import load_bc_config, load_facet_config
 from FEM.bcs import (
     BoundaryCondition,
     BoundaryConditionType,
     _wrap_constant_vector,  # HACK: no private methods should be used
 )
-from Solver.eigen import EigensolverConfig, EigenSolver, iEpsProblemType
-from config import load_facet_config, load_bc_config
-
+from FEM.operators import VariationalForms
+from FEM.spaces import iElementFamily
+from FEM.utils import iPETScMatrix
+from Meshing import Mesher, Shape, iCellType, plot_mesh
+from Solver.eigen import EigenSolver, EigensolverConfig, iEpsProblemType
+from Solver.utils import iEpsWhich
 
 _A: Final[float] = 2.0
 _B: Final[float] = 4.0

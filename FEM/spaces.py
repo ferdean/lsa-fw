@@ -7,17 +7,17 @@ such as those for velocity and pressure fields.
 from __future__ import annotations
 
 import logging
-from typing import assert_never
 from dataclasses import dataclass
-from functools import cached_property
 from enum import StrEnum, auto
+from functools import cached_property
+from typing import assert_never
 
-from dolfinx.fem import functionspace, FunctionSpace
 import dolfinx.mesh as dmesh
 from basix.ufl import element, enriched_element, mixed_element
+from dolfinx.fem import FunctionSpace, functionspace
 
-from Meshing.utils import iCellType
 from lib.loggingutils import log_global
+from Meshing.utils import iCellType
 
 from .utils import iElementFamily
 

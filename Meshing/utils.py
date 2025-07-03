@@ -1,9 +1,10 @@
 """Utilities for LSA-FW Meshing."""
 
-from dolfinx.mesh import CellType as DolfinxCellType
-from basix import CellType as BasixCellType
-from enum import Enum, auto, StrEnum
+from enum import Enum, StrEnum, auto
 from typing import Self
+
+from basix import CellType as BasixCellType
+from dolfinx.mesh import CellType as DolfinxCellType
 
 
 class iCellType(Enum):

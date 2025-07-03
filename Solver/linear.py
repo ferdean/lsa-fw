@@ -5,15 +5,15 @@ Provides a linear solver interface that can be extended for different linear sol
 
 import logging
 
+import dolfinx.fem as dfem
 import scipy.sparse.linalg
 from mpi4py import MPI
-import dolfinx.fem as dfem
 
 from FEM.operators import BaseAssembler
 from FEM.plot import plot_mixed_function
 from FEM.utils import iPETScMatrix, iPETScVector
-from Solver.utils import iKSP, KSPType, PreconditionerType
 from lib.loggingutils import log_global, log_rank
+from Solver.utils import KSPType, PreconditionerType, iKSP
 
 logger = logging.getLogger(__name__)
 

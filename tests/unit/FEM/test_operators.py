@@ -1,21 +1,19 @@
 """Tests for FEM.operators module."""
 
-import pytest
-import numpy as np
-
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
+import numpy as np
+import pytest
 
-from Meshing import Mesher, Shape, iCellType
-
-from FEM.operators import LinearizedNavierStokesAssembler
-from FEM.spaces import FunctionSpaces, define_spaces, FunctionSpaceType
 from FEM.bcs import (
     BoundaryCondition,
+    BoundaryConditions,
     BoundaryConditionType,
     define_bcs,
-    BoundaryConditions,
 )
+from FEM.operators import LinearizedNavierStokesAssembler
+from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
+from Meshing import Mesher, Shape, iCellType
 
 
 @pytest.fixture(scope="module")

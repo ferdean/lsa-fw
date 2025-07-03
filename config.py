@@ -1,11 +1,11 @@
 """LSA-FW configuration."""
 
-import tomllib
-import numpy as np
-
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence, Callable
+from typing import Any, Callable, Sequence
+
+import numpy as np
+import tomllib
 
 
 def read_toml(path: Path) -> dict[str, Any]:

@@ -7,11 +7,11 @@ import logging
 from pathlib import Path
 from typing import Tuple
 
-from mpi4py import MPI
-from petsc4py import PETSc
+import dolfinx.fem as dfem
 import dolfinx.io as dio
 import dolfinx.mesh as dmesh
-import dolfinx.fem as dfem
+from mpi4py import MPI
+from petsc4py import PETSc
 
 from lib.loggingutils import log_global
 

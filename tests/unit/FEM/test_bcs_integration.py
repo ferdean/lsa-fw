@@ -1,19 +1,18 @@
 """Boundary conditions integration tests."""
 
-import numpy as np
-
 import dolfinx.fem as dfem
+import numpy as np
 import ufl
 
-from Meshing import Mesher, Shape, iCellType, plot_mesh
-from FEM.spaces import define_spaces, FunctionSpaceType, FunctionSpaces
 from FEM.bcs import (
     BoundaryCondition,
+    BoundaryConditions,
     BoundaryConditionType,
     define_bcs,
-    BoundaryConditions,
 )
 from FEM.operators import StokesAssembler
+from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
+from Meshing import Mesher, Shape, iCellType, plot_mesh
 from Solver.linear import LinearSolver
 
 

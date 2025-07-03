@@ -1,11 +1,12 @@
 """Utilities for logging."""
 
 import logging
-from datetime import datetime
-from rich.logging import RichHandler
-from rich.console import Console
-from pathlib import Path
 import platform
+from datetime import datetime
+from pathlib import Path
+
+from rich.console import Console
+from rich.logging import RichHandler
 
 try:
     from mpi4py import MPI
