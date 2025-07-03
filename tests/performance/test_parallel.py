@@ -9,6 +9,8 @@ import pathlib
 import time
 
 import psutil
+import csv
+import json
 
 from lib.loggingutils import log_global, setup_logging
 
@@ -84,6 +86,8 @@ def main():
                     try:
                         # Wait up to 0.2s; raises TimeoutExpired if still running
                         proc.wait(timeout=0.2)
+                        stdout, _ = proc.communicate()
+                        stage_times = json.loads(stdout.strip())
                         # One last sample after exit
                         rss, vms = sample_tree_memory(proc)
                         peak_rss = max(peak_rss, rss)
@@ -114,6 +118,8 @@ def main():
                         n,
                         run_idx,
                         elapsed,
+                        stage_times["mesh_gen_ns"],
+                        stage_times["mark_facets_ns"],
                         f"{peak_rss_mb:.1f}",
                         f"{peak_vms_mb:.1f}",
                     ]
