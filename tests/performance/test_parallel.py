@@ -3,12 +3,14 @@
 """MPI performance analysis for cube.py: measures wall-clock time and memory usage."""
 
 import argparse
-import csv
 import logging
 import pathlib
 import time
+from subprocess import PIPE
 
 import psutil
+import csv
+import json
 
 from lib.loggingutils import log_global, setup_logging
 
@@ -59,8 +61,20 @@ def main():
     if not RESULTS_FILE.exists():
         with RESULTS_FILE.open("w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["cores", "run", "time_ns", "peak_rss_MB", "peak_vms_MB"])
-
+            writer.writerow(
+                [
+                    "cores",
+                    "run",
+                    "time_ns",
+                    "time_mesh_gen_ns",
+                    "time_spaces_def_ns",
+                    "time_bcs_def_ns",
+                    "time_baseflow_compute_ns",
+                    "time_assemble_ns",
+                    "peak_rss_MB",
+                    "peak_vms_MB",
+                ]
+            )
     for n in args.cores:
         for run_idx in range(1, args.repeats + 1):
             log_global(
@@ -74,7 +88,12 @@ def main():
             cmd = [MPI_EXEC, MPI_FLAG, str(n), INTERPRETER, SCRIPT]
 
             # Launch MPI run under psutil to monitor memory
-            proc = psutil.Popen(cmd)
+            proc = psutil.Popen(
+                cmd,
+                stdout=PIPE,
+                stderr=PIPE,
+                text=True,  # Get str from communicate()
+            )
             start = time.time()
             peak_rss = peak_vms = 0
 
@@ -84,7 +103,11 @@ def main():
                     try:
                         # Wait up to 0.2s; raises TimeoutExpired if still running
                         proc.wait(timeout=0.2)
-                        # One last sample after exit
+                        stdout, _ = proc.communicate()
+                        if stdout is None:
+                            # The script is supposed to be instrumented and print timing info
+                            raise RuntimeError("MPI run produced no stdout")
+                        stage_times = json.loads(stdout.strip())
                         rss, vms = sample_tree_memory(proc)
                         peak_rss = max(peak_rss, rss)
                         peak_vms = max(peak_vms, vms)
@@ -114,6 +137,11 @@ def main():
                         n,
                         run_idx,
                         elapsed,
+                        stage_times["mesh_gen_ns"],
+                        stage_times["spaces_def_ns"],
+                        stage_times["bcs_def_ns"],
+                        stage_times["baseflow_compute_ns"],
+                        stage_times["assemble_ns"],
                         f"{peak_rss_mb:.1f}",
                         f"{peak_vms_mb:.1f}",
                     ]
