@@ -38,8 +38,12 @@ def _write_header(file_path: Path) -> None:
     file_path.write_text("\n".join(header_lines))
 
 
-def setup_logging(verbose: bool, *, output_path: Path | None = None) -> None:
+def setup_logging(
+    verbose: bool = False, *, output_path: Path | None = None, disabled: bool = False
+) -> None:
     """Set up console + file logging. Only rank 0 emits INFO/DEBUG; others WARN+."""
+    if disabled:
+        return
     root = logging.getLogger()
     if root.handlers:
         return
