@@ -49,13 +49,13 @@ _HERMITIAN_TYPES: set[iEpsProblemType] = {
 class EigensolverConfig:
     """Eigensolver configuration."""
 
-    num_eig: int
+    num_eig: int = 25
     """Number of computed eigenpairs."""
-    problem_type: iEpsProblemType
+    problem_type: iEpsProblemType = iEpsProblemType.GNHEP
     """Problem type."""
-    atol: float
+    atol: float = 1e-8
     """Absolute tolerance."""
-    max_it: int
+    max_it: int = 500
     """Maximum number of iterations."""
 
 

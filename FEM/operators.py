@@ -17,8 +17,6 @@ import numpy as np
 from dolfinx.fem.petsc import (
     assemble_matrix,
     assemble_vector,
-    create_matrix,
-    create_vector,
 )
 from petsc4py import PETSc
 from ufl import (  # type: ignore[import-untyped]
@@ -204,7 +202,12 @@ class StokesAssembler(BaseAssembler):
         if key_jac not in self._mat_cache:
             A = assemble_matrix(self.jacobian, bcs=self.bcs)
             A.assemble()
-            self._mat_cache[key_jac] = iPETScMatrix(A)
+            A_wrapper = iPETScMatrix(A)
+            if not self._p_bcs:
+                # Pin pressure DOF
+                _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
+                A_wrapper.pin_dof(self._dofs_p[0])
+            self._mat_cache[key_jac] = A_wrapper
 
         if key_res not in self._vec_cache:
             b = assemble_vector(self.residual)
@@ -291,11 +294,19 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         key_res = key_res or f"res_{id(self._residual)}"
 
         if key_jac not in self._mat_cache:
-            A = create_matrix(self._jacobian)
-            self._mat_cache[key_jac] = iPETScMatrix(A)
+            A = assemble_matrix(self._jacobian, bcs=self.bcs)
+            A.assemble()
+            A_wrapper = iPETScMatrix(A)
+            if not self._p_bcs:
+                # Pin pressure DOF
+                _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
+                A_wrapper.pin_dof(self._dofs_p[0])
+            self._mat_cache[key_jac] = A_wrapper
 
         if key_res not in self._vec_cache:
-            b = create_vector(self._residual)
+            b = assemble_vector(self.residual)
+            dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [self.bcs])
+            self._apply_dirichlet(b)
             self._vec_cache[key_res] = iPETScVector(b)
 
         return self._mat_cache[key_jac], self._vec_cache[key_res]
@@ -437,6 +448,9 @@ class LinearizedNavierStokesAssembler:
             mat.assemble()
             A = iPETScMatrix(mat)
 
+            if not self._p_bcs:
+                self.attach_pressure_nullspace(A)
+
             for pmap in (*self._uaps, *self._paps):
                 apply_periodic_constraints(A, pmap)
 
@@ -466,6 +480,9 @@ class LinearizedNavierStokesAssembler:
             mat.assemble()
             M = iPETScMatrix(mat)
 
+            if not self._p_bcs:
+                self.attach_pressure_nullspace(M)
+
             for pmap in (*self._uaps, *self._paps):
                 apply_periodic_constraints(M, pmap)
 
@@ -481,12 +498,22 @@ class LinearizedNavierStokesAssembler:
         """Return ``(A, M)`` for eigenproblem; attach constant-pressure nullspace."""
         A = self.assemble_linear_operator(cache=cache)
         M = self.assemble_mass_matrix(cache=cache)
-        self.attach_pressure_nullspace(A)
-        self.attach_pressure_nullspace(M)
         return A, M
 
     def attach_pressure_nullspace(self, mat: iPETScMatrix) -> None:
-        """Attach constant-pressure nullspace to a mixed-space matrix."""
+        """Attach constant-pressure nullspace to a mixed-space matrix.
+
+        In incompressible flow problems the pressure is determined only up to an additive constant, so the discrete
+        operator admits a nullspace corresponding to u = 0, p = cnst.
+
+        Explicitly attaching this nullspace is mandatory whenever the assembled system  remains singular - for example,
+        if there are open (Neumann) or mixed velocity boundary conditions that do not fully constrain the velocity
+        field.
+
+        However, when velocity Dirichlet conditions are applied on the entire boundary, the velocity solution is fully
+        determined and the discrete divergence operator becomes surjective. In that case the constant-pressure mode
+        is implicitly removed, the system is rendered non-singular, and no explicit nullspace correction is needed.
+        """
         if self._nullspace is None:
             if self._dofs_u is None or self._dofs_p is None:
                 _, self._dofs_u = self._spaces.mixed.sub(0).collapse()
@@ -525,3 +552,10 @@ class LinearizedNavierStokesAssembler:
                 [pv, pp],
             ]
         )
+
+    def test_nullspace(self, matrix: iPETScMatrix) -> None:
+        """Debugging usage only."""
+        if self._nullspace is None:
+            raise RuntimeError("No nullspace has been defined yet.")
+        is_ns, residual = self._nullspace.test_matrix(matrix)
+        assert is_ns, f"Nullspace is not properly created, residual: {residual:.3f}"

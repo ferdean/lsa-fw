@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""MPI analysis post-process."""
+"""MPI analysis post-process adapted to include detailed phase timings."""
 
 import argparse
 from pathlib import Path
@@ -11,7 +11,9 @@ import pandas as pd
 
 
 def _parse_args():
-    p = argparse.ArgumentParser(description="Post-processor of test_parallel.py")
+    p = argparse.ArgumentParser(
+        description="Post-processor of test_parallel.py with phase breakdown"
+    )
     p.add_argument(
         "-i",
         "--input",
@@ -29,19 +31,47 @@ def _parse_args():
 
 
 def compute_summary(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute data summary."""
-    df = df.astype({"time_sec": float, "peak_rss_MB": float, "peak_vms_MB": float})
+    """Compute data summary including total and phase timings."""
+    df = df.astype(
+        {
+            "time_ns": float,
+            "time_mesh_gen_ns": float,
+            "time_spaces_def_ns": float,
+            "time_bcs_def_ns": float,
+            "time_baseflow_compute_ns": float,
+            "time_assemble_ns": float,
+            "peak_rss_MB": float,
+            "peak_vms_MB": float,
+        }
+    )
+
+    df["time_s"] = df["time_ns"] / 1e9
+    df["mesh_gen_s"] = df["time_mesh_gen_ns"] / 1e9
+    df["spaces_def_s"] = df["time_spaces_def_ns"] / 1e9
+    df["bcs_def_s"] = df["time_bcs_def_ns"] / 1e9
+    df["baseflow_compute_s"] = df["time_baseflow_compute_ns"] / 1e9
+    df["assemble_s"] = df["time_assemble_ns"] / 1e9
+
     df["rss_GB"] = df["peak_rss_MB"] / 1024
     df["vms_GB"] = df["peak_vms_MB"] / 1024
     df["rss_per_rank_MB"] = df["peak_rss_MB"] / df["cores"]
 
-    # aggregate
     summary = (
         df.groupby("cores")
         .agg(
             runs=("run", "count"),
-            time_mean=("time_sec", "mean"),
-            time_std=("time_sec", "std"),
+            time_mean=("time_s", "mean"),
+            time_std=("time_s", "std"),
+            mesh_gen_mean=("mesh_gen_s", "mean"),
+            mesh_gen_std=("mesh_gen_s", "std"),
+            spaces_def_mean=("spaces_def_s", "mean"),
+            spaces_def_std=("spaces_def_s", "std"),
+            bcs_def_mean=("bcs_def_s", "mean"),
+            bcs_def_std=("bcs_def_s", "std"),
+            baseflow_compute_mean=("baseflow_compute_s", "mean"),
+            baseflow_compute_std=("baseflow_compute_s", "std"),
+            assemble_mean=("assemble_s", "mean"),
+            assemble_std=("assemble_s", "std"),
             rss_mean=("rss_GB", "mean"),
             rss_std=("rss_GB", "std"),
             vms_mean=("vms_GB", "mean"),
@@ -50,15 +80,16 @@ def compute_summary(df: pd.DataFrame) -> pd.DataFrame:
         )
         .reset_index()
     )
-    # speedup & efficiency
+
     t1 = summary.loc[summary.cores == 1, "time_mean"].iloc[0]
     summary["speedup"] = t1 / summary["time_mean"]
     summary["efficiency"] = summary["speedup"] / summary["cores"]
+
     return summary
 
 
 def print_summary(s: pd.DataFrame) -> None:
-    """Print summary."""
+    """Print summary to console."""
     cols = [
         "cores",
         "runs",
@@ -66,16 +97,26 @@ def print_summary(s: pd.DataFrame) -> None:
         "time_std",
         "speedup",
         "efficiency",
+        "mesh_gen_mean",
+        "mesh_gen_std",
+        "spaces_def_mean",
+        "spaces_def_std",
+        "bcs_def_mean",
+        "bcs_def_std",
+        "baseflow_compute_mean",
+        "baseflow_compute_std",
+        "assemble_mean",
+        "assemble_std",
         "rss_mean",
         "rss_std",
         "rsspr_mean",
     ]
-    print("\nMPI Benchmark Summary:")
+    print("\nMPI Benchmark Summary with Phase Breakdown:")
     print(s[cols].to_string(index=False, float_format="%.3f"))
 
 
 def save_summary(s: pd.DataFrame, path: Path) -> None:
-    """Save summary."""
+    """Save summary to CSV."""
     s.to_csv(path, index=False)
     print(f"Saved summary to {path}")
 
@@ -109,7 +150,7 @@ def main() -> None:
     args = _parse_args()
     df = pd.read_csv(args.input)
     summary = compute_summary(df)
-    summary = df
+
     print_summary(summary)
     save_summary(summary, args.summary)
 
@@ -146,6 +187,22 @@ def main() -> None:
         "RSS per rank (MB)",
         f"{args.prefix}_rsspr.png",
     )
+
+    # Phase timings
+    phases = [
+        ("mesh_gen", "Mesh Generation (s)"),
+        ("spaces_def", "Spaces Definition (s)"),
+        ("bcs_def", "BCs Definition (s)"),
+        ("baseflow_compute", "Baseflow Compute (s)"),
+        ("assemble", "Assembly (s)"),
+    ]
+    for key, label in phases:
+        _plot(
+            cores,
+            {"mean": summary[f"{key}_mean"], "std": summary[f"{key}_std"]},
+            label,
+            f"{args.prefix}_{key}.png",
+        )
 
 
 if __name__ == "__main__":
