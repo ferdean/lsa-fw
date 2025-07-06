@@ -164,9 +164,9 @@ def main() -> None:
     _plot(
         cores,
         {"mean": summary["speedup"]},
-        "Speedup (-)",
+        "Performance (-)",
         f"{args.prefix}_speedup.png",
-        ideal=lambda x: x,
+        # ideal=lambda x: x,
     )
     _plot(
         cores,
