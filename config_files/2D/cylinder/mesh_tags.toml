@@ -3,22 +3,22 @@
 [[FaceTag]]
 # Left face
 marker = 1
-when = { axis = "x", equals = 0.0 }
+when = { axis = "x", equals = -20.0 }
 
 [[FaceTag]]
 # Right face
 marker = 2
-when = { axis = "x", equals = 4.4 }
+when = { axis = "x", equals = 40.0 }
 
 [[FaceTag]]
 # Bottom face
 marker = 3
-when = { axis = "y", equals = 0.0 }
+when = { axis = "y", equals = -20.0 }
 
 [[FaceTag]]
 # Top face
 marker = 4
-when = { axis = "y", equals = 0.41 }
+when = { axis = "y", equals = 20.0 }
 
 [[FaceTag]]
 # Fallback for unmatched surfaces (e.g, cylinder)

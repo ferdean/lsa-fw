@@ -92,29 +92,35 @@ class CylinderFlowGeometryConfig:
 
     dim: int
     """Problem dimensions (2 or 3)."""
-    length: float
-    """Length of the channel."""
-    height: float
-    """Height of the channel (y-direction)."""
     cylinder_radius: float
     """Radius of the cylinder."""
     cylinder_center: tuple[float]
     """Coordinates of the cylinder center, as (x, y, [z])."""
+    x_range: tuple[float, float]
+    """X-range of the domain relative to the global frame."""
+    y_range: tuple[float, float]
+    """Y-range of the domain relative to the global frame."""
     resolution: float
     """Base mesh element size."""
     resolution_around_cylinder: float
     """Mesh element size around the cylinder."""
     influence_radius: float
     """Radius around the cylinder to apply local refinement."""
-    width: float | None = None
-    """Width of the channel (required only for 3D)."""
+    influence_length: float
+    """Length after the cylinder to apply local refinement."""
+    z_range: tuple[float, float] | None = None
+    """Optional y-range of the domain relative to the global frame."""
 
 
 def load_cylinder_flow_config(path: Path) -> CylinderFlowGeometryConfig:
     """Load cylinder flow geometrical configuration."""
-    cfg = read_toml(path)
-    cfg["cylinder_center"] = tuple(cfg["cylinder_center"])
-    return CylinderFlowGeometryConfig(**cfg)
+    raw = read_toml(path)
+    raw["cylinder_center"] = tuple(raw["cylinder_center"])
+    raw["x_range"] = tuple(raw["x_range"])
+    raw["y_range"] = tuple(raw["y_range"])
+    if "z_range" in raw:
+        raw["z_range"] = tuple(raw["z_range"])
+    return CylinderFlowGeometryConfig(**raw)
 
 
 @dataclass(frozen=True)
