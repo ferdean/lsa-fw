@@ -187,8 +187,8 @@ class StokesAssembler(BaseAssembler):
         """Construct bilinear and linear UFL forms for the Stokes problem."""
 
         a = (
-            inner(grad(self._u), grad(conj(self._v))) * dx
-            + inner(self._p, div(conj(self._v))) * dx
+            inner(grad(self._u), conj(grad(self._v))) * dx
+            + inner(self._p, conj(div(self._v))) * dx
             + inner(div(self._u), conj(self._q)) * dx
         )
 
@@ -279,9 +279,9 @@ class StationaryNavierStokesAssembler(BaseAssembler):
 
     def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
         convection = inner(dot(self._u, nabla_grad(self._u)), conj(self._v)) * dx
-        diffusion = (1 / self._re) * inner(grad(self._u), grad(conj(self._v))) * dx
+        diffusion = (1 / self._re) * inner(grad(self._u), conj(grad(self._v))) * dx
         pressure = (
-            inner(self._p, div(conj(self._v))) * dx
+            inner(self._p, conj(div(self._v))) * dx
             + inner(div(self._u), conj(self._q)) * dx
         )
         forcing = -inner(self._f, conj(self._v)) * dx
@@ -340,11 +340,11 @@ class VariationalForms:
 
     @staticmethod
     def pressure_gradient(p: Argument, v: Argument) -> Form:
-        return -inner(p, div(conj(v))) * dx
+        return -inner(p, conj(div(v))) * dx
 
     @staticmethod
     def viscous(u: Argument, v: Argument, re: float) -> Form:
-        return (1.0 / re) * inner(grad(u), grad(conj(v))) * dx
+        return (1.0 / re) * inner(grad(u), conj(grad(v))) * dx
 
     @staticmethod
     def divergence(u: Argument, q: Argument) -> Form:
@@ -356,7 +356,7 @@ class VariationalForms:
 
     @staticmethod
     def stiffness(u: Argument, v: Argument) -> Form:
-        return inner(grad(u), grad(conj(v))) * dx
+        return inner(grad(u), conj(grad(v))) * dx
 
 
 class LinearizedNavierStokesAssembler:
