@@ -159,7 +159,7 @@ def define_bcs(
                 else:
                     g_vec = dfem.Constant(mesh, cfg.value)
                 neumann_forms.append(
-                    (marker, ufl.inner(g_vec, ufl.conj(v_test)) * ds(marker))
+                    (marker, ufl.inner(g_vec, v_test) * ds(marker))
                 )
 
             case BoundaryConditionType.NEUMANN_PRESSURE:
@@ -168,7 +168,7 @@ def define_bcs(
                 else:
                     h_expr = dfem.Constant(mesh, float(cfg.value))
                 neumann_forms.append(
-                    (marker, ufl.inner(h_expr, ufl.conj(q_test)) * ds(marker))
+                    (marker, ufl.inner(h_expr, q_test) * ds(marker))
                 )
 
             case BoundaryConditionType.ROBIN:
@@ -185,7 +185,7 @@ def define_bcs(
                     (
                         marker,
                         cfg.robin_alpha
-                        * ufl.inner(u_trial, ufl.conj(v_test))
+                        * ufl.inner(u_trial, v_test)
                         * ds(marker),
                     )
                 )
@@ -193,7 +193,7 @@ def define_bcs(
                     (
                         marker,
                         cfg.robin_alpha
-                        * ufl.inner(g_expr, ufl.conj(v_test))
+                        * ufl.inner(g_expr, v_test)
                         * ds(marker),
                     )
                 )
