@@ -32,7 +32,6 @@ from ufl import (  # type: ignore[import-untyped]
     inner,
     nabla_grad,
     split,
-    system,
     conj,
 )
 from ufl.argument import Argument  # type: ignore[import-untyped]
@@ -184,21 +183,24 @@ class StokesAssembler(BaseAssembler):
     def sol(self) -> dfem.Function:
         return self._wh
 
-    def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
-        form = (
+    def _build_forms(self) -> tuple[Form, Form]:
+        """Construct bilinear and linear UFL forms for the Stokes problem."""
+
+        a = (
             inner(grad(self._u), grad(conj(self._v))) * dx
             + inner(self._p, div(conj(self._v))) * dx
             + inner(div(self._u), conj(self._q)) * dx
-            - inner(self._f, conj(self._v)) * dx
         )
+
+        L = inner(self._f, conj(self._v)) * dx
 
         # Note that the pressure term is deliberately signed to yield symmetry;
         # and that test-function occurrences are conjugated for complex support
 
         for bc in self._neumann_forms:
-            form += bc
+            L += bc
 
-        return system(form)
+        return a, L
 
     def get_matrix_forms(self) -> tuple[iPETScMatrix, iPETScVector]:
         """Assemble the jacobian and residual forms of the Stokes equations."""
