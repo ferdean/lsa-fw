@@ -17,21 +17,21 @@ FROM dolfinx/dolfinx:stable
 # This is to be further investigated once complex results are needed (i.e., for the
 # validation of the eigensolver)
 
-# # Select scalar mode (real or complex)
-# ARG FENICS_VARIANT=real
-# ENV FENICS_VARIANT=${FENICS_VARIANT}
-# ENV DOLFINX_BASE=/usr/local/dolfinx-${FENICS_VARIANT}
+# Select scalar mode (real or complex)
+ARG FENICS_VARIANT=complex
+ENV FENICS_VARIANT=${FENICS_VARIANT}
+ENV DOLFINX_BASE=/usr/local/dolfinx-${FENICS_VARIANT}
 
-# # Define only for complex mode
-# # ENV PETSC_ARCH=linux-gnu-complex128-64
+# Define only for complex mode
+ENV PETSC_ARCH=linux-gnu-complex128-32
 
 # # Define only for real mode
-# ENV PETSC_ARCH=linux-gnu-real64-64
+# ENV PETSC_ARCH=linux-gnu-real64-32
 
-# # Environment variables for DOLFINx
-# ENV PKG_CONFIG_PATH=${DOLFINX_BASE}/lib/pkgconfig:$PKG_CONFIG_PATH
-# ENV PYTHONPATH=${DOLFINX_BASE}/lib/python3.12/dist-packages:$PYTHONPATH
-# ENV LD_LIBRARY_PATH=${DOLFINX_BASE}/lib:$LD_LIBRARY_PATH
+# Environment variables for DOLFINx
+ENV PKG_CONFIG_PATH=${DOLFINX_BASE}/lib/pkgconfig:$PKG_CONFIG_PATH
+ENV PYTHONPATH=${DOLFINX_BASE}/lib/python3.12/dist-packages:$PYTHONPATH
+ENV LD_LIBRARY_PATH=${DOLFINX_BASE}/lib:$LD_LIBRARY_PATH
 
 # Silence ZINK + fallback warnings globally
 ENV LIBGL_ALWAYS_SOFTWARE=true \
