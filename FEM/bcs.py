@@ -55,7 +55,7 @@ class BoundaryCondition:
     type: BoundaryConditionType
     """Type of boundary condition."""
     value: (
-        float | tuple[int, int] | tuple[float, ...] | Callable[[np.ndarray], np.ndarray]
+        float | tuple[int, ...] | tuple[float, ...] | Callable[[np.ndarray], np.ndarray]
     )
     """Value of the boundary condition.
 
