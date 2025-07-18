@@ -33,6 +33,7 @@ from ufl import (  # type: ignore[import-untyped]
     nabla_grad,
     split,
     system,
+    conj,
 )
 from ufl.argument import Argument  # type: ignore[import-untyped]
 
@@ -41,7 +42,13 @@ from lib.loggingutils import log_global, log_rank
 
 from .bcs import BoundaryConditions, apply_periodic_constraints
 from .spaces import FunctionSpaces
-from .utils import iPETScBlockMatrix, iPETScMatrix, iPETScNullSpace, iPETScVector
+from .utils import (
+    iPETScBlockMatrix,
+    iPETScMatrix,
+    iPETScNullSpace,
+    iPETScVector,
+    Scalar,
+)
 
 logger = logging.getLogger(__name__)  # TODO: add logs to linearized assembler
 
@@ -167,11 +174,11 @@ class StokesAssembler(BaseAssembler):
 
     @property
     def residual(self) -> dfem.Form:
-        return dfem.form(self._residual)
+        return dfem.form(self._residual, dtype=Scalar)
 
     @property
     def jacobian(self) -> dfem.Form:
-        return dfem.form(self._jacobian)
+        return dfem.form(self._jacobian, dtype=Scalar)
 
     @property
     def sol(self) -> dfem.Function:
@@ -179,15 +186,14 @@ class StokesAssembler(BaseAssembler):
 
     def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
         form = (
-            inner(grad(self._u), grad(self._v)) * dx
-            + inner(self._p, div(self._v)) * dx
-            + inner(div(self._u), self._q) * dx
-            - inner(self._f, self._v) * dx
+            inner(grad(self._u), grad(conj(self._v))) * dx
+            + inner(self._p, div(conj(self._v))) * dx
+            + inner(div(self._u), conj(self._q)) * dx
+            - inner(self._f, conj(self._v)) * dx
         )
 
-        # NOTE: the pressure term seems to have the incorrect sign. This is done deliberately, so that the resulting
-        # block system is symmetric. This symmetry lets us reuse later symmetric solvers and pre-conditioners for both
-        # the Stokes and Navier–Stokes operators.
+        # Note that the pressure term is deliberately signed to yield symmetry;
+        # and that test-function occurrences are conjugated for complex support
 
         for bc in self._neumann_forms:
             form += bc
@@ -211,7 +217,7 @@ class StokesAssembler(BaseAssembler):
 
         if key_res not in self._vec_cache:
             b = assemble_vector(self.residual)
-            dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [self.bcs])
+            dfem.apply_lifting(b.array, [self.jacobian], [self.bcs])
             self._apply_dirichlet(b)
             self._vec_cache[key_res] = iPETScVector(b)
 
@@ -237,7 +243,7 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         )
 
         self._v, self._q = TestFunctions(spaces.mixed)
-        self._wh = dfem.Function(spaces.mixed)  # sol
+        self._wh = dfem.Function(spaces.mixed)  # Solution
 
         if initial_guess is not None:
             self._wh.x.array[:] = initial_guess.x.array
@@ -270,21 +276,24 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         return self._wh
 
     def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
-        convection = inner(dot(self._u, nabla_grad(self._u)), self._v) * dx
-        diffusion = (1 / self._re) * inner(grad(self._u), grad(self._v)) * dx
+        convection = inner(dot(self._u, nabla_grad(self._u)), conj(self._v)) * dx
+        diffusion = (1 / self._re) * inner(grad(self._u), grad(conj(self._v))) * dx
         pressure = (
-            +inner(self._p, div(self._v)) * dx + inner(div(self._u), self._q) * dx
+            inner(self._p, div(conj(self._v))) * dx
+            + inner(div(self._u), conj(self._q)) * dx
         )
-        forcing = -inner(self._f, self._v) * dx
+        forcing = -inner(self._f, conj(self._v)) * dx
 
         form = convection + diffusion + pressure + forcing
 
-        # NOTE: If the pressure sign seems incorrect, refer to StokesAssembler._build_forms
+        # If when reading this the pressure sign seems incorrect, refer to StokesAssembler._build_forms
 
         for bc in self._neumann_forms:
             form += bc
 
-        return dfem.form(form), dfem.form(derivative(form, self._wh))
+        return dfem.form(form, dtype=Scalar), dfem.form(
+            derivative(form, self._wh), dtype=Scalar
+        )
 
     def get_matrix_forms(
         self, *, key_jac: str | int | None = None, key_res: str | int | None = None
@@ -313,66 +322,43 @@ class StationaryNavierStokesAssembler(BaseAssembler):
 
 
 class VariationalForms:
-    """Collector for variational forms for linearized incompressible Navier-Stokes equations.
-
-    Note: customization of quadrature degree is not yet supported. It is considered that the defaults
-    set by DOLFINx are sufficient for the current (most-common) use cases.
-    """
+    """Collector for variational forms for linearized incompressible Navier-Stokes equations."""
 
     @staticmethod
     def mass(u: Argument, v: Argument) -> Form:
-        """Mass operator."""
-        return inner(u, v) * dx
+        return inner(u, conj(v)) * dx
 
     @staticmethod
     def convection(u: Argument, v: Argument, u_base: dfem.Function) -> Form:
-        """Convection operator."""
-        return inner(dot(u_base, nabla_grad(u)), v) * dx
+        return inner(dot(u_base, nabla_grad(u)), conj(v)) * dx
 
     @staticmethod
     def shear(u: Argument, v: Argument, u_base: dfem.Function) -> Form:
-        """Shear operator."""
-        return inner(dot(u, grad(u_base)), v) * dx
+        return inner(dot(u, grad(u_base)), conj(v)) * dx
 
     @staticmethod
     def pressure_gradient(p: Argument, v: Argument) -> Form:
-        """Pressure gradient operator.
-
-        Refer to the module documentation and to the unit tests to understand the sign convention.
-        Leading minus makes the G block =-D^T and yields a symmetric saddle point.
-        """
-        return -inner(p, div(v)) * dx
+        return -inner(p, div(conj(v))) * dx
 
     @staticmethod
     def viscous(u: Argument, v: Argument, re: float) -> Form:
-        """Viscous operator."""
-        # TODO: Determine whether the scalar `re` must be wrapped as a UFL object (e.g., Constant or Parameter) to
-        # support differentiation. We would need dL/dRe for the adjoint analysis, so ensure the linear operator assembly
-        # is compatible with UFL's automatic differentiation
-        return (1.0 / re) * inner(grad(u), grad(v)) * dx
+        return (1.0 / re) * inner(grad(u), grad(conj(v))) * dx
 
     @staticmethod
     def divergence(u: Argument, q: Argument) -> Form:
-        """Divergence operator."""
-        return inner(div(u), q) * dx
+        return inner(div(u), conj(q)) * dx
 
     @staticmethod
     def neumann_rhs(v: Argument, g: dfem.Function, ds: Measure) -> Form:
-        """Neumann boundary condition operator."""
-        return inner(v, g) * ds
+        return inner(conj(v), g) * ds
 
     @staticmethod
     def stiffness(u: Argument, v: Argument) -> Form:
-        """Stiffness (Laplace) operator. Used for the vibrating membrane benchmark."""
-        return inner(grad(u), grad(v)) * dx
+        return inner(grad(u), grad(conj(v))) * dx
 
 
 class LinearizedNavierStokesAssembler:
-    """FEM assembler for the linearized Navier-Stokes operator around a stationary base flow.
-
-    Builds each operator block on the corresponding mixed subspace so that the original mixed-space BCs apply
-    correctly.
-    """
+    """FEM assembler for the linearized Navier-Stokes operator around a stationary base flow."""
 
     def __init__(
         self,
@@ -396,10 +382,9 @@ class LinearizedNavierStokesAssembler:
             self._paps,
         ) = _extract_bcs(bcs)
 
-        self._u_base = base_flow.sub(0)  # Base flow velocity component
+        self._u_base = base_flow.sub(0)
         self._spaces = spaces
         self._re = re
-        self._dtype = PETSc.ScalarType
         self._cache: dict[str, iPETScMatrix] = {}
         self._nullspace: iPETScNullSpace | None = None
 
@@ -428,10 +413,7 @@ class LinearizedNavierStokesAssembler:
         key: str | int | None = None,
         cache: CacheStore | None = None,
     ) -> iPETScMatrix:
-        """Assemble the full linear operator.
-
-        If a CacheStore is provided, matrices are loaded from or written to disk using `key`.
-        """
+        """Assemble the full linear operator."""
         key = key or f"lin_ns_{id(self)}"
         if key not in self._cache:
             if cache is not None:
@@ -456,7 +438,7 @@ class LinearizedNavierStokesAssembler:
 
             full_form = shear + convection + viscous + gradient + divergence
 
-            mat = assemble_matrix(dfem.form(full_form, dtype=self._dtype), bcs=self.bcs)
+            mat = assemble_matrix(dfem.form(full_form, dtype=Scalar), bcs=self.bcs)
             mat.assemble()
             A = iPETScMatrix(mat)
 
@@ -501,7 +483,7 @@ class LinearizedNavierStokesAssembler:
 
             mass_form = VariationalForms.mass(self._u, self._v)
 
-            mat = assemble_matrix(dfem.form(mass_form, dtype=self._dtype), bcs=self.bcs)
+            mat = assemble_matrix(dfem.form(mass_form, dtype=Scalar), bcs=self.bcs)
             mat.assemble()
             M = iPETScMatrix(mat)
 
@@ -557,7 +539,7 @@ class LinearizedNavierStokesAssembler:
         is implicitly removed, the system is rendered non-singular, and no explicit nullspace correction is needed.
         """
         if self._nullspace is None:
-            arr = np.zeros((len(self._dofs_u + self._dofs_p),), dtype=self._dtype)
+            arr = np.zeros((len(self._dofs_u + self._dofs_p),), dtype=Scalar)
             arr[self._dofs_p] = 1.0
             vec = iPETScVector.from_array(arr, comm=mat.comm)
             vec.scale(1 / vec.norm)
