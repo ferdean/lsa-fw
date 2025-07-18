@@ -541,7 +541,7 @@ class LinearizedNavierStokesAssembler:
         is implicitly removed, the system is rendered non-singular, and no explicit nullspace correction is needed.
         """
         if self._nullspace is None:
-            arr = np.zeros((len(self._dofs_u + self._dofs_p),), dtype=Scalar)
+            arr = np.zeros((self._num_dofs,), dtype=Scalar)
             arr[self._dofs_p] = 1.0
             vec = iPETScVector.from_array(arr, comm=mat.comm)
             vec.scale(1 / vec.norm)
