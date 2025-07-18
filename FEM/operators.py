@@ -37,7 +37,7 @@ from ufl import (  # type: ignore[import-untyped]
 from ufl.argument import Argument  # type: ignore[import-untyped]
 
 from lib.cache import CacheStore
-from lib.loggingutils import log_global
+from lib.loggingutils import log_global, log_rank
 
 from .bcs import BoundaryConditions, apply_periodic_constraints
 from .spaces import FunctionSpaces
@@ -406,8 +406,13 @@ class LinearizedNavierStokesAssembler:
         self._u, self._p = TrialFunctions(self._spaces.mixed)
         self._v, self._q = TestFunctions(self._spaces.mixed)
 
-        self._dofs_u: list[int] | None = None
-        self._dofs_p: list[int] | None = None
+        _, self._dofs_u = self._spaces.mixed.sub(0).collapse()
+        _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
+        self._num_dofs = len(self._dofs_p) + len(self._dofs_u)
+
+        log_global(
+            logger, logging.INFO, "Initialized linearized Navier-Stokes assembler."
+        )
 
     @property
     def bcs(self) -> tuple[dfem.DirichletBC]:
@@ -425,8 +430,7 @@ class LinearizedNavierStokesAssembler:
     ) -> iPETScMatrix:
         """Assemble the full linear operator.
 
-        If a :class:`CacheStore` is provided, matrices are loaded from or written
-        to disk using ``key``.
+        If a CacheStore is provided, matrices are loaded from or written to disk using `key`.
         """
         key = key or f"lin_ns_{id(self)}"
         if key not in self._cache:
@@ -435,6 +439,14 @@ class LinearizedNavierStokesAssembler:
                 if loaded is not None:
                     self._cache[key] = iPETScMatrix(loaded)
                     return self._cache[key]
+
+            log_rank(
+                logger,
+                logging.DEBUG,
+                "Assembling linear operator - (%d, %d) DOFs",
+                self._num_dofs,
+                self._num_dofs,
+            )
 
             shear = VariationalForms.shear(self._u, self._v, self._u_base)
             convection = VariationalForms.convection(self._u, self._v, self._u_base)
@@ -450,6 +462,11 @@ class LinearizedNavierStokesAssembler:
 
             if not self._p_bcs:
                 self.attach_pressure_nullspace(A)
+                log_rank(
+                    logger,
+                    logging.DEBUG,
+                    "Attached pressure nullspace to linear operator",
+                )
 
             for pmap in (*self._uaps, *self._paps):
                 apply_periodic_constraints(A, pmap)
@@ -474,6 +491,14 @@ class LinearizedNavierStokesAssembler:
                     self._cache[key] = iPETScMatrix(loaded)
                     return self._cache[key]
 
+            log_rank(
+                logger,
+                logging.DEBUG,
+                "Assembling mass matrix - (%d, %d) DOFs",
+                self._num_dofs,
+                self._num_dofs,
+            )
+
             mass_form = VariationalForms.mass(self._u, self._v)
 
             mat = assemble_matrix(dfem.form(mass_form, dtype=self._dtype), bcs=self.bcs)
@@ -482,6 +507,11 @@ class LinearizedNavierStokesAssembler:
 
             if not self._p_bcs:
                 self.attach_pressure_nullspace(M)
+                log_rank(
+                    logger,
+                    logging.DEBUG,
+                    "Attached pressure nullspace to mass matrix",
+                )
 
             for pmap in (*self._uaps, *self._paps):
                 apply_periodic_constraints(M, pmap)
@@ -495,9 +525,21 @@ class LinearizedNavierStokesAssembler:
     def assemble_eigensystem(
         self, *, cache: CacheStore | None = None
     ) -> tuple[iPETScMatrix, iPETScMatrix]:
-        """Return ``(A, M)`` for eigenproblem; attach constant-pressure nullspace."""
+        """Return (A, M) for eigenproblem; attach constant-pressure nullspace if needed."""
         A = self.assemble_linear_operator(cache=cache)
         M = self.assemble_mass_matrix(cache=cache)
+        log_rank(
+            logger,
+            logging.INFO,
+            "Successfully assembled eigensystem; with %d pressure DOFs and %d velocity DOFs.",
+            len(self._dofs_p),
+            len(self._dofs_u),
+        )
+        log_global(
+            logger,
+            logging.DEBUG,
+            "Use 'extract_subblocks' to obtain the matrix blocks (vv, vp, pv, pp) if needed.",
+        )
         return A, M
 
     def attach_pressure_nullspace(self, mat: iPETScMatrix) -> None:
@@ -515,10 +557,6 @@ class LinearizedNavierStokesAssembler:
         is implicitly removed, the system is rendered non-singular, and no explicit nullspace correction is needed.
         """
         if self._nullspace is None:
-            if self._dofs_u is None or self._dofs_p is None:
-                _, self._dofs_u = self._spaces.mixed.sub(0).collapse()
-                _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
-
             arr = np.zeros((len(self._dofs_u + self._dofs_p),), dtype=self._dtype)
             arr[self._dofs_p] = 1.0
             vec = iPETScVector.from_array(arr, comm=mat.comm)
