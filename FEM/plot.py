@@ -70,7 +70,12 @@ def spy(
 
 
 def plot_mixed_function(
-    mixed_function: dfem.Function, *, scale: float = 1.0, title: str | None = None
+    mixed_function: dfem.Function,
+    *,
+    scale: float = 1.0,
+    title: str | None = None,
+    domain: tuple[tuple[float, float], tuple[float, float]] | None = None,
+    cmap: str = "RdBu_r",
 ) -> None:
     """Visualize mixed FEM function (velocity P2, pressure P1) using PyVista."""
     comm = mixed_function.function_space.mesh.comm
@@ -130,8 +135,19 @@ def plot_mixed_function(
             plotter_vel.add_text(
                 f"{title} — Velocity", position="upper_edge", font_size=12
             )
-        plotter_vel.add_mesh(u_grid, show_edges=False, show_scalar_bar=False)
-        plotter_vel.add_mesh(glyphs)
+
+        if domain is not None:
+            (xmin, ymin), (xmax, ymax) = domain
+            mask = (
+                (u_grid.points[:, 0] >= xmin)
+                & (u_grid.points[:, 0] <= xmax)
+                & (u_grid.points[:, 1] >= ymin)
+                & (u_grid.points[:, 1] <= ymax)
+            )
+            u_grid = u_grid.extract_points(mask, adjacent_cells=True)
+
+        plotter_vel.add_mesh(u_grid, show_edges=False, show_scalar_bar=False, cmap=cmap)
+        plotter_vel.add_mesh(glyphs, cmap=cmap)
         plotter_vel.view_xy()
         plotter_vel.show()
 
@@ -159,11 +175,31 @@ def plot_mixed_function(
 
         # Plot pressure field
         plotter_p = pyvista.Plotter()
-        if title:
+        if title is not None:
             plotter_p.add_text(
                 f"{title} — Pressure", position="upper_edge", font_size=12
             )
-        plotter_p.add_mesh(p_grid, scalars="pressure", show_edges=False, cmap="viridis")
+
+        if domain is not None:
+            (xmin, ymin), (xmax, ymax) = domain
+            mask = (
+                (p_grid.points[:, 0] >= xmin)
+                & (p_grid.points[:, 0] <= xmax)
+                & (p_grid.points[:, 1] >= ymin)
+                & (p_grid.points[:, 1] <= ymax)
+            )
+            p_grid = p_grid.extract_points(mask, adjacent_cells=True)
+
+        plotter_p.add_mesh(
+            p_grid,
+            scalars="pressure",
+            show_edges=False,
+            cmap=cmap,
+            clim=[
+                -np.abs(p_global).max(),
+                np.abs(p_global).max(),
+            ],  # symmetric color limits
+        )
         plotter_p.view_xy()
         plotter_p.show()
 
