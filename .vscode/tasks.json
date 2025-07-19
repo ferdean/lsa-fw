@@ -2,50 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Run module",
-      "type": "shell",
-      "command": "/dolfinx-env/bin/python3",
-      "args": [
-        "-m",
-        "${input:moduleName}"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared"
-      }
-    },
-    {
-      "label": "Run module with MPI (4 cores)",
-      "type": "shell",
-      "command": "mpirun",
-      "args": [
-        "-n",
-        "4",
-        "/dolfinx-env/bin/python3",
-        "-m",
-        "${input:moduleName}"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "group": {
-        "kind": "test",
-        "isDefault": false
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared"
-      }
-    },
-    {
-      "label": "Run static checker (mypy)",
+      "label": "MyPy: Run static checker",
       "type": "shell",
       "command": "/dolfinx-env/bin/python3",
       "args": [
@@ -57,9 +14,11 @@
         "attr-defined",
         "--disable-error-code",
         "name-defined",
-        "TestProjects",
         "FEM",
-        "Meshing"
+        "lib",
+        "Meshing",
+        "Solver",
+        "tests"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -73,14 +32,38 @@
         "panel": "shared"
       },
       "problemMatcher": []
-    }
-  ],
-  "inputs": [
+    },
     {
-      "id": "moduleName",
-      "type": "promptString",
-      "description": "Enter the Python module to run (e.g. TestProjects)",
-      "default": "TestProjects"
+      "label": "Env: Switch to real environment",
+      "type": "shell",
+      "command": "./switch_build.sh",
+      "args": [
+        "real"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Env: Switch to complex environment",
+      "type": "shell",
+      "command": "./switch_build.sh",
+      "args": [
+        "complex"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
     }
   ]
 }
