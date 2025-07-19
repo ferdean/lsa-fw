@@ -55,7 +55,7 @@ class BoundaryCondition:
     type: BoundaryConditionType
     """Type of boundary condition."""
     value: (
-        float | tuple[int, int] | tuple[float, ...] | Callable[[np.ndarray], np.ndarray]
+        float | tuple[int, ...] | tuple[float, ...] | Callable[[np.ndarray], np.ndarray]
     )
     """Value of the boundary condition.
 
@@ -157,15 +157,19 @@ def define_bcs(
                 if callable(cfg.value):
                     g_vec = ufl.as_vector(cfg.value(ufl.SpatialCoordinate(mesh)))
                 else:
-                    g_vec = dfem.Constant(mesh, cfg.value)  # Constant traction vector
-                neumann_forms.append((marker, ufl.dot(g_vec, v_test) * ds(marker)))
+                    g_vec = dfem.Constant(mesh, cfg.value)
+                neumann_forms.append(
+                    (marker, ufl.inner(g_vec, ufl.conj(v_test)) * ds(marker))
+                )
 
             case BoundaryConditionType.NEUMANN_PRESSURE:
                 if callable(cfg.value):
                     h_expr = ufl.as_scalar(cfg.value(ufl.SpatialCoordinate(mesh)))
                 else:
-                    h_expr = dfem.Constant(mesh, float(cfg.value))  # Scalar flux
-                neumann_forms.append((marker, ufl.dot(h_expr, q_test) * ds(marker)))
+                    h_expr = dfem.Constant(mesh, float(cfg.value))
+                neumann_forms.append(
+                    (marker, ufl.inner(h_expr, ufl.conj(q_test)) * ds(marker))
+                )
 
             case BoundaryConditionType.ROBIN:
                 if cfg.robin_alpha is None:
@@ -178,10 +182,20 @@ def define_bcs(
                 g_expr = ufl.as_vector(g(ufl.SpatialCoordinate(mesh)))
 
                 robin_forms.append(
-                    (marker, cfg.robin_alpha * ufl.dot(u_trial, v_test) * ds(marker))
+                    (
+                        marker,
+                        cfg.robin_alpha
+                        * ufl.inner(u_trial, ufl.conj(v_test))
+                        * ds(marker),
+                    )
                 )
                 robin_forms.append(
-                    (marker, cfg.robin_alpha * ufl.dot(g_expr, v_test) * ds(marker))
+                    (
+                        marker,
+                        cfg.robin_alpha
+                        * ufl.inner(g_expr, ufl.conj(v_test))
+                        * ds(marker),
+                    )
                 )
 
             case BoundaryConditionType.PERIODIC:
