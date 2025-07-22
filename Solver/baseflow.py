@@ -32,6 +32,7 @@ from pathlib import Path
 import dolfinx.fem as dfem
 from dolfinx import la
 from mpi4py import MPI
+import numpy as np
 from petsc4py import PETSc
 
 from FEM.bcs import BoundaryConditions
@@ -133,6 +134,37 @@ class BaseFlowSolver:
             cache.save_function(key, sol)
 
         return sol
+
+
+def compute_recirculation_length(
+    baseflow: dfem.Function,
+    *,
+    restrict_to_centreline: bool = False,
+    centreline_tol: float = 1e-6,
+) -> float:
+    """Compute the recirculation length behind a cylinder or object in a channel flow.
+
+    Assumes that the object axis is located at the coordinate origin.
+    This function defines the recirculation length as the maximum x-coordinate where u_x < 0.
+    As per definition, if the computation is restricted to the center line, only nodes with abs(y) <= tol are
+    considered.
+    """
+    u = baseflow.sub(0).collapse()
+    gdim = u.function_space.mesh.geometry.dim
+    with u.x.petsc_vec.localForm() as u_local:
+        uv = u_local.getArray().reshape((-1, gdim))  # (u_x, u_y)
+
+    coords = u.function_space.tabulate_dof_coordinates()[:, :gdim]
+
+    # Find all dofs where u_x < 0
+    mask = uv[:, 0] < 0.0
+    if restrict_to_centreline:
+        mask &= np.abs(coords[:, 1]) <= centreline_tol
+
+    if not np.any(mask):
+        raise RuntimeError("No negative u_x found; no recirculation detected.")
+
+    return float(max(coords[mask, 0]))
 
 
 # HACK: In theory, the dolfinx API should be sufficient to export/import function objects. However, up to now,

@@ -1,0 +1,9 @@
+dim = 2
+cylinder_radius = 0.5
+cylinder_center = [0.0, 0.0]
+x_range = [-20.0, 80.0]
+y_range = [-15.0, 15.0]
+resolution = 1.2
+resolution_around_cylinder = 0.15
+influence_radius = 40
+influence_length = 40

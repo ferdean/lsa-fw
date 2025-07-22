@@ -24,15 +24,15 @@ from ufl import (  # type: ignore[import-untyped]
     Measure,
     TestFunctions,
     TrialFunctions,
-    derivative,
     div,
-    dot,
     dx,
     grad,
     inner,
+    dot,
     nabla_grad,
     split,
-    conj,
+    derivative,
+    system,
 )
 from ufl.argument import Argument  # type: ignore[import-untyped]
 
@@ -183,24 +183,22 @@ class StokesAssembler(BaseAssembler):
     def sol(self) -> dfem.Function:
         return self._wh
 
-    def _build_forms(self) -> tuple[Form, Form]:
-        """Construct bilinear and linear UFL forms for the Stokes problem."""
-
-        a = (
-            inner(grad(self._u), grad(conj(self._v))) * dx
-            + inner(self._p, div(conj(self._v))) * dx
-            + inner(div(self._u), conj(self._q)) * dx
+    def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
+        form = (
+            inner(grad(self._u), grad(self._v)) * dx
+            + inner(self._p, div(self._v)) * dx
+            + inner(div(self._u), self._q) * dx
+            - inner(self._f, self._v) * dx
         )
 
-        L = inner(self._f, conj(self._v)) * dx
-
-        # Note that the pressure term is deliberately signed to yield symmetry;
-        # and that test-function occurrences are conjugated for complex support
+        # NOTE: the pressure term seems to have the incorrect sign. This is done deliberately, so that the resulting
+        # block system is symmetric. This symmetry lets us reuse later symmetric solvers and pre-conditioners for both
+        # the Stokes and Navier–Stokes operators.
 
         for bc in self._neumann_forms:
-            L += bc
+            form += bc
 
-        return a, L
+        return system(form)
 
     def get_matrix_forms(self) -> tuple[iPETScMatrix, iPETScVector]:
         """Assemble the jacobian and residual forms of the Stokes equations."""
@@ -219,7 +217,7 @@ class StokesAssembler(BaseAssembler):
 
         if key_res not in self._vec_cache:
             b = assemble_vector(self.residual)
-            dfem.apply_lifting(b.array, [self.jacobian], [self.bcs])
+            dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [self.bcs])
             self._apply_dirichlet(b)
             self._vec_cache[key_res] = iPETScVector(b)
 
@@ -278,13 +276,10 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         return self._wh
 
     def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
-        convection = inner(dot(self._u, nabla_grad(self._u)), conj(self._v)) * dx
-        diffusion = (1 / self._re) * inner(grad(self._u), grad(conj(self._v))) * dx
-        pressure = (
-            inner(self._p, div(conj(self._v))) * dx
-            + inner(div(self._u), conj(self._q)) * dx
-        )
-        forcing = -inner(self._f, conj(self._v)) * dx
+        convection = inner(dot(self._u, nabla_grad(self._u)), self._v) * dx
+        diffusion = (1 / self._re) * inner(grad(self._u), grad(self._v)) * dx
+        pressure = inner(self._p, div(self._v)) * dx + inner(div(self._u), self._q) * dx
+        forcing = -inner(self._f, self._v) * dx
 
         form = convection + diffusion + pressure + forcing
 
@@ -328,35 +323,35 @@ class VariationalForms:
 
     @staticmethod
     def mass(u: Argument, v: Argument) -> Form:
-        return inner(u, conj(v)) * dx
+        return inner(u, v) * dx
 
     @staticmethod
     def convection(u: Argument, v: Argument, u_base: dfem.Function) -> Form:
-        return inner(dot(u_base, nabla_grad(u)), conj(v)) * dx
+        return inner(dot(u_base, nabla_grad(u)), v) * dx
 
     @staticmethod
     def shear(u: Argument, v: Argument, u_base: dfem.Function) -> Form:
-        return inner(dot(u, grad(u_base)), conj(v)) * dx
+        return inner(dot(u, grad(u_base)), v) * dx
 
     @staticmethod
     def pressure_gradient(p: Argument, v: Argument) -> Form:
-        return -inner(p, div(conj(v))) * dx
+        return -inner(p, div(v)) * dx
 
     @staticmethod
     def viscous(u: Argument, v: Argument, re: float) -> Form:
-        return (1.0 / re) * inner(grad(u), grad(conj(v))) * dx
+        return (1.0 / re) * inner(grad(u), grad(v)) * dx
 
     @staticmethod
     def divergence(u: Argument, q: Argument) -> Form:
-        return inner(div(u), conj(q)) * dx
+        return inner(div(u), q) * dx
 
     @staticmethod
     def neumann_rhs(v: Argument, g: dfem.Function, ds: Measure) -> Form:
-        return inner(conj(v), g) * ds
+        return inner(v, g) * ds
 
     @staticmethod
     def stiffness(u: Argument, v: Argument) -> Form:
-        return inner(grad(u), grad(conj(v))) * dx
+        return inner(grad(u), grad(v)) * dx
 
 
 class LinearizedNavierStokesAssembler:

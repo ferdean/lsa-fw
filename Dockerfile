@@ -5,7 +5,6 @@ FROM dolfinx/dolfinx:stable
 
 # Select scalar mode (real or complex)
 # Defaults to real; override via --build-arg
-# Complex mode should be built with linux-gnu-complex128-32
 ARG FENICS_VARIANT=real
 ARG PETSC_ARCH=linux-gnu-real64-32  
 

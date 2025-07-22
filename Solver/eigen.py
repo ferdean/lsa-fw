@@ -124,7 +124,7 @@ class EigenSolver:
         log_global(
             logger,
             logging.INFO,
-            f"Starting eigenvalue solve: type={self._cfg.problem_type.name}, "
+            f"Started eigenvalue solve: type={self._cfg.problem_type.name}, "
             f"nev={self._cfg.num_eig}, "
             f"tol={self._cfg.atol}, max_it={self._cfg.max_it}",
         )

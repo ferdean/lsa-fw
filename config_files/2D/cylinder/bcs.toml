@@ -11,13 +11,13 @@ type = "neumann_velocity"
 value = [0.0, 0.0]
 
 [[BC]]
-# Wall
+# Free-flow
 marker = 3
 type = "neumann_velocity"
 value = [0.0, 0.0]
 
 [[BC]]
-# Wall
+# Free-flow
 marker = 4
 type = "neumann_velocity"
 value = [0.0, 0.0]

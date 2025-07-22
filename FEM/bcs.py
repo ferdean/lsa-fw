@@ -158,18 +158,14 @@ def define_bcs(
                     g_vec = ufl.as_vector(cfg.value(ufl.SpatialCoordinate(mesh)))
                 else:
                     g_vec = dfem.Constant(mesh, cfg.value)
-                neumann_forms.append(
-                    (marker, ufl.inner(g_vec, ufl.conj(v_test)) * ds(marker))
-                )
+                neumann_forms.append((marker, ufl.inner(g_vec, v_test) * ds(marker)))
 
             case BoundaryConditionType.NEUMANN_PRESSURE:
                 if callable(cfg.value):
                     h_expr = ufl.as_scalar(cfg.value(ufl.SpatialCoordinate(mesh)))
                 else:
                     h_expr = dfem.Constant(mesh, float(cfg.value))
-                neumann_forms.append(
-                    (marker, ufl.inner(h_expr, ufl.conj(q_test)) * ds(marker))
-                )
+                neumann_forms.append((marker, ufl.inner(h_expr, q_test) * ds(marker)))
 
             case BoundaryConditionType.ROBIN:
                 if cfg.robin_alpha is None:
@@ -184,17 +180,13 @@ def define_bcs(
                 robin_forms.append(
                     (
                         marker,
-                        cfg.robin_alpha
-                        * ufl.inner(u_trial, ufl.conj(v_test))
-                        * ds(marker),
+                        cfg.robin_alpha * ufl.inner(u_trial, v_test) * ds(marker),
                     )
                 )
                 robin_forms.append(
                     (
                         marker,
-                        cfg.robin_alpha
-                        * ufl.inner(g_expr, ufl.conj(v_test))
-                        * ds(marker),
+                        cfg.robin_alpha * ufl.inner(g_expr, v_test) * ds(marker),
                     )
                 )
 
