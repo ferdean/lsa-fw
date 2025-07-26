@@ -1,22 +1,22 @@
-# Face tags for cylinder flow
+# Facet tags for cylinder flow
 
 [[FaceTag]]
-# Left face
+# Inlet
 marker = 1
 when = { axis = "x", equals = -20.0 }
 
 [[FaceTag]]
-# Right face
+# Outlet
 marker = 2
-when = { axis = "x", equals = 40.0 }
+when = { axis = "x", equals = 80.0 }
 
 [[FaceTag]]
-# Bottom face
+# Bottom
 marker = 3
 when = { axis = "y", equals = -20.0 }
 
 [[FaceTag]]
-# Top face
+# Top
 marker = 4
 when = { axis = "y", equals = 20.0 }
 

@@ -11,16 +11,22 @@ type = "neumann_velocity"
 value = [0.0, 0.0]
 
 [[BC]]
-# Wall
-marker = 3
-type = "neumann_velocity"
-value = [0.0, 0.0]
+# Outlet
+marker = 2
+type = "dirichlet_pressure"
+value = 0.0
 
 [[BC]]
-# Wall
+# Free-flow
+marker = 3
+type = "dirichlet_velocity"
+value = [1.0, 0.0]
+
+[[BC]]
+# Free-flow
 marker = 4
-type = "neumann_velocity"
-value = [0.0, 0.0]
+type = "dirichlet_velocity"
+value = [1.0, 0.0]
 
 [[BC]]
 # Wall

@@ -147,20 +147,6 @@ def cylinder_flow(
         gmsh.model.mesh.field.setNumber(fid_thr, "DistMin", 0.0)
         gmsh.model.mesh.field.setNumber(fid_thr, "DistMax", cfg.influence_radius)
 
-        # Wake-refinement volume
-        wx0 = xc
-        wx1 = min(xmax, wx0 + cfg.influence_length)
-        wy0, wy1 = yc - 1.1 * cfg.cylinder_radius, yc + 1.1 * cfg.cylinder_radius
-        fid_box = gmsh.model.mesh.field.add("Box", 3)
-        gmsh.model.mesh.field.setNumber(fid_box, "VIn", cfg.resolution_around_cylinder)
-        gmsh.model.mesh.field.setNumber(fid_box, "VOut", cfg.resolution * 0.9)
-        gmsh.model.mesh.field.setNumber(fid_box, "XMin", wx0)
-        gmsh.model.mesh.field.setNumber(fid_box, "XMax", wx1)
-        gmsh.model.mesh.field.setNumber(fid_box, "YMin", wy0)
-        gmsh.model.mesh.field.setNumber(fid_box, "YMax", wy1)
-        gmsh.model.mesh.field.setNumber(fid_box, "ZMin", zmin)
-        gmsh.model.mesh.field.setNumber(fid_box, "ZMax", zmax)
-
         # Combine and optimize
         fid_min = gmsh.model.mesh.field.add("Min", 5)
         gmsh.model.mesh.field.setNumbers(fid_min, "FieldsList", [fid_thr, fid_box])

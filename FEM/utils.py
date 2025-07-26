@@ -7,15 +7,17 @@ from copy import deepcopy
 from enum import Enum, auto
 from pathlib import Path
 from typing import TypeAlias, overload
+from scipy.io import mmwrite, mmread
 
 import numpy as np
 from basix import ElementFamily as DolfinxElementFamily
 from dolfinx.mesh import Mesh, MeshTags
 from petsc4py import PETSc
+from mpi4py import MPI
 from scipy import sparse
 from ufl import Measure  # type: ignore[import-untyped]
 
-from lib.loggingutils import log_global
+from lib.loggingutils import log_global, log_rank
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +137,12 @@ class iPETScMatrix:
         mat = PETSc.Mat().createNest(blocks, comm=comm)
         mat.assemble()
         return cls(mat)
+
+    @classmethod
+    def from_path(cls, path: Path, comm: PETSc.Comm = MPI.COMM_WORLD) -> iPETScMatrix:
+        """Load a MatrixMarket file via SciPy and wrap it as an iPETScMatrix."""
+        sp = mmread(str(path)).tocsr()
+        return cls.from_matrix(sp, comm=comm)
 
     @classmethod
     def zeros(
@@ -592,12 +600,49 @@ class iPETScMatrix:
             return None
 
     def export(self, path: Path) -> None:
-        """Export the matrix to a binary file."""
-        viewer = PETSc.Viewer().createBinary(
-            str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self.comm
-        )
-        self.raw.view(viewer)
-        viewer.destroy()
+        """Export the matrix to disk.
+
+        - If the suffix is `*.mtx`, writes a matrix-market file via SciPy.
+        - Otherwise writes PETSc binary.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        suffix = path.suffix.lower()
+        if suffix == ".mtx":
+            # Disallow parallel export
+            if (num_ranks := self.comm.Get_size()) > 1:
+                log_global(
+                    logger,
+                    logging.ERROR,
+                    "Matrix-market export requires a single rank (found %d).",
+                    num_ranks,
+                )
+                return
+            sp = self.as_scipy_array()
+            mmwrite(str(path.with_suffix("")), sp)
+            log_global(logger, logging.INFO, "Matrix exported to file: '%s'", path)
+
+        else:
+            if _IS_COMPLEX_BUILD:
+                log_rank(
+                    logger,
+                    logging.WARNING,
+                    "Writing binary in COMPLEX build; may not be readable in REAL build.",
+                )
+            else:
+                log_rank(
+                    logger,
+                    logging.WARNING,
+                    "Writing binary in REAL build; may not be readable in COMPLEX build.",
+                )
+
+            viewer = PETSc.Viewer().createBinary(
+                str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self.comm
+            )
+            try:
+                self.raw.view(viewer)
+            finally:
+                viewer.destroy()
+            logger.info("Matrix exported (as binary) to file '%s'", path)
 
 
 class iPETScVector:
@@ -643,6 +688,18 @@ class iPETScVector:
         """Create a sequential (non-parallel) vector of the given size."""
         vec = PETSc.Vec().createSeq(size, comm=comm)
         vec.setFromOptions()
+        return cls(vec)
+
+    @classmethod
+    def from_file(cls, path: Path, comm: PETSc.Comm = PETSc.COMM_WORLD) -> iPETScVector:
+        """Load a vector from a PETSc binary file."""
+        viewer = PETSc.Viewer().createBinary(
+            str(path), mode=PETSc.Viewer.Mode.READ, comm=comm
+        )
+        vec = PETSc.Vec().create(comm=comm)
+        vec.load(viewer)
+        vec.assemble()
+        viewer.destroy()
         return cls(vec)
 
     def __add__(self, other: object) -> iPETScVector:
@@ -829,6 +886,7 @@ class iPETScVector:
 
     def export(self, path: Path) -> None:
         """Export the vector to a binary file."""
+        path.parent.mkdir(parents=True, exist_ok=True)
         viewer = PETSc.Viewer().createBinary(
             str(path), mode=PETSc.Viewer.Mode.WRITE, comm=self._vec.comm
         )

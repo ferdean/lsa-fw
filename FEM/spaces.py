@@ -142,7 +142,7 @@ def define_spaces(
             bubble = element(
                 family=iElementFamily.BUBBLE.to_dolfinx(),
                 cell=cell,
-                degree=3,  # bubble element is usually of higher order
+                degree=3,  # Bubble element is usually of higher order
                 shape=(gdim or mesh.geometry.dim,),
             )
             enriched = enriched_element([p1_v, bubble])

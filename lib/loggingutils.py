@@ -1,9 +1,13 @@
 """Utilities for logging."""
 
+import contextlib
 import logging
 import platform
+import io
+import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Generator
 
 from rich.console import Console
 from rich.logging import RichHandler
@@ -56,7 +60,11 @@ def setup_logging(
     root.setLevel(level)
     root.addHandler(console_handler)
 
-    log_file = output_path or Path(".") / "log.log"
+    if output_path is not None:
+        output_path.mkdir(parents=True, exist_ok=True)
+    else:
+        output_path = Path(".")
+    log_file = output_path / "log.log"
     _write_header(log_file)
 
     file_handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
@@ -79,3 +87,22 @@ def log_global(logger: logging.Logger, level: int, msg: str, *args, **kwargs) ->
 def log_rank(logger: logging.Logger, level: int, msg: str, *args, **kwargs) -> None:
     """Log on all ranks, prefixing the message with the rank."""
     logger.log(level, f"[{_rank:d}] {msg}", *args, stacklevel=2, **kwargs)
+
+
+@contextlib.contextmanager
+def capture_and_log(
+    logger: logging.Logger, level: int = logging.INFO
+) -> Generator[None, None, None]:
+    """Capture stdout/stderr within the context and forward any output to the logger at the given level."""
+    buf = io.StringIO()
+    old_out, old_err = sys.stdout, sys.stderr
+    sys.stdout, sys.stderr = buf, buf
+    try:
+        yield
+    finally:
+        sys.stdout, sys.stderr = old_out, old_err
+        text = buf.getvalue().strip()
+        if text:
+            # Log every non-empty line
+            for line in text.splitlines():
+                log_global(logger, level, line)

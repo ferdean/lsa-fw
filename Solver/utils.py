@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from enum import Enum, StrEnum, auto
 from typing import Iterator, TypeAlias
 
@@ -10,6 +11,9 @@ from petsc4py import PETSc
 from slepc4py import SLEPc
 
 from FEM.utils import iComplexPETScVector, iPETScMatrix, iPETScVector
+from lib.loggingutils import log_rank
+
+logger = logging.getLogger(__name__)
 
 Scalar: TypeAlias = PETSc.ScalarType
 """Alias for the base numeric type used throughout the framework (float or complex).
