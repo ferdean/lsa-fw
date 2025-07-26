@@ -177,7 +177,7 @@ def _run_gmsh_remesh(
         gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
         gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
 
-        # smooth mesh to avoid low-quality cells near boundaries
+        # Smooth mesh to avoid low-quality cells near boundaries
         gmsh.option.setNumber("Mesh.Smoothing", 10)
 
         gmsh.model.mesh.field.setAsBackgroundMesh(fld)
@@ -223,7 +223,7 @@ def adapt_mesh(
 
     Computes the element-wise velocity magnitude of a given baseflow field,  projects it onto a linear finite element
     space, and constructs a background mesh size field scaled between min_size and max_size.  The background field is
-    exported to Gmsh as a POS file, merged with the original mesh, and remeshing is performed with smoothing to improve
+    exported to Gmsh as a POS file, merged with the original mesh, and re-meshing is performed with smoothing to improve
     cell quality. The adapted mesh is then converted back into a Mesher object.
     """
     log_global(logger, logging.INFO, "Starting mesh adaptation.")

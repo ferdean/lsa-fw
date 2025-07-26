@@ -2,7 +2,7 @@
 # Inlet
 marker = 1
 type = "dirichlet_velocity"
-value = [1.0, 0.0]
+value = [0.0, 0.0]
 
 [[BC]]
 # Outlet
@@ -20,13 +20,13 @@ value = 0.0
 # Free-flow
 marker = 3
 type = "dirichlet_velocity"
-value = [1.0, 0.0]
+value = [0.0, 0.0]
 
 [[BC]]
 # Free-flow
 marker = 4
 type = "dirichlet_velocity"
-value = [1.0, 0.0]
+value = [0.0, 0.0]
 
 [[BC]]
 # Wall

@@ -48,6 +48,8 @@ setup_logging(verbose=True, output_path=_CASE_DIR / "logs")
 cylinder_cfg = load_cylinder_flow_config(_CFG_DIR / "geometry.toml")
 facet_cfg = load_facet_config(_CFG_DIR / "facets.toml")
 bcs_cfg = load_bc_config(_CFG_DIR / "bcs.toml")
+bcs_perturbation_cfg = load_bc_config(_CFG_DIR / "bcs_perturbation.toml")
+
 
 # Get (or create) mesh
 try:
@@ -67,20 +69,22 @@ spaces = define_spaces(mesher.mesh, FunctionSpaceType.TAYLOR_HOOD)
 
 # Define boundary conditions
 bcs = define_bcs(mesher, spaces, bcs_cfg)
+bcs_perturbation = define_bcs(mesher, spaces, bcs_perturbation_cfg)
 
-for re in (8,):
+for re in range(2, 60):
     # Solve baseflow
     try:
         baseflow = load_baseflow(_CASE_DIR / "baseflow" / f"re_{int(re)}", spaces)
         if __show_plots:
-            plot_mixed_function(baseflow)
+            plot_mixed_function(baseflow, scale=0)
 
     except Exception:
-        bf_solver = BaseFlowSolver(spaces, bcs=bcs)
+        bf_solver = BaseFlowSolver(spaces, bcs=bcs, tags=mesher.facet_tags)
         baseflow = bf_solver.solve(
             re,
             ramp=True,
-            steps=3,
+            tol=1e-12,
+            steps=2,
             damping_factor=1.0,  # Undamped Newton
             show_plot=__show_plots,
         )
@@ -101,7 +105,9 @@ for re in (8,):
         writer.writerow([re, l_x])
 
     # Assemble and export linear stability matrices
-    assembler = LinearizedNavierStokesAssembler(baseflow, spaces, re, bcs)
+    assembler = LinearizedNavierStokesAssembler(
+        baseflow, spaces, re, bcs_perturbation, mesher.facet_tags, sponge_term=False
+    )
     A, M = assembler.assemble_eigensystem()
 
     mat_dir = _CASE_DIR / "matrices" / f"re_{int(re)}"

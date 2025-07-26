@@ -30,6 +30,7 @@ import logging
 from pathlib import Path
 
 import dolfinx.fem as dfem
+from dolfinx.mesh import MeshTags
 from dolfinx import la
 from mpi4py import MPI
 import numpy as np
@@ -59,12 +60,17 @@ class BaseFlowSolver:
     """Solves for the base (stationary) flow."""
 
     def __init__(
-        self, spaces: FunctionSpaces, *, bcs: BoundaryConditions | None = None
+        self,
+        spaces: FunctionSpaces,
+        *,
+        bcs: BoundaryConditions | None = None,
+        tags: MeshTags | None = None,
     ) -> None:
         """Initialize."""
         self._spaces = spaces
         self._bcs = bcs
         self._initial_guess: dfem.Function | None = None
+        self._tags = tags
 
     def _solve_stokes_flow(self) -> dfem.Function:
         """Assemble and solve the stokes flow, to be used as initial guess for the stationary NS flow."""
@@ -117,7 +123,7 @@ class BaseFlowSolver:
                 logger, logging.INFO, "Solving stationary Navier-Stokes at Re=%.2f", re
             )
             ns_assembler = StationaryNavierStokesAssembler(
-                self._spaces, re=re, bcs=self._bcs, initial_guess=sol
+                self._spaces, re=re, bcs=self._bcs, initial_guess=sol, tags=self._tags
             )
             newton = NewtonSolver(ns_assembler, damping=damping_factor)
 

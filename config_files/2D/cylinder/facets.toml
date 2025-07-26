@@ -13,12 +13,12 @@ when = { axis = "x", equals = 80.0 }
 [[FaceTag]]
 # Bottom
 marker = 3
-when = { axis = "y", equals = -15.0 }
+when = { axis = "y", equals = -20.0 }
 
 [[FaceTag]]
 # Top
 marker = 4
-when = { axis = "y", equals = 15.0 }
+when = { axis = "y", equals = 20.0 }
 
 [[FaceTag]]
 # Fallback for unmatched surfaces (e.g, cylinder)

@@ -3,8 +3,8 @@
   "build": {
     "dockerfile": "../Dockerfile",
     "args": {
-      "FENICS_VARIANT": "complex",
-      "PETSC_ARCH": "linux-gnu-complex128-32"
+      "FENICS_VARIANT": "real",
+      "PETSC_ARCH": "linux-gnu-real64-32"
     }
   },
   "customizations": {
