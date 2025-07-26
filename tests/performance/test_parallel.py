@@ -20,7 +20,7 @@ setup_logging(verbose=True, output_path=pathlib.Path(".") / "log_parallel.log")
 MPI_EXEC = "mpirun"
 MPI_FLAG = "-n"
 INTERPRETER = "/dolfinx-env/bin/python3"
-SCRIPT = "/workspaces/lsa-fw/tests/examples/cube.py"
+SCRIPT = "/workspaces/lsa-fw/.examples/cube.py"
 RESULTS_FILE = pathlib.Path(__file__).parent / "data" / "mpi_analysis.csv"
 
 

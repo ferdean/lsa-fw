@@ -102,12 +102,18 @@ class Mesher:
         return self._gdim
 
     @classmethod
-    def from_file(cls, path: pathlib.Path, shape: Shape, gdim: int = 3) -> Self:
+    def from_file(
+        cls,
+        path: pathlib.Path,
+        shape: Shape,
+        gdim: int = 3,
+        comm: MPI.Intracomm = _COMM,
+    ) -> Self:
         """Create a Mesher instance from a custom mesh file."""
         if shape not in _CUSTOM_FILES:
             raise ValueError(f"Shape {shape} is not a supported import type.")
         mesh = cls(shape=shape, custom_file=path, gdim=gdim)
-        _ = mesh.generate()
+        _ = mesh.generate(comm)
         return mesh
 
     @classmethod

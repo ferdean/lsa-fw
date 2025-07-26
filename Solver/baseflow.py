@@ -30,8 +30,10 @@ import logging
 from pathlib import Path
 
 import dolfinx.fem as dfem
+from dolfinx.mesh import MeshTags
 from dolfinx import la
 from mpi4py import MPI
+import numpy as np
 from petsc4py import PETSc
 
 from FEM.bcs import BoundaryConditions
@@ -58,12 +60,17 @@ class BaseFlowSolver:
     """Solves for the base (stationary) flow."""
 
     def __init__(
-        self, spaces: FunctionSpaces, *, bcs: BoundaryConditions | None = None
+        self,
+        spaces: FunctionSpaces,
+        *,
+        bcs: BoundaryConditions | None = None,
+        tags: MeshTags | None = None,
     ) -> None:
         """Initialize."""
         self._spaces = spaces
         self._bcs = bcs
         self._initial_guess: dfem.Function | None = None
+        self._tags = tags
 
     def _solve_stokes_flow(self) -> dfem.Function:
         """Assemble and solve the stokes flow, to be used as initial guess for the stationary NS flow."""
@@ -116,7 +123,7 @@ class BaseFlowSolver:
                 logger, logging.INFO, "Solving stationary Navier-Stokes at Re=%.2f", re
             )
             ns_assembler = StationaryNavierStokesAssembler(
-                self._spaces, re=re, bcs=self._bcs, initial_guess=sol
+                self._spaces, re=re, bcs=self._bcs, initial_guess=sol, tags=self._tags
             )
             newton = NewtonSolver(ns_assembler, damping=damping_factor)
 
@@ -133,6 +140,37 @@ class BaseFlowSolver:
             cache.save_function(key, sol)
 
         return sol
+
+
+def compute_recirculation_length(
+    baseflow: dfem.Function,
+    *,
+    restrict_to_centreline: bool = False,
+    centreline_tol: float = 1e-6,
+) -> float:
+    """Compute the recirculation length behind a cylinder or object in a channel flow.
+
+    Assumes that the object axis is located at the coordinate origin.
+    This function defines the recirculation length as the maximum x-coordinate where u_x < 0.
+    As per definition, if the computation is restricted to the center line, only nodes with abs(y) <= tol are
+    considered.
+    """
+    u = baseflow.sub(0).collapse()
+    gdim = u.function_space.mesh.geometry.dim
+    with u.x.petsc_vec.localForm() as u_local:
+        uv = u_local.getArray().reshape((-1, gdim))  # (u_x, u_y)
+
+    coords = u.function_space.tabulate_dof_coordinates()[:, :gdim]
+
+    # Find all dofs where u_x < 0
+    mask = uv[:, 0] < 0.0
+    if restrict_to_centreline:
+        mask &= np.abs(coords[:, 1]) <= centreline_tol
+
+    if not np.any(mask):
+        raise RuntimeError("No negative u_x found; no recirculation detected.")
+
+    return float(max(coords[mask, 0]))
 
 
 # HACK: In theory, the dolfinx API should be sufficient to export/import function objects. However, up to now,
