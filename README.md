@@ -1,106 +1,121 @@
 # Linear Stability Analysis Framework (LSA-FW)
 
-> **Status**: Research prototype in active development  
-> **Goal**: Reproduce and extend global linear stability and adjoint-based sensitivity analysis for canonical flows (e.g., cylinder wake).
+> **Status:** Research prototype in active development.
+> **Documentation is evolving; module details and developer guides are being updated regularly.**
 
 ## Project Objective
 
-The **LSA-FW** project provides a flexible and modular Python framework for performing global linear stability analysis of incompressible 2D and 3D flows.
-It focuses on matrix/eigenvalue-based methods, with an emphasis on adjoint-based sensitivity and passive flow control.
+**LSA-FW** is a flexible, modular Python framework for global linear stability analysis of incompressible 2D and 3D flows.
+It integrates matrix/eigenvalue-based methods, with a strong focus on adjoint-based sensitivity analysis and modern reproducibility practices.
+
+**Core Aims:**
+
+* Perform global stability analyses (compute eigenmodes/eigenvalues of flow instabilities).
+* Enable adjoint-based sensitivity analyses for flow control and optimization without redundant recomputation of controlled flows.
 
 ## Theoretical Background
 
-LSA-FW is inspired by several foundational works in hydrodynamic stability.
-See [doc/ref](doc/ref/) for a collection of referenced papers and notes.
+LSA-FW builds on foundational and modern work in hydrodynamic stability, adjoint methods, and control-oriented sensitivity analysis.
+See [doc/ref](doc/ref/) for a collection of reference papers, technical notes, and background material.
 
-## Current Features
+## Features and Roadmap
 
-LSA-FW is modular by design.
-Current features include:
+**Mesh Management**
 
-- Core Modules
-  - Sparse eigenvalue computations for stability and adjoint problems *(planned)*
-  - Base flow construction via a steady Navier–Stokes solver
-  - Automatic differentiation support *(planned)*
+* Built-in generators for canonical domains (unit interval, unit square, unit cube, box)
+* Automated mesh creation for CFD benchmarks (e.g., cylinder flow, backward-facing step)
+* Import support for externally-generated meshes (XDMF, VTK, GMSH)
+* Mesh adaptation routines based on computed baseflow velocity
+* Configuration-driven boundary tagging (TOML) for reproducible BC assignment
+* *(Planned)* Mesh adaptation via custom fields (vorticity, sensitivity maps, etc.)
 
-- Infrastructure
-  - Modular mesh generation and import/export (via [Meshing Module](doc/models/meshing.md))
-  - CLI-based experiment runners
-  - Support for parameter files (e.g., `.json` or `.toml`, refer to `config_files`)
+**Finite Element Assembly**
 
-## Module Overview
+* Configuration-based BC creation: Dirichlet, Neumann, Robin, and periodic (via TOML)
+* Function spaces: Taylor-Hood, MINI, SIMPLE; *(Planned)* Discontinuous Galerkin (DG)
+* Modular FE assemblers for Stokes, stationary NS, and linearized NS systems
+* Fully type-hinted, tested routines compatible with C++ and native Python backends
 
-### Meshing
+**Solvers**
 
-Provides all tools for mesh generation, manipulation, and export.
-Supports canonical CFD geometries with built-in refinement logic.
+* Linear solvers (LU, GMRES, CG, and others) via PETSc
+* Nonlinear solvers (Newton; *Planned*: Picard)
+* Eigensolver API manager using SLEPc, fully MPI-parallelized
+* Direct support for both complex and real PETSc/SLEPc builds
+* Validated baseflow computation
 
-- Implements mesh generation for test cases like 2D cylinder flow and step flow.
-- Supports multiple output formats (e.g., XDMF, MSH).
-- Uses GMSH via command-line and built-in distance/threshold fields for local refinement.
-- [Documentation](doc/models/meshing.md)
+**Adjoint-Based Sensitivity Analysis**
 
-### FEM
+* *(Planned)* First-order (linear) adjoint-based sensitivity maps for eigenvalue response to steady controls
+* *(Planned)* Second-order (quadratic) adjoint-based sensitivity operators, capturing nonlinear effects of finite-amplitude control
+* *(Planned)* Structural sensitivity computation via direct/adjoint mode overlap
+* *(Planned)* General parameter sensitivity (Reynolds number, geometry, etc.) and adjoint-based optimization for open-loop/closed-loop flow control
+* *(Planned)* Modular adjoint routines, integrated with PETSc/SLEPc eigensolvers
 
-Finite Element Method backend that assembles the linearized Navier–Stokes operator for stability analysis.
+**Visualization & Analysis**
 
-- Modular structure for building velocity-pressure function spaces.
-- Handles boundary condition enforcement for Dirichlet, Neumann, and Robin types.
-- Periodic boundary conditions via DOF pairing.
-- Exposes PETSc matrices for solver consumption.
+* Native routines for visualization of baseflow fields and eigenmodes
+* Export to XDMF/HDF5 for external post-processing
+* Logging and reporting system for traceability
 
-### Solver 
+**Framework Quality and Extensibility**
 
-Linear solver module that will support:
+* XDMF/HDF5-backed caching to avoid redundant computations
+* Modular, type-checked API for extension and research experimentation
+* Documentation: Developer, user, and module docs organized for maintainability
 
-- Steady base flow computation
-- Eigenvalue solvers for modal stability analysis (via SLEPc)
-- Preconditioners for large sparse matrices
-- Fully decoupled from FEM to allow extensibility
+## Reproducibility and Dockerized Workflow
 
-### Visualizer *(Planned)*
+LSA-FW is fully containerized, with all dependencies (FEniCSx, PETSc/SLEPc, GMSH, etc.) pre-configured.
+VS Code DevContainer support allows for seamless setup: simply open the folder in VS Code and select 'Reopen in Container' for a ready-to-use environment.
 
-Visualization utilities for solution fields, mesh structures, and modal outputs.
+For system and Docker architecture details, see [arch/docker.md](./doc/arch/docker.md).
 
-- Integration with PyVista and ParaView-compatible formats
-- Real-time or post-processing visualization of eigenmodes and flow fields
-- Support for animation of time evolution results
+### Build Verification
 
-## Running the Project
-
-### Run in Docker (Recommended)
-
-The repo is fully configured for **VS Code DevContainers**.
-
-- Open the folder in VS Code
-- If prompted, choose **"Reopen in Container"**
-- All dependencies (FEniCSx, PyVista, GMSH) are pre-installed
-
-### Run Modules
-
-In order to verify the Docker environment installation, it is recommended to run the test projects.
-
-From VS Code:
-
-- `F1` → "Run Task" → Select:
-  - `Run module` or
-  - `Run module with MPI (4 cores)`
-- Enter module name (default is `TestProjects`)
-
-### Example: Generate a 2D Cylinder Mesh
+To verify your Docker/container installation and environment setup, run:
 
 ```bash
-python -m Meshing -p benchmark \
-  --geometry cylinder_flow \
-  --params params/cylinder2d.json \
-  --export cyl.xdmf \
-  --format xdmf
+python /workspaces/lsa-fw/diagnose_build.py
 ```
 
-## Documentation
+**Expected output (example):**
 
-Documentation is organized into the following folders:
+```plaintext
+ [>] petsc4py: ... | ScalarType: float64 | PETSc version: (3, 22, 0)
+ [>] slepc4py: ... | SLEPc version: (3, 22, 0)
+ [>] dolfinx: ... | version: 0.9.0
+ [>] mpi4py: ... | version: 4.0.0
+ [>] ufl: ... | version: 2024.2.0
 
-- [arch](./doc/arch/_index.md): System setup, Docker, architecture diagrams.
-- [models](./doc/models/_index.md): Module-level documentation (e.g., meshing).
-- [ref](./doc/ref/): Theory notes and cited papers.
+ [>] ENV vars:
+     [>] PETSc prefix: /usr/local/petsc
+     [>] PETSc arch: linux-gnu-real64-32
+     [>] PETSc ScalarType: float64 (real build)
+```
+
+> **Note:**
+> The PETSc/SLEPc `ScalarType` and `arch` lines indicate whether the environment is a *real* or *complex* build.
+> Many linear stability and all adjoint/eigenvalue computations involving non-symmetric operators require a complex build.
+> **You can switch between REAL and COMPLEX environments using the VS Code task:**
+>
+> * Press `F1`, select `Tasks: Run Task`, then choose `Switch to real/complex environment`.
+>   The current build type will be shown in the output of the verification script.
+
+## Documentation Structure
+
+* [arch](./doc/arch/_index.md): System setup, Docker, architecture diagrams, and devops notes
+* [models](./doc/models/_index.md): Module-level documentation and examples
+* [ref](./doc/ref/): Theory notes, referenced publications, and technical background
+
+For further usage, module APIs, and developer guides, see module documentation under `doc/models/`.
+
+## *(Planned)* Examples Library
+
+A comprehensive library of practical examples is planned for LSA-FW.
+This examples suite will demonstrate typical and advanced use cases, including:
+
+- Mesh generation for canonical and benchmark geometries
+- Baseflow and eigenvalue computations for classic CFD test cases
+- Adjoint-based sensitivity analysis for various flow control scenarios
+- Best practices for visualization, post-processing, and result interpretation
