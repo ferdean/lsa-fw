@@ -106,7 +106,12 @@ for re in range(2, 60):
 
     # Assemble and export linear stability matrices
     assembler = LinearizedNavierStokesAssembler(
-        baseflow, spaces, re, bcs_perturbation, mesher.facet_tags, sponge_term=False
+        baseflow,
+        spaces,
+        re,
+        bcs=bcs_perturbation,
+        tags=mesher.facet_tags,
+        use_sponge=False,
     )
     A, M = assembler.assemble_eigensystem()
 
