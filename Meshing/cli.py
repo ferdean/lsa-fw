@@ -42,6 +42,7 @@ from config import (
 from lib.loggingutils import log_global, setup_logging
 
 from .core import Mesher
+from .geometries import GeometryConfig
 from .plot import plot_mesh
 from .utils import Format, Geometry, Shape, iCellType
 
@@ -55,7 +56,7 @@ def _export_mesh(mesher: Mesher, path: Path | None, fmt: Format | None) -> None:
         return
     fmt = fmt or Format.XDMF
     log_global(logger, logging.INFO, "Exporting mesh to: %s as %s", path, fmt)
-    mesher.export(path, fmt)
+    mesher.export(path)
     log_global(logger, logging.INFO, "Export complete.")
 
 
@@ -105,10 +106,8 @@ def _generate(args: argparse.Namespace) -> None:
 
 def _import(args: argparse.Namespace) -> None:
     """Import a mesh from XDMF or MSH using Mesher.from_file."""
-    log_global(
-        logger, logging.INFO, "Importing mesh: %s (%s)", args.path, args.import_type
-    )
-    mesher = Mesher.from_file(path=args.path, shape=args.import_type, gdim=args.gdim)
+    log_global(logger, logging.INFO, "Importing mesh: %s", args.path)
+    mesher = Mesher.from_file(path=args.path, gdim=args.gdim)
 
     log_global(
         logger,
@@ -127,6 +126,7 @@ def _benchmark(args: argparse.Namespace) -> None:
     """Generate a predefined CFD benchmark geometry via Mesher.from_geometry."""
     log_global(logger, logging.INFO, "Generating benchmark geometry: %s", args.geometry)
 
+    cfg: GeometryConfig
     match args.geometry:
         case Geometry.CYLINDER_FLOW:
             cfg = load_cylinder_flow_config(args.config)
@@ -187,14 +187,6 @@ def main():
 
     # import
     imp = subparsers.add_parser("import", help="Import mesh from file")
-    imp.add_argument(
-        "--from",
-        dest="import_type",
-        type=Shape,
-        choices=[Shape.CUSTOM_XDMF, Shape.CUSTOM_MSH],
-        required=True,
-        help="Type of the input mesh",
-    )
     imp.add_argument("--path", type=Path, required=True)
     imp.add_argument("--gdim", type=int, default=3)
     imp.add_argument("--export", type=Path, help="Path to export converted mesh")

@@ -94,11 +94,11 @@ class CylinderFlowGeometryConfig:
     """Problem dimensions (2 or 3)."""
     cylinder_radius: float
     """Radius of the cylinder."""
-    cylinder_center: tuple[float]
+    cylinder_center: tuple[float, ...]
     """Coordinates of the cylinder center, as (x, y, [z])."""
-    x_range: tuple[float, float]
+    x_range: tuple[float, ...]
     """X-range of the domain relative to the global frame."""
-    y_range: tuple[float, float]
+    y_range: tuple[float, ...]
     """Y-range of the domain relative to the global frame."""
     resolution: float
     """Base mesh element size."""

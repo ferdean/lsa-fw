@@ -89,7 +89,7 @@ def _project_velocity_magnitude(
 
 
 def _scale_and_clamp_velocity(
-    velocity_norm: dfem.Function, min_size: int, max_size: int
+    velocity_norm: dfem.Function, min_size: float, max_size: float
 ) -> None:
     """Normalize the size field to lie within [min_size, max_size]."""
     vals = velocity_norm.x.array

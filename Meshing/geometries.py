@@ -6,22 +6,29 @@ These generators build fully configurable domains, such as cylinder flow and ste
 
 from typing import Callable
 
-import numpy as np
+from dolfinx.io import gmshio
 import dolfinx.mesh as dmesh
 import gmsh  # type: ignore[import-untyped]
-from dolfinx.io import gmshio
 from mpi4py import MPI
+import numpy as np
 
 from config import CylinderFlowGeometryConfig, StepFlowGeometryConfig
-from .utils import Geometry, iCellType
+
+from .utils import Geometry
 
 GeometryConfig = CylinderFlowGeometryConfig | StepFlowGeometryConfig
 
 
-def cylinder_flow(
+def get_geometry(
+    geometry: Geometry, config: GeometryConfig, comm: MPI.Intracomm
+) -> dmesh.Mesh:
+    """Dispatch and generate a pre-defined CFD benchmark geometry mesh."""
+    return _GEOMETRY_MAP[geometry](config, comm)
+
+
+def _cylinder_flow(
     cfg: CylinderFlowGeometryConfig,
     comm: MPI.Intracomm,
-    _: iCellType = iCellType.TRIANGLE,
 ) -> dmesh.Mesh:
     """Generate a mesh for cylinder flow in a rectangular channel.
 
@@ -160,11 +167,11 @@ def cylinder_flow(
     raise ValueError("Only 2D or 3D supported.")
 
 
-def step_flow(
+def _step_flow(
     cfg: StepFlowGeometryConfig,
     comm: MPI.Intracomm,
-    _: iCellType = iCellType.TRIANGLE,
 ) -> dmesh.Mesh:
+    """Generate a mesh for the backward-facing step problem."""
     if cfg.dim == 2:
         geo = _initialize_model("step2d")
         pts = [
@@ -263,20 +270,6 @@ def _is_lateral_surface(
     )
 
 
-def _define_refinement_faces(
-    face_tags: list[int], max_size: float, min_size: float, delta: float
-):
-    gmsh.model.mesh.field.add("Distance", 1)
-    gmsh.model.mesh.field.setNumbers(1, "FacesList", face_tags)
-    gmsh.model.mesh.field.add("Threshold", 2)
-    gmsh.model.mesh.field.setNumber(2, "InField", 1)
-    gmsh.model.mesh.field.setNumber(2, "SizeMin", min_size)
-    gmsh.model.mesh.field.setNumber(2, "SizeMax", max_size)
-    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.0)
-    gmsh.model.mesh.field.setNumber(2, "DistMax", delta)
-    gmsh.model.mesh.field.setAsBackgroundMesh(2)
-
-
 def _add_step_refinement(cfg: StepFlowGeometryConfig):
     if cfg.refinement_factor is None:
         return
@@ -295,19 +288,6 @@ def _add_step_refinement(cfg: StepFlowGeometryConfig):
 
 
 _GEOMETRY_MAP: dict[Geometry, Callable[..., dmesh.Mesh]] = {
-    Geometry.CYLINDER_FLOW: cylinder_flow,
-    Geometry.STEP_FLOW: step_flow,
+    Geometry.CYLINDER_FLOW: _cylinder_flow,
+    Geometry.STEP_FLOW: _step_flow,
 }
-
-
-def get_geometry(
-    geometry: Geometry, config: GeometryConfig, comm: MPI.Intracomm
-) -> dmesh.Mesh:
-    """Dispatch and generate a pre-defined CFD benchmark geometry mesh.
-
-    Args:
-        geometry: refer to Geometry enum.
-        config: Geometry-specific configuration.
-        comm: MPI communicator.
-    """
-    return _GEOMETRY_MAP[geometry](config, comm)
