@@ -20,9 +20,7 @@ from .utils import Format, Geometry, Shape, iCellType
 logger = logging.getLogger(__name__)
 
 _CUSTOM_FILES: set[Shape] = {Shape.CUSTOM_XDMF, Shape.CUSTOM_MSH}
-"""Supported mesh types for import/export."""
 _COMM: MPI.Intracomm = MPI.COMM_WORLD
-"""Default MPI communicator for parallel processing."""
 
 
 class Mesher:
@@ -36,7 +34,7 @@ class Mesher:
         domain: tuple[tuple[float, ...], tuple[float, ...]] | None = None,
         gdim: int | None = None,
         custom_file: pathlib.Path | None = None,
-    ):
+    ) -> None:
         """Initialize mesher.
 
         Args:
@@ -103,18 +101,16 @@ class Mesher:
 
     @classmethod
     def from_file(
-        cls,
-        path: pathlib.Path,
-        shape: Shape,
-        gdim: int = 3,
-        comm: MPI.Intracomm = _COMM,
+        cls, path: pathlib.Path, gdim: int = 3, comm: MPI.Intracomm = _COMM
     ) -> Self:
         """Create a Mesher instance from a custom mesh file."""
-        if shape not in _CUSTOM_FILES:
-            raise ValueError(f"Shape {shape} is not a supported import type.")
-        mesh = cls(shape=shape, custom_file=path, gdim=gdim)
-        _ = mesh.generate(comm)
-        return mesh
+        try:
+            shape = Shape.from_path(path)
+            mesh = cls(shape=shape, custom_file=path, gdim=gdim)
+            _ = mesh.generate(comm)
+            return mesh
+        except ValueError as e:
+            raise ValueError("Shape is not a supported import type.") from e
 
     @classmethod
     def from_mesh(
@@ -171,14 +167,13 @@ class Mesher:
         self,
         comm: MPI.Intracomm = _COMM,
         *,
-        cache: "CacheStore | None" = None,
+        cache: CacheStore | None = None,
         key: str | None = None,
     ) -> dmesh.Mesh:
         """Generate the mesh according to shape.
 
-        If ``cache`` and ``key`` are provided, the method will attempt to load
-        the mesh from disk before generating it. The newly generated mesh is
-        also written back to the cache.
+        If `cache` and `key` are provided, the method will attempt to load the mesh from disk before generating it.
+        The newly generated mesh is also written back to the cache.
         """
 
         if cache is not None and key is not None:
@@ -222,20 +217,22 @@ class Mesher:
 
         return self._mesh
 
-    def export(
-        self, path: pathlib.Path, format: Format, comm: MPI.Intracomm = _COMM
-    ) -> None:
+    def export(self, path: pathlib.Path, comm: MPI.Intracomm = _COMM) -> None:
         """Export the generated mesh to the given file.
 
-        XDMF is generally preferred over GMSH for exporting FEniCSx meshes
-        because it supports larger, more complex meshes efficiently, is more
-        flexible with regards to multi-block data, and is better suited for
-        parallel I/O. GMSH can still be useful for visualization and some
-        other purposes, but XDMF is often the better choice for high-performance
-        simulations and large datasets.
+        XDMF is generally preferred over GMSH for exporting FEniCSx meshes because it supports larger, more complex
+        meshes efficiently, is more flexible with regards to multi-block data, and is better suited for parallel I/O.
+        GMSH can still be useful for visualization and some other purposes, but XDMF is often the better choice for
+        high-performance simulations and large datasets.
         """
         if self._mesh is None:
             raise RuntimeError("Mesh must be generated before exporting.")
+
+        try:
+            format = Format.from_path(path)
+        except ValueError as e:
+            raise ValueError("Format is not a supported import type.") from e
+
         path.parent.mkdir(parents=True, exist_ok=True)
 
         match format:
@@ -258,11 +255,10 @@ class Mesher:
                     vtk_file.write_mesh(self.mesh)
 
             case Format.GMSH:
-                # Implementation note: In order to export meshes as GMSH, it is required to
-                # convert the FEniCSx mesh topology and geometry into `meshio` format
-                # GMSH doesn't always preserve all metadata that XDMF or VTK can, then, it
-                # is recommended to use XDMF or VTK for exporting meshes
-                # Then, GMSH export is not yet supported
+                # Implementation note: In order to export meshes as GMSH, it is required to convert the FEniCSx mesh
+                # topology and geometry into `meshio` format GMSH doesn't always preserve all metadata that XDMF or VTK
+                # can, then, it is recommended to use XDMF or VTK for exporting meshes,
+                # Then, GMSH export is not yet supported.
                 raise NotImplementedError(
                     "GMSH export is not yet implemented. XDMF is recommended instead."
                 )

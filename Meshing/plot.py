@@ -42,25 +42,16 @@ def plot_mesh(
     screenshot_path: Path | None = None,
     tags: MeshTags | None = None,
 ) -> None:
-    """Render the given mesh using PyVista.
-
-    Args:
-        mesh: The mesh to visualize.
-        mode: Display mode. Refer to PlotMode enum.
-        show_edges: Whether to show cell edges.
-        color: Mesh surface color.
-        background: Background color of the scene.
-        window_size: Size of the render window.
-        screenshot_path: If provided, saves a screenshot to this path.
-        tags: Mesh tags for colouring boundary conditions.
-    """
+    """Render the given mesh using PyVista."""
     mpi_comm = mesh.comm
     mesh_to_plot, tags_to_plot = mesh, tags
 
     if mpi_comm.size > 1:
-        mesh_to_plot, tags_to_plot = _gather_mesh_from_ranks(mesh, tags)
-        if mpi_comm.rank != 0:
+        local_mesh, tags_to_plot = _gather_mesh_from_ranks(mesh, tags)
+        if mpi_comm.rank != 0 or local_mesh is None:
             return
+
+        mesh_to_plot = local_mesh
 
     if mode is not PlotMode.INTERACTIVE and not screenshot_path:
         log_global(
@@ -76,7 +67,7 @@ def plot_mesh(
     plotter = pv.Plotter(window_size=window_size, off_screen=off_screen)
 
     if background != "transparent":
-        plotter.set_background(background)
+        plotter.set_background(background)  # type:ignore[arg-type]
     elif not off_screen:
         log_global(
             logger,
@@ -84,7 +75,7 @@ def plot_mesh(
             "Transparent background only supported off-screen; using default background.",
         )
 
-    if tags_to_plot is None:
+    if tags_to_plot is None or tags is None:
         _add_plain_mesh(plotter, grid, color, show_edges)
     else:
         dim = mesh_to_plot.topology.dim
@@ -224,7 +215,7 @@ def _add_facet_tags(
                 logger, logging.WARNING, "No 3D facets tagged, skipping facet plot."
             )
             return
-        poly = pv.PolyData(coords, np.array(faces, np.int64))
+        poly = pv.PolyData(coords, np.array(faces, np.int64))  # type:ignore[arg-type]
         poly.cell_data["facet tags"] = np.array(vals, np.int32)
         unique = np.unique(vals)
         plotter.add_mesh(
@@ -248,7 +239,7 @@ def _add_facet_tags(
 
 def _gather_mesh_from_ranks(
     mesh: Mesh, tags: MeshTags | None
-) -> tuple[Mesh, MeshTags | None]:
+) -> tuple[Mesh, MeshTags | None] | tuple[None, None]:
     """Gather mesh and tags to rank 0 via XDMF round-trip, preserving tag names and dims."""
     comm = mesh.comm
     tag_name = (
