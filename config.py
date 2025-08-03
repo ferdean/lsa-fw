@@ -106,8 +106,6 @@ class CylinderFlowGeometryConfig:
     """Mesh element size around the cylinder."""
     influence_radius: float
     """Radius around the cylinder to apply local refinement."""
-    influence_length: float
-    """Length after the cylinder to apply local refinement."""
     z_range: tuple[float, float] | None = None
     """Optional y-range of the domain relative to the global frame."""
 

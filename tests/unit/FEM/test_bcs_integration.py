@@ -12,7 +12,9 @@ from FEM.bcs import (
 )
 from FEM.operators import StokesAssembler
 from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
-from Meshing import Mesher, Shape, iCellType, plot_mesh
+from Meshing.core import Mesher
+from Meshing.utils import Shape, iCellType
+from Meshing.plot import plot_mesh
 from Solver.linear import LinearSolver
 
 

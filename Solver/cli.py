@@ -40,7 +40,8 @@ from FEM.bcs import BoundaryCondition, define_bcs
 from FEM.spaces import FunctionSpaceType, define_spaces
 from lib.cache import CacheStore
 from lib.loggingutils import log_global, setup_logging
-from Meshing import Geometry, Mesher
+from Meshing.core import Mesher
+from Meshing.geometries import Geometry
 
 from .baseflow import BaseFlowSolver
 
@@ -135,7 +136,3 @@ def main() -> None:
     except Exception as exc:
         log_global(logger, logging.ERROR, "Error during CLI execution: %s", exc)
         raise SystemExit(1)
-
-
-if __name__ == "__main__":
-    main()

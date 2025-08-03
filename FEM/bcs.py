@@ -15,7 +15,7 @@ from petsc4py import PETSc
 import ufl  # type: ignore[import-untyped]
 
 from config import BoundaryConditionsConfig
-from Meshing import Mesher
+from Meshing.core import Mesher
 
 from .spaces import FunctionSpaces
 from .utils import iPETScMatrix, iPETScVector, Scalar

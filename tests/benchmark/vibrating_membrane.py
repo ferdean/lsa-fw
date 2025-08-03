@@ -28,7 +28,9 @@ from FEM.bcs import (
 from FEM.operators import VariationalForms
 from FEM.spaces import iElementFamily
 from FEM.utils import iPETScMatrix
-from Meshing import Mesher, Shape, iCellType, plot_mesh
+from Meshing.core import Mesher
+from Meshing.plot import plot_mesh
+from Meshing.utils import Shape, iCellType
 from Solver.eigen import EigenSolver, EigensolverConfig, iEpsProblemType
 from Solver.utils import iEpsWhich
 

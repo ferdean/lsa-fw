@@ -12,7 +12,8 @@ from FEM.plot import plot_mixed_function
 from FEM.spaces import define_spaces
 from FEM.utils import iPETScMatrix, iPETScVector
 from lib.loggingutils import setup_logging
-from Meshing import Mesher, Shape
+from Meshing.core import Mesher
+from Meshing.utils import Shape
 from Solver.eigen import EigenSolver, EigensolverConfig
 from Solver.utils import iEpsProblemType, iSTType, PreconditionerType, iEpsWhich
 

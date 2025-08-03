@@ -11,7 +11,13 @@ In the context of LSA-FW, the `Meshing` module provides automated, programmable,
 
 For now on in the documentation, a 'mesh' (or grid) refers to a finite decomposition of a continuous domain $\Omega \subset \mathbb{R}^d$ into non-overlapping subdomains (referred to as 'elements') such as intervals, triangles, quadrilaterals, tetrahedra, or hexahedra.
 
-Formally, let $\mathcal{T}_h = \{K_i\}_{i=1}^N$ denote a conforming mesh, where
+Formally, let
+
+$$
+\mathcal{T}_h = \left\{K_i\right\}_{i=1}^N
+$$
+
+denote a conforming mesh, where
 
 * $K_i \subset \Omega$ are closed, non-overlapping elements,
 * $h = \max_{K \in \mathcal{T}_h} \text{diam}(K)$ is the mesh size, and
@@ -163,9 +169,10 @@ Refer to the [base flow solver section](baseflow.md).
 
 This method allows high-fidelity resolution near key flow structures such as shear layers, recirculation zones, and obstacle wakes.
 
-As an example, the following figure shows the resolved velocity magnitude field of the base flow for the flow over a cylinder (the boundary conditions and physical constraints are now irrelevant), and below the outputted refined mesh. 
+As an example, the following figure shows the outputted adapted mesh, based on the resolved velocity magnitude field of the base flow for the flow over a cylinder (the boundary conditions and physical constraints are now irrelevant).
+The red dotted line represents a symmetry axis.
 
-*Missing figure*
+![Adapted mesh](assets/meshing-adapt.png)
 
 ## Public API and Usage Examples
 
@@ -225,14 +232,11 @@ Import an existing mesh from a file (supported formats: XDMF or Gmsh `.msh`) and
 
 ```bash
 python -m Meshing import \
-    --from custom_msh \
     --path mesh.msh \
     --export mesh.vtk \
-    --format vtk
 ```
 
 This will read `mesh.msh` (a Gmsh format mesh) and convert it to `mesh.vtk` for visualization.
-Use `--from custom_xdmf` for importing XDMF meshes.
 The `--gdim` flag can be provided if the geometric dimension cannot be inferred.
 
 #### Benchmark Geometry (`benchmark`)
@@ -244,7 +248,6 @@ python -m Meshing benchmark \
     --geometry cylinder_flow \
     --config params/cylinder.toml \
     --export cylinder.xdmf \
-    --format xdmf
 ```
 
 In this example, a flow around a cylinder mesh is generated according to the parameters in `params/cylinder.toml` (which might specify domain size, cylinder radius, refinements, etc.), then exported to `cylinder.xdmf`.
