@@ -14,7 +14,7 @@ For now on in the documentation, a 'mesh' (or grid) refers to a finite decomposi
 Formally, let
 
 $$
-\mathcal{T}_h = \left\{K_i\right\}_{i=1}^N
+\mathcal{T}_ h = \[K_i\]_{i=1}^N
 $$
 
 denote a conforming mesh, where
@@ -199,8 +199,6 @@ The above code creates a uniform triangular mesh on a unit square domain.
 After calling `generate()`, the mesh can be further processed (e.g., applying boundary markers with `mark_boundary_facets`) and then saved to disk in a chosen format.
 
 ### CLI Usage
-
-NOTE TO SELF: UPDATE THIS (PROBABLY SHAPE AND FORMAT ARE NOT NEEDED ANYMORE)
 
 All meshing functionality is also accessible via a command-line interface for automation and scripting.
 Running the module with `--help` will show all options:
