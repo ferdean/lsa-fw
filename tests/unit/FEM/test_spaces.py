@@ -8,7 +8,8 @@ from FEM.spaces import (
     FunctionSpaceType,
     define_spaces,
 )
-from Meshing import Mesher, Shape, iCellType
+from Meshing.core import Mesher
+from Meshing.utils import Shape, iCellType
 
 
 @pytest.fixture(scope="module")

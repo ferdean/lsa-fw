@@ -36,7 +36,8 @@ from FEM.plot import plot_mixed_function, spy
 from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
 from FEM.utils import iPETScMatrix
 from lib.loggingutils import log_global, setup_logging
-from Meshing import Mesher, Shape
+from Meshing.core import Mesher
+from Meshing.utils import Shape
 from Solver.baseflow import BaseFlowSolver, load_baseflow
 
 console: Console = Console()

@@ -22,7 +22,10 @@ from FEM.plot import plot_mixed_function
 from FEM.spaces import define_spaces, FunctionSpaceType
 from FEM.utils import Scalar
 from lib.loggingutils import setup_logging
-from Meshing import Format, Geometry, Mesher, plot_mesh, Shape
+from Meshing.core import Mesher
+from Meshing.geometries import Geometry
+from Meshing.plot import plot_mesh
+from Meshing.utils import Format, Shape
 from Solver.baseflow import (
     BaseFlowSolver,
     compute_recirculation_length,

@@ -16,7 +16,8 @@ from FEM.bcs import BoundaryCondition, define_bcs
 from FEM.operators import LinearizedNavierStokesAssembler
 from FEM.spaces import FunctionSpaceType, define_spaces
 from lib.loggingutils import setup_logging
-from Meshing import Mesher, Shape, iCellType
+from Meshing.core import Mesher
+from Meshing.utils import Shape, iCellType
 from Solver.baseflow import BaseFlowSolver
 
 # Suppress logging inside the worker (clean stdout)

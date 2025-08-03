@@ -14,7 +14,8 @@ from FEM.bcs import (
 )
 from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
 from FEM.utils import iPETScMatrix
-from Meshing import Mesher, Shape
+from Meshing.core import Mesher
+from Meshing.utils import Shape
 from Meshing.utils import iCellType
 
 

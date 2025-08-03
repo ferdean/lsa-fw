@@ -35,16 +35,7 @@ class Mesher:
         gdim: int | None = None,
         custom_file: pathlib.Path | None = None,
     ) -> None:
-        """Initialize mesher.
-
-        Args:
-            shape: The geometric shape to generate or import. Refer to Shape enum.
-            n (optional): Number of cells per dimension (e.g., (nx,), (nx, ny), or (nx, ny, nz)).
-            cell_type (optional): The type of finite element cell. Refer to iCellType enum.
-            domain (optional): Domain bounding box as ((x0, y0, [z0]), (x1, y1, [z1])). Defaults to unit box.
-            gdim (optional): Geometric dimension. Defaults to len(n).
-            custom_file (optional): Path to a mesh file if using a custom shape (XDMF or MSH).
-        """
+        """Initialize mesher."""
         if shape in _CUSTOM_FILES and not custom_file:
             raise ValueError(f"{shape} requires a custom file.")
         if not (1 <= len(n) <= 3):

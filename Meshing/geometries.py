@@ -32,7 +32,7 @@ def _cylinder_flow(
 ) -> dmesh.Mesh:
     """Generate a mesh for cylinder flow in a rectangular channel.
 
-    Performs automatic local refinement around the cylinder boundary and wake. Supports both 2D and 3D cases.
+    Performs automatic local refinement around the cylinder boundary.
     """
     xmin, xmax = cfg.x_range
     ymin, ymax = cfg.y_range
@@ -41,13 +41,13 @@ def _cylinder_flow(
         geo = _initialize_model("cylinder2d")
         xc, yc = cfg.cylinder_center
 
-        # Set mesh options for accurate circle representation
+        # Mesh options for smooth circle
         n_circle_points = 32
         gmsh.option.setNumber("Mesh.CharacteristicLengthFromCurvature", 1)
         gmsh.option.setNumber("Mesh.MinimumCirclePoints", n_circle_points)
         gmsh.option.setNumber("Mesh.CharacteristicLengthExtendFromBoundary", 0)
 
-        # Create rectangle (channel)
+        # Channel rectangle
         pts = [
             geo.addPoint(x, y, 0.0, cfg.resolution)
             for x, y in ((xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax))
@@ -55,7 +55,7 @@ def _cylinder_flow(
         lines = [geo.addLine(a, b) for a, b in zip(pts, pts[1:] + pts[:1])]
         rect_loop = geo.addCurveLoop(lines)
 
-        # Create cylinder using sufficient points for the circle
+        # Circle arc points
         circ_pts = []
         for i in range(n_circle_points):
             angle = 2 * np.pi * i / n_circle_points
@@ -64,21 +64,21 @@ def _cylinder_flow(
             circ_pts.append(geo.addPoint(x, y, 0.0, cfg.resolution_around_cylinder))
         arcs = [
             geo.addCircleArc(
-                circ_pts[i],  # Start point
-                geo.addPoint(xc, yc, 0.0, cfg.resolution_around_cylinder),  # Center
-                circ_pts[(i + 1) % n_circle_points],  # End point
+                circ_pts[i],
+                geo.addPoint(xc, yc, 0.0, cfg.resolution_around_cylinder),
+                circ_pts[(i + 1) % n_circle_points],
             )
             for i in range(n_circle_points)
         ]
         circ_loop = geo.addCurveLoop(arcs)
 
-        # Create surface with hole for the cylinder
+        # Surface with hole
         surf = geo.addPlaneSurface([rect_loop, circ_loop])
         geo.synchronize()
         gmsh.model.addPhysicalGroup(2, [surf], 1)
         gmsh.model.setPhysicalName(2, 1, "Fluid")
 
-        # Refinement around the cylinder
+        # Local refinement near cylinder only
         fid_dist = gmsh.model.mesh.field.add("Distance")
         gmsh.model.mesh.field.setNumbers(fid_dist, "EdgesList", arcs)
         fid_thr = gmsh.model.mesh.field.add("Threshold")
@@ -90,26 +90,10 @@ def _cylinder_flow(
         gmsh.model.mesh.field.setNumber(fid_thr, "DistMin", 0.0)
         gmsh.model.mesh.field.setNumber(fid_thr, "DistMax", 2 * cfg.influence_radius)
 
-        # Wake-refinement box
-        wx0 = xc + cfg.cylinder_radius
-        wx1 = min(xmax, wx0 + cfg.influence_length)
-        wy0, wy1 = yc - 1.5 * cfg.cylinder_radius, yc + 1.5 * cfg.cylinder_radius
-        fid_box = gmsh.model.mesh.field.add("Box")
-        gmsh.model.mesh.field.setNumber(
-            fid_box, "VIn", 2 * cfg.resolution_around_cylinder
-        )
-        gmsh.model.mesh.field.setNumber(fid_box, "VOut", cfg.resolution)
-        gmsh.model.mesh.field.setNumber(fid_box, "XMin", wx0)
-        gmsh.model.mesh.field.setNumber(fid_box, "XMax", wx1)
-        gmsh.model.mesh.field.setNumber(fid_box, "YMin", wy0)
-        gmsh.model.mesh.field.setNumber(fid_box, "YMax", wy1)
+        # Apply refinement field
+        gmsh.model.mesh.field.setAsBackgroundMesh(fid_thr)
 
-        # Combine all refinements
-        fid_min = gmsh.model.mesh.field.add("Min")
-        gmsh.model.mesh.field.setNumbers(fid_min, "FieldsList", [fid_thr, fid_box])
-        gmsh.model.mesh.field.setAsBackgroundMesh(fid_min)
-
-        # Optimize mesh
+        # Mesh optimization
         gmsh.option.setNumber("Mesh.Optimize", 1)
         gmsh.option.setNumber("Mesh.Smoothing", 25)
 
@@ -155,8 +139,8 @@ def _cylinder_flow(
         gmsh.model.mesh.field.setNumber(fid_thr, "DistMax", cfg.influence_radius)
 
         # Combine and optimize
-        fid_min = gmsh.model.mesh.field.add("Min", 5)
-        gmsh.model.mesh.field.setNumbers(fid_min, "FieldsList", [fid_thr, fid_box])
+        fid_min = gmsh.model.mesh.field.add("Min")
+        gmsh.model.mesh.field.setNumbers(fid_min, "FieldsList", [fid_thr])
         gmsh.model.mesh.field.setAsBackgroundMesh(fid_min)
 
         gmsh.option.setNumber("Mesh.Optimize", 1)
