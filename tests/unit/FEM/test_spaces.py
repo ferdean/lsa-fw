@@ -4,10 +4,7 @@ import pytest
 from dolfinx.fem import FunctionSpace
 from dolfinx.mesh import Mesh
 
-from FEM.spaces import (
-    FunctionSpaceType,
-    define_spaces,
-)
+from FEM.spaces import FunctionSpaceType, define_spaces
 from Meshing.core import Mesher
 from Meshing.utils import Shape, iCellType
 
@@ -65,7 +62,7 @@ def test_taylor_hood_elements(test_mesh: Mesh):
 
     assert (
         vel_elem.family_name == "P"
-    )  # note that 'P' is the canonical short name used in basix for Lagrange
+    )  # Note that 'P' is the canonical short name used in basix for Lagrange
     assert pre_elem.family_name == "P"
 
     assert vel_elem.reference_value_shape == (test_mesh.geometry.dim,)
@@ -104,10 +101,10 @@ def test_mini_elements(test_mesh: Mesh) -> None:
     assert vel_elem.sobolev_space.name == "H1"
     assert pre_elem.sobolev_space.name == "H1"
 
-    assert vel_elem.family_name == "custom"  # from enriched element
+    assert vel_elem.family_name == "custom"  # From enriched element
     assert pre_elem.family_name == "P"
 
-    assert vel_elem.degree == 3  # from bubble degree
+    assert vel_elem.degree == 3  # From bubble degree
     assert pre_elem.degree == 1
 
     assert vel_elem.cell == pre_elem.cell

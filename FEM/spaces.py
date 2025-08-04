@@ -96,8 +96,8 @@ class FunctionSpaceType(StrEnum):
         """Get function space type from a string."""
         try:
             return cls(value.lower().strip().replace(" ", "_"))
-        except KeyError:
-            raise ValueError(f"No type found for {value}.")
+        except (KeyError, ValueError) as e:
+            raise ValueError(f"No type found for {value}.") from e
 
 
 def define_spaces(
@@ -106,13 +106,7 @@ def define_spaces(
     *,
     gdim: int | None = None,
 ) -> FunctionSpaces:
-    """Define function spaces for the Navier-Stokes problem.
-
-    Args:
-        mesh: The mesh on which to define the function spaces.
-        type (optional): The type of function space to create. Defaults to Taylor-Hood.
-        gdim (optional): Geometric dimensions of the space. Defaults to the value embedded in the mesh.
-    """
+    """Define function spaces for the Navier-Stokes problem."""
     cell = iCellType.from_dolfinx(mesh.topology.cell_type).to_basix()
     match type:
         case FunctionSpaceType.TAYLOR_HOOD:
