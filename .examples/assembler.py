@@ -25,7 +25,7 @@ from lib.loggingutils import setup_logging
 from Meshing.core import Mesher
 from Meshing.geometries import Geometry
 from Meshing.plot import plot_mesh
-from Meshing.utils import Format, Shape
+from Meshing.utils import Shape
 from Solver.baseflow import (
     BaseFlowSolver,
     compute_recirculation_length,
@@ -62,7 +62,7 @@ try:
 except (ValueError, RuntimeError):
     mesher = Mesher.from_geometry(Geometry.CYLINDER_FLOW, cylinder_cfg)
     mesher.mark_boundary_facets(facet_cfg)
-    mesher.export(_CASE_DIR / "mesh" / "mesh.xdmf", Format.XDMF)
+    mesher.export(_CASE_DIR / "mesh" / "mesh.xdmf")
 
 if __show_plots:
     plot_mesh(mesher.mesh, tags=mesher.facet_tags)

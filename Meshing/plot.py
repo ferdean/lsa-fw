@@ -199,7 +199,7 @@ def _add_facet_tags(
             cmap="tab10",
             categories=True,
             clim=[int(unique.min()), int(unique.max())],
-            line_width=2.5,
+            line_width=6,
             scalar_bar_args={
                 "title": "Facet tags",
                 "n_labels": len(unique),
