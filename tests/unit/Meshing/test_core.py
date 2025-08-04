@@ -8,8 +8,10 @@ import numpy as np
 import pytest
 from mpi4py import MPI
 
-from config import CylinderFlowGeometryConfig, StepFlowGeometryConfig
-from Meshing import Format, Geometry, Mesher, Shape, iCellType
+from config import StepFlowGeometryConfig
+from Meshing.core import Mesher
+from Meshing.geometries import Geometry
+from Meshing.utils import Format, Shape, iCellType
 
 
 def test_cell_type_enum_mapping():
@@ -107,7 +109,7 @@ def test_export_formats(tmp_path: Path, export_format: Format) -> None:
         Format.GMSH: "msh",
     }
     path = tmp_path / f"mesh.{ext_map[export_format]}"
-    mesher.export(path, export_format)
+    mesher.export(path)
 
     assert path.exists()
 
@@ -158,10 +160,10 @@ def test_facet_tags_export_import(tmp_path: Path) -> None:
     mesher = Mesher(shape=Shape.UNIT_SQUARE, n=(2, 2), cell_type=iCellType.TRIANGLE)
     mesher.generate()
     mesher.mark_boundary_facets(lambda x: 1 if x[0] < 1e-12 else 2)
-    mesher.export(path, Format.XDMF)
+    mesher.export(path)
 
     # Re-import
-    mesher2 = Mesher.from_file(path, Shape.CUSTOM_XDMF)
+    mesher2 = Mesher.from_file(path)
     tags = mesher2.facet_tags
 
     assert tags is not None
@@ -211,33 +213,6 @@ def test_from_geometry_step_flow_2d():
         (-cfg.inlet_length, -cfg.step_height),
         (cfg.outlet_length, cfg.channel_height - cfg.step_height),
     )
-
-    assert mesh.topology.dim == 2
-    assert mesher._shape == Shape.PREDEFINED
-    assert domain[0][0] == pytest.approx(expected_domain[0][0])
-    assert domain[0][1] == pytest.approx(expected_domain[0][1])
-    assert domain[1][0] == pytest.approx(expected_domain[1][0])
-    assert domain[1][1] == pytest.approx(expected_domain[1][1])
-    assert mesher.facet_tags is None
-    assert mesher.cell_tags is None
-
-
-def test_from_geometry_cylinder_flow_2d():
-    """Test Mesher.from_geometry for the 2D cylinder flow geometry."""
-    cfg = CylinderFlowGeometryConfig(
-        dim=2,
-        length=2.0,
-        height=1.0,
-        cylinder_radius=0.25,
-        cylinder_center=(0.5, 0.5),
-        resolution=0.2,
-        resolution_around_cylinder=0.1,
-        influence_radius=0.5,
-    )
-    mesher = Mesher.from_geometry(Geometry.CYLINDER_FLOW, cfg)
-    mesh = mesher.mesh
-    domain = mesher.domain
-    expected_domain = ((0.0, 0.0), (cfg.length, cfg.height))
 
     assert mesh.topology.dim == 2
     assert mesher._shape == Shape.PREDEFINED

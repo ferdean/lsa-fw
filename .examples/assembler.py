@@ -22,7 +22,10 @@ from FEM.plot import plot_mixed_function
 from FEM.spaces import define_spaces, FunctionSpaceType
 from FEM.utils import Scalar
 from lib.loggingutils import setup_logging
-from Meshing import Format, Geometry, Mesher, plot_mesh, Shape
+from Meshing.core import Mesher
+from Meshing.geometries import Geometry
+from Meshing.plot import plot_mesh
+from Meshing.utils import Shape
 from Solver.baseflow import (
     BaseFlowSolver,
     compute_recirculation_length,
@@ -59,7 +62,7 @@ try:
 except (ValueError, RuntimeError):
     mesher = Mesher.from_geometry(Geometry.CYLINDER_FLOW, cylinder_cfg)
     mesher.mark_boundary_facets(facet_cfg)
-    mesher.export(_CASE_DIR / "mesh" / "mesh.xdmf", Format.XDMF)
+    mesher.export(_CASE_DIR / "mesh" / "mesh.xdmf")
 
 if __show_plots:
     plot_mesh(mesher.mesh, tags=mesher.facet_tags)
@@ -106,7 +109,12 @@ for re in range(2, 60):
 
     # Assemble and export linear stability matrices
     assembler = LinearizedNavierStokesAssembler(
-        baseflow, spaces, re, bcs_perturbation, mesher.facet_tags, sponge_term=False
+        baseflow,
+        spaces,
+        re,
+        bcs=bcs_perturbation,
+        tags=mesher.facet_tags,
+        use_sponge=False,
     )
     A, M = assembler.assemble_eigensystem()
 

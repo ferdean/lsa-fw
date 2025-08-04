@@ -38,29 +38,19 @@ def plot_mesh(
     show_edges: bool = True,
     color: str = "white",
     background: str = "transparent",
-    window_size: tuple[int, int] = (800, 600),
+    window_size: tuple[int, int] = (1200, 800),
     screenshot_path: Path | None = None,
     tags: MeshTags | None = None,
 ) -> None:
-    """Render the given mesh using PyVista.
-
-    Args:
-        mesh: The mesh to visualize.
-        mode: Display mode. Refer to PlotMode enum.
-        show_edges: Whether to show cell edges.
-        color: Mesh surface color.
-        background: Background color of the scene.
-        window_size: Size of the render window.
-        screenshot_path: If provided, saves a screenshot to this path.
-        tags: Mesh tags for colouring boundary conditions.
-    """
+    """Render the given mesh using PyVista."""
     mpi_comm = mesh.comm
     mesh_to_plot, tags_to_plot = mesh, tags
 
     if mpi_comm.size > 1:
-        mesh_to_plot, tags_to_plot = _gather_mesh_from_ranks(mesh, tags)
-        if mpi_comm.rank != 0:
+        local_mesh, tags_to_plot = _gather_mesh_from_ranks(mesh, tags)
+        if mpi_comm.rank != 0 or local_mesh is None:
             return
+        mesh_to_plot = local_mesh
 
     if mode is not PlotMode.INTERACTIVE and not screenshot_path:
         log_global(
@@ -75,16 +65,19 @@ def plot_mesh(
     off_screen = bool(screenshot_path)
     plotter = pv.Plotter(window_size=window_size, off_screen=off_screen)
 
-    if background != "transparent":
-        plotter.set_background(background)
-    elif not off_screen:
+    is_2d = mesh.topology.dim == 2 and mesh.geometry.dim == 2
+    transparent = background == "transparent"
+
+    if transparent and not off_screen:
         log_global(
             logger,
             logging.WARNING,
             "Transparent background only supported off-screen; using default background.",
         )
+    else:
+        plotter.set_background("white")  # type: ignore[arg-type]
 
-    if tags_to_plot is None:
+    if tags_to_plot is None or tags is None:
         _add_plain_mesh(plotter, grid, color, show_edges)
     else:
         dim = mesh_to_plot.topology.dim
@@ -100,6 +93,12 @@ def plot_mesh(
                 tags.dim,
             )
 
+    # Fit the view to mesh
+    plotter.camera_position = "xy" if is_2d else None
+    plotter.view_xy() if is_2d else None
+    plotter.camera.zoom(1.0)
+    plotter.reset_camera()
+
     if screenshot_path:
         ext = screenshot_path.suffix.lower()
         if ext == ".svg":
@@ -110,7 +109,10 @@ def plot_mesh(
         elif ext == ".png":
             plotter.screenshot(
                 str(screenshot_path),
-                transparent_background=(background == "transparent"),
+                transparent_background=transparent,
+            )
+            log_global(
+                logger, logging.INFO, "Exported mesh to PNG: %s", screenshot_path
             )
         else:
             raise ValueError(f"Unsupported export format: '{ext}'")
@@ -197,7 +199,7 @@ def _add_facet_tags(
             cmap="tab10",
             categories=True,
             clim=[int(unique.min()), int(unique.max())],
-            line_width=2.5,
+            line_width=6,
             scalar_bar_args={
                 "title": "Facet tags",
                 "n_labels": len(unique),
@@ -224,7 +226,7 @@ def _add_facet_tags(
                 logger, logging.WARNING, "No 3D facets tagged, skipping facet plot."
             )
             return
-        poly = pv.PolyData(coords, np.array(faces, np.int64))
+        poly = pv.PolyData(coords, np.array(faces, np.int64))  # type:ignore[arg-type]
         poly.cell_data["facet tags"] = np.array(vals, np.int32)
         unique = np.unique(vals)
         plotter.add_mesh(
@@ -248,7 +250,7 @@ def _add_facet_tags(
 
 def _gather_mesh_from_ranks(
     mesh: Mesh, tags: MeshTags | None
-) -> tuple[Mesh, MeshTags | None]:
+) -> tuple[Mesh, MeshTags | None] | tuple[None, None]:
     """Gather mesh and tags to rank 0 via XDMF round-trip, preserving tag names and dims."""
     comm = mesh.comm
     tag_name = (

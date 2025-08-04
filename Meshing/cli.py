@@ -12,16 +12,16 @@ Example usage:
     # Generate a 2D unit square mesh and export to XDMF (with plot)
     python -m Meshing -p generate --shape unit_square --cell-type triangle \
                                   --facet-config path/to/mesh_tags/config/file \
-                                  --resolution 32 32 --export path/for/export --format xdmf
+                                  --resolution 32 32 --export path/for/export
 
     # Import a mesh from a XDMF .xdmf file and convert to VTK
-    python -m Meshing import --from custom_xdmf --path path/to/mesh \
-                              --export path/for/export --format vtk
+    python -m Meshing import --path path/to/mesh --export path/for/export \
+                                  --format vtk
 
     # Generate a benchmark CFD geometry from parameters in TOML (with plot)
     python -m Meshing -p benchmark --geometry cylinder_flow --config path/to/config/path \
                                  --facet-config path/to/mesh_tags/config/file \
-                                 --export cyl.xdmf --format xdmf
+                                 --export cyl.xdmf
 
 Note that the above commands can be parallelized using 'mpirun -n <number_of_processors> <command>',
 as all meshing processes within this module are MPI-aware.
@@ -42,20 +42,20 @@ from config import (
 from lib.loggingutils import log_global, setup_logging
 
 from .core import Mesher
+from .geometries import GeometryConfig
 from .plot import plot_mesh
-from .utils import Format, Geometry, Shape, iCellType
+from .utils import Geometry, Shape, iCellType
 
 console: Console = Console()
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def _export_mesh(mesher: Mesher, path: Path | None, fmt: Format | None) -> None:
+def _export_mesh(mesher: Mesher, path: Path | None) -> None:
     """Helper to export a mesh if a path is provided."""
     if path is None:
         return
-    fmt = fmt or Format.XDMF
-    log_global(logger, logging.INFO, "Exporting mesh to: %s as %s", path, fmt)
-    mesher.export(path, fmt)
+    log_global(logger, logging.INFO, "Exporting mesh to: %s", path)
+    mesher.export(path)
     log_global(logger, logging.INFO, "Export complete.")
 
 
@@ -97,7 +97,7 @@ def _generate(args: argparse.Namespace) -> None:
         marker_fn = load_facet_config(args.facet_config)
         mesher.mark_boundary_facets(marker_fn)
 
-    _export_mesh(mesher, args.export, args.format)
+    _export_mesh(mesher, args.export)
 
     if args.plot:
         plot_mesh(mesher.mesh, tags=mesher.facet_tags, show_edges=True)
@@ -105,10 +105,8 @@ def _generate(args: argparse.Namespace) -> None:
 
 def _import(args: argparse.Namespace) -> None:
     """Import a mesh from XDMF or MSH using Mesher.from_file."""
-    log_global(
-        logger, logging.INFO, "Importing mesh: %s (%s)", args.path, args.import_type
-    )
-    mesher = Mesher.from_file(path=args.path, shape=args.import_type, gdim=args.gdim)
+    log_global(logger, logging.INFO, "Importing mesh: %s", args.path)
+    mesher = Mesher.from_file(path=args.path, gdim=args.gdim)
 
     log_global(
         logger,
@@ -117,7 +115,7 @@ def _import(args: argparse.Namespace) -> None:
         mesher.mesh.topology.index_map(mesher.mesh.topology.dim).size_local,
     )
 
-    _export_mesh(mesher, args.export, args.format)
+    _export_mesh(mesher, args.export)
 
     if args.plot:
         plot_mesh(mesher.mesh)
@@ -127,6 +125,7 @@ def _benchmark(args: argparse.Namespace) -> None:
     """Generate a predefined CFD benchmark geometry via Mesher.from_geometry."""
     log_global(logger, logging.INFO, "Generating benchmark geometry: %s", args.geometry)
 
+    cfg: GeometryConfig
     match args.geometry:
         case Geometry.CYLINDER_FLOW:
             cfg = load_cylinder_flow_config(args.config)
@@ -148,7 +147,7 @@ def _benchmark(args: argparse.Namespace) -> None:
         marker_fn = load_facet_config(args.facet_config)
         mesher.mark_boundary_facets(marker_fn)
 
-    _export_mesh(mesher, args.export, args.format)
+    _export_mesh(mesher, args.export)
 
     if args.plot:
         plot_mesh(mesher.mesh, tags=mesher.facet_tags, show_edges=True)
@@ -180,27 +179,13 @@ def main():
         help="TOML file defining facet markers",
     )
     gen.add_argument("--export", type=Path, help="Path to export mesh file")
-    gen.add_argument(
-        "--format", type=Format, choices=list(Format), help="Export format"
-    )
     gen.set_defaults(func=_generate)
 
     # import
     imp = subparsers.add_parser("import", help="Import mesh from file")
-    imp.add_argument(
-        "--from",
-        dest="import_type",
-        type=Shape,
-        choices=[Shape.CUSTOM_XDMF, Shape.CUSTOM_MSH],
-        required=True,
-        help="Type of the input mesh",
-    )
     imp.add_argument("--path", type=Path, required=True)
     imp.add_argument("--gdim", type=int, default=3)
     imp.add_argument("--export", type=Path, help="Path to export converted mesh")
-    imp.add_argument(
-        "--format", type=Format, choices=list(Format), help="Export format"
-    )
     imp.set_defaults(func=_import)
 
     # benchmark
@@ -225,9 +210,6 @@ def main():
         help="TOML file defining facet markers",
     )
     bench.add_argument("--export", type=Path, help="Path to export mesh file")
-    bench.add_argument(
-        "--format", type=Format, choices=list(Format), help="Export format"
-    )
     bench.set_defaults(func=_benchmark)
 
     args = parser.parse_args()

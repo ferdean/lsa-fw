@@ -94,11 +94,11 @@ class CylinderFlowGeometryConfig:
     """Problem dimensions (2 or 3)."""
     cylinder_radius: float
     """Radius of the cylinder."""
-    cylinder_center: tuple[float]
+    cylinder_center: tuple[float, ...]
     """Coordinates of the cylinder center, as (x, y, [z])."""
-    x_range: tuple[float, float]
+    x_range: tuple[float, ...]
     """X-range of the domain relative to the global frame."""
-    y_range: tuple[float, float]
+    y_range: tuple[float, ...]
     """Y-range of the domain relative to the global frame."""
     resolution: float
     """Base mesh element size."""
@@ -106,8 +106,6 @@ class CylinderFlowGeometryConfig:
     """Mesh element size around the cylinder."""
     influence_radius: float
     """Radius around the cylinder to apply local refinement."""
-    influence_length: float
-    """Length after the cylinder to apply local refinement."""
     z_range: tuple[float, float] | None = None
     """Optional y-range of the domain relative to the global frame."""
 
@@ -180,9 +178,8 @@ class FacetRule:
 def load_facet_config(path: Path) -> Callable[[np.ndarray], int]:
     """Load facet marker rules from a TOML file and return a callable marker function.
 
-    This function reads a list of facet rules from a TOML file. Each rule specifies
-    how to tag facets by evaluating the coordinates of their midpoints. The rules
-    can match on `x`, `y`, or `z` coordinates, using one of:
+    This function reads a list of facet rules from a TOML file. Each rule specifies how to tag facets by evaluating the
+    coordinates of their midpoints. The rules can match on `x`, `y`, or `z` coordinates, using one of:
 
     - `equals`: match if coordinate is approximately equal (with tolerance)
     - `less_than`: match if coordinate is strictly less than a value

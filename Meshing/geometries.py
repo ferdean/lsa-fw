@@ -6,26 +6,33 @@ These generators build fully configurable domains, such as cylinder flow and ste
 
 from typing import Callable
 
-import numpy as np
+from dolfinx.io import gmshio
 import dolfinx.mesh as dmesh
 import gmsh  # type: ignore[import-untyped]
-from dolfinx.io import gmshio
 from mpi4py import MPI
+import numpy as np
 
 from config import CylinderFlowGeometryConfig, StepFlowGeometryConfig
-from .utils import Geometry, iCellType
+
+from .utils import Geometry
 
 GeometryConfig = CylinderFlowGeometryConfig | StepFlowGeometryConfig
 
 
-def cylinder_flow(
+def get_geometry(
+    geometry: Geometry, config: GeometryConfig, comm: MPI.Intracomm
+) -> dmesh.Mesh:
+    """Dispatch and generate a pre-defined CFD benchmark geometry mesh."""
+    return _GEOMETRY_MAP[geometry](config, comm)
+
+
+def _cylinder_flow(
     cfg: CylinderFlowGeometryConfig,
     comm: MPI.Intracomm,
-    _: iCellType = iCellType.TRIANGLE,
 ) -> dmesh.Mesh:
     """Generate a mesh for cylinder flow in a rectangular channel.
 
-    Performs automatic local refinement around the cylinder boundary and wake. Supports both 2D and 3D cases.
+    Performs automatic local refinement around the cylinder boundary.
     """
     xmin, xmax = cfg.x_range
     ymin, ymax = cfg.y_range
@@ -34,13 +41,13 @@ def cylinder_flow(
         geo = _initialize_model("cylinder2d")
         xc, yc = cfg.cylinder_center
 
-        # Set mesh options for accurate circle representation
+        # Mesh options for smooth circle
         n_circle_points = 32
         gmsh.option.setNumber("Mesh.CharacteristicLengthFromCurvature", 1)
         gmsh.option.setNumber("Mesh.MinimumCirclePoints", n_circle_points)
         gmsh.option.setNumber("Mesh.CharacteristicLengthExtendFromBoundary", 0)
 
-        # Create rectangle (channel)
+        # Channel rectangle
         pts = [
             geo.addPoint(x, y, 0.0, cfg.resolution)
             for x, y in ((xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax))
@@ -48,7 +55,7 @@ def cylinder_flow(
         lines = [geo.addLine(a, b) for a, b in zip(pts, pts[1:] + pts[:1])]
         rect_loop = geo.addCurveLoop(lines)
 
-        # Create cylinder using sufficient points for the circle
+        # Circle arc points
         circ_pts = []
         for i in range(n_circle_points):
             angle = 2 * np.pi * i / n_circle_points
@@ -57,21 +64,21 @@ def cylinder_flow(
             circ_pts.append(geo.addPoint(x, y, 0.0, cfg.resolution_around_cylinder))
         arcs = [
             geo.addCircleArc(
-                circ_pts[i],  # Start point
-                geo.addPoint(xc, yc, 0.0, cfg.resolution_around_cylinder),  # Center
-                circ_pts[(i + 1) % n_circle_points],  # End point
+                circ_pts[i],
+                geo.addPoint(xc, yc, 0.0, cfg.resolution_around_cylinder),
+                circ_pts[(i + 1) % n_circle_points],
             )
             for i in range(n_circle_points)
         ]
         circ_loop = geo.addCurveLoop(arcs)
 
-        # Create surface with hole for the cylinder
+        # Surface with hole
         surf = geo.addPlaneSurface([rect_loop, circ_loop])
         geo.synchronize()
         gmsh.model.addPhysicalGroup(2, [surf], 1)
         gmsh.model.setPhysicalName(2, 1, "Fluid")
 
-        # Refinement around the cylinder
+        # Local refinement near cylinder only
         fid_dist = gmsh.model.mesh.field.add("Distance")
         gmsh.model.mesh.field.setNumbers(fid_dist, "EdgesList", arcs)
         fid_thr = gmsh.model.mesh.field.add("Threshold")
@@ -83,26 +90,10 @@ def cylinder_flow(
         gmsh.model.mesh.field.setNumber(fid_thr, "DistMin", 0.0)
         gmsh.model.mesh.field.setNumber(fid_thr, "DistMax", 2 * cfg.influence_radius)
 
-        # Wake-refinement box
-        wx0 = xc + cfg.cylinder_radius
-        wx1 = min(xmax, wx0 + cfg.influence_length)
-        wy0, wy1 = yc - 1.5 * cfg.cylinder_radius, yc + 1.5 * cfg.cylinder_radius
-        fid_box = gmsh.model.mesh.field.add("Box")
-        gmsh.model.mesh.field.setNumber(
-            fid_box, "VIn", 2 * cfg.resolution_around_cylinder
-        )
-        gmsh.model.mesh.field.setNumber(fid_box, "VOut", cfg.resolution)
-        gmsh.model.mesh.field.setNumber(fid_box, "XMin", wx0)
-        gmsh.model.mesh.field.setNumber(fid_box, "XMax", wx1)
-        gmsh.model.mesh.field.setNumber(fid_box, "YMin", wy0)
-        gmsh.model.mesh.field.setNumber(fid_box, "YMax", wy1)
+        # Apply refinement field
+        gmsh.model.mesh.field.setAsBackgroundMesh(fid_thr)
 
-        # Combine all refinements
-        fid_min = gmsh.model.mesh.field.add("Min")
-        gmsh.model.mesh.field.setNumbers(fid_min, "FieldsList", [fid_thr, fid_box])
-        gmsh.model.mesh.field.setAsBackgroundMesh(fid_min)
-
-        # Optimize mesh
+        # Mesh optimization
         gmsh.option.setNumber("Mesh.Optimize", 1)
         gmsh.option.setNumber("Mesh.Smoothing", 25)
 
@@ -148,8 +139,8 @@ def cylinder_flow(
         gmsh.model.mesh.field.setNumber(fid_thr, "DistMax", cfg.influence_radius)
 
         # Combine and optimize
-        fid_min = gmsh.model.mesh.field.add("Min", 5)
-        gmsh.model.mesh.field.setNumbers(fid_min, "FieldsList", [fid_thr, fid_box])
+        fid_min = gmsh.model.mesh.field.add("Min")
+        gmsh.model.mesh.field.setNumbers(fid_min, "FieldsList", [fid_thr])
         gmsh.model.mesh.field.setAsBackgroundMesh(fid_min)
 
         gmsh.option.setNumber("Mesh.Optimize", 1)
@@ -160,11 +151,11 @@ def cylinder_flow(
     raise ValueError("Only 2D or 3D supported.")
 
 
-def step_flow(
+def _step_flow(
     cfg: StepFlowGeometryConfig,
     comm: MPI.Intracomm,
-    _: iCellType = iCellType.TRIANGLE,
 ) -> dmesh.Mesh:
+    """Generate a mesh for the backward-facing step problem."""
     if cfg.dim == 2:
         geo = _initialize_model("step2d")
         pts = [
@@ -263,20 +254,6 @@ def _is_lateral_surface(
     )
 
 
-def _define_refinement_faces(
-    face_tags: list[int], max_size: float, min_size: float, delta: float
-):
-    gmsh.model.mesh.field.add("Distance", 1)
-    gmsh.model.mesh.field.setNumbers(1, "FacesList", face_tags)
-    gmsh.model.mesh.field.add("Threshold", 2)
-    gmsh.model.mesh.field.setNumber(2, "InField", 1)
-    gmsh.model.mesh.field.setNumber(2, "SizeMin", min_size)
-    gmsh.model.mesh.field.setNumber(2, "SizeMax", max_size)
-    gmsh.model.mesh.field.setNumber(2, "DistMin", 0.0)
-    gmsh.model.mesh.field.setNumber(2, "DistMax", delta)
-    gmsh.model.mesh.field.setAsBackgroundMesh(2)
-
-
 def _add_step_refinement(cfg: StepFlowGeometryConfig):
     if cfg.refinement_factor is None:
         return
@@ -295,19 +272,6 @@ def _add_step_refinement(cfg: StepFlowGeometryConfig):
 
 
 _GEOMETRY_MAP: dict[Geometry, Callable[..., dmesh.Mesh]] = {
-    Geometry.CYLINDER_FLOW: cylinder_flow,
-    Geometry.STEP_FLOW: step_flow,
+    Geometry.CYLINDER_FLOW: _cylinder_flow,
+    Geometry.STEP_FLOW: _step_flow,
 }
-
-
-def get_geometry(
-    geometry: Geometry, config: GeometryConfig, comm: MPI.Intracomm
-) -> dmesh.Mesh:
-    """Dispatch and generate a pre-defined CFD benchmark geometry mesh.
-
-    Args:
-        geometry: refer to Geometry enum.
-        config: Geometry-specific configuration.
-        comm: MPI communicator.
-    """
-    return _GEOMETRY_MAP[geometry](config, comm)
