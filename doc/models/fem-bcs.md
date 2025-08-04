@@ -112,7 +112,7 @@ The resulting container is a dataclass with the following fields:
 
 ### Periodic Utilities
 
-Periodic DOF maps are generated automatically during define_bcs, based on the `PERIODIC` condition configuration.
+Periodic DOF maps are generated automatically during `define_bcs`, based on the `PERIODIC` condition configuration.
 The resulting map can be applied to matrices or vectors with:
 
 ```python
