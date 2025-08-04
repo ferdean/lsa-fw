@@ -65,8 +65,11 @@ def test_dirichlet_velocity_bc(
     assert marker == 1
     assert isinstance(bc, dfem.DirichletBC)
     assert bcs.pressure == []
-    assert bcs.neumann_forms == []
-    assert bcs.robin_forms == []
+    assert bcs.pressure_neumann == []
+    assert bcs.velocity_neumann == []
+    assert bcs.robin_data == []
+    assert bcs.pressure_periodic_map == []
+    assert bcs.velocity_periodic_map == []
 
 
 def test_dirichlet_pressure_bc(
@@ -87,8 +90,11 @@ def test_dirichlet_pressure_bc(
     assert marker == 1
     assert isinstance(bc, dfem.DirichletBC)
     assert bcs.velocity == []
-    assert bcs.neumann_forms == []
-    assert bcs.robin_forms == []
+    assert bcs.pressure_neumann == []
+    assert bcs.velocity_neumann == []
+    assert bcs.robin_data == []
+    assert bcs.pressure_periodic_map == []
+    assert bcs.velocity_periodic_map == []
 
 
 def test_callable_dirichlet_bc(
@@ -123,13 +129,16 @@ def test_neumann_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     ]
     bcs = define_bcs(mesher_with_tags, spaces, configs)
 
-    assert len(bcs.neumann_forms) == 1
-    marker, form = bcs.neumann_forms[0]
+    assert len(bcs.velocity_neumann) == 1
+    marker, form = bcs.velocity_neumann[0]
     assert marker == 1
-    assert isinstance(form, ufl.Form)
+    assert isinstance(form, dfem.Constant)
     assert bcs.velocity == []
     assert bcs.pressure == []
-    assert bcs.robin_forms == []
+    assert bcs.pressure_neumann == []
+    assert bcs.robin_data == []
+    assert bcs.pressure_periodic_map == []
+    assert bcs.velocity_periodic_map == []
 
 
 def test_robin_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
@@ -144,11 +153,17 @@ def test_robin_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     ]
     bcs = define_bcs(mesher_with_tags, spaces, configs)
 
-    assert len(bcs.robin_forms) == 2
-    assert all(isinstance(form, ufl.Form) for _, form in bcs.robin_forms)
+    assert len(bcs.robin_data) == 1
+    marker, alpha, g_expr = bcs.robin_data[0]
+    assert marker == 1
+    assert isinstance(alpha, dfem.Constant)
+    assert isinstance(g_expr, (ufl.ExternalOperator, dfem.Constant))
     assert bcs.velocity == []
     assert bcs.pressure == []
-    assert bcs.neumann_forms == []
+    assert bcs.velocity_neumann == []
+    assert bcs.pressure_neumann == []
+    assert bcs.velocity_periodic_map == []
+    assert bcs.pressure_periodic_map == []
 
 
 def test_mixed_bcs(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
@@ -174,15 +189,22 @@ def test_mixed_bcs(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
 
     assert len(bcs.velocity) == 1
     assert len(bcs.pressure) == 1
-    assert len(bcs.neumann_forms) == 1
-    assert len(bcs.robin_forms) == 2
+    assert len(bcs.velocity_neumann) == 1
+    assert len(bcs.robin_data) == 1
 
-    for marker, bc in bcs.velocity + bcs.pressure:
+    for _, bc in bcs.velocity + bcs.pressure:
         assert isinstance(bc, dfem.DirichletBC)
 
-    marker, form = bcs.neumann_forms[0]
-    assert isinstance(form, ufl.Form)
-    assert all(isinstance(form, ufl.Form) for _, form in bcs.robin_forms)
+    _, g_vec = bcs.velocity_neumann[0]
+    assert isinstance(g_vec, (dfem.Constant, ufl.ExternalOperator))
+
+    _, alpha, g_expr = bcs.robin_data[0]
+    assert isinstance(alpha, dfem.Constant)
+    assert isinstance(g_expr, (dfem.Constant, ufl.ExternalOperator))
+
+    assert bcs.pressure_neumann == []
+    assert bcs.velocity_periodic_map == []
+    assert bcs.pressure_periodic_map == []
 
 
 def test_periodic_pairs(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:

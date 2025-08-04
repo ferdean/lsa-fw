@@ -248,7 +248,7 @@ class Mesher:
             case Format.GMSH:
                 # Implementation note: In order to export meshes as GMSH, it is required to convert the FEniCSx mesh
                 # topology and geometry into `meshio` format GMSH doesn't always preserve all metadata that XDMF or VTK
-                # can, then, it is recommended to use XDMF or VTK for exporting meshes,
+                # can, then, it is recommended to use XDMF or VTK for exporting meshes.
                 # Then, GMSH export is not yet supported.
                 raise NotImplementedError(
                     "GMSH export is not yet implemented. XDMF is recommended instead."

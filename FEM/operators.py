@@ -32,6 +32,7 @@ from ufl import (  # type: ignore[import-untyped]
     nabla_grad,
     split,
     derivative,
+    ExternalOperator,
 )
 from ufl.argument import Argument  # type: ignore[import-untyped]
 import dolfinx.fem as dfem
@@ -59,11 +60,12 @@ def _extract_bcs(bcs: BoundaryConditions | None) -> tuple[
     list[dfem.DirichletBC],
     list[tuple[int, dfem.Constant]],
     list[tuple[int, dfem.Constant]],
+    list[tuple[int, dfem.Constant, ExternalOperator]],
     list[dict[int, int]],
     list[dict[int, int]],
 ]:
     if bcs is None:
-        return [], [], [], [], [], []
+        return [], [], [], [], [], [], []
     velocity_bcs = [bc for _, bc in bcs.velocity]
     pressure_bcs = [bc for _, bc in bcs.pressure]
     return (

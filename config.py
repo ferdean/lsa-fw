@@ -178,9 +178,8 @@ class FacetRule:
 def load_facet_config(path: Path) -> Callable[[np.ndarray], int]:
     """Load facet marker rules from a TOML file and return a callable marker function.
 
-    This function reads a list of facet rules from a TOML file. Each rule specifies
-    how to tag facets by evaluating the coordinates of their midpoints. The rules
-    can match on `x`, `y`, or `z` coordinates, using one of:
+    This function reads a list of facet rules from a TOML file. Each rule specifies how to tag facets by evaluating the
+    coordinates of their midpoints. The rules can match on `x`, `y`, or `z` coordinates, using one of:
 
     - `equals`: match if coordinate is approximately equal (with tolerance)
     - `less_than`: match if coordinate is strictly less than a value

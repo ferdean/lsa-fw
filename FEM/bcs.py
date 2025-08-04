@@ -1,6 +1,7 @@
 """LSA-FW FEM boundary conditions.
 
 Defines Dirichlet, Neumann, and Robin conditions for the incompressible Navier-Stokes equations.
+Support for periodic boundary conditions.
 """
 
 from __future__ import annotations
@@ -42,8 +43,8 @@ class BoundaryConditionType(StrEnum):
         """Get boundary condition type from a string."""
         try:
             return cls(value.lower().strip().replace(" ", "_"))
-        except KeyError:
-            raise ValueError(f"No type found for {value}.")
+        except (KeyError, ValueError) as e:
+            raise ValueError(f"No type found for {value}.") from e
 
 
 @dataclass(frozen=True)
@@ -81,17 +82,17 @@ class BoundaryCondition:
 
 @dataclass
 class BoundaryConditions:
-    """Container for all boundary condition components."""
+    """Container for all boundary conditions of a domain."""
 
     velocity: list[tuple[int, dfem.DirichletBC]]
     """Strong velocity Dirichlet BCs to be applied to the system."""
     pressure: list[tuple[int, dfem.DirichletBC]]
     """Strong pressure Dirichlet BCs to be applied to the system."""
-    velocity_neumann: list[tuple[int, dfem.Constant]]
+    velocity_neumann: list[tuple[int, ufl.ExternalOperator | dfem.Constant]]
     """Velocity Neumann boundary contributions to the weak form."""
-    pressure_neumann: list[tuple[int, dfem.Constant]]
+    pressure_neumann: list[tuple[int, ufl.ExternalOperator | dfem.Constant]]
     """Pressure Neumann boundary contributions to the weak form."""
-    robin_data: list[tuple[int, dfem.Constant, ufl.ExternalOperator]]
+    robin_data: list[tuple[int, dfem.Constant, ufl.ExternalOperator | dfem.Constant]]
     """Robin boundary contributions to the weak form."""
     velocity_periodic_map: list[dict[int, int]]
     """Periodic maps for velocity BC."""
@@ -110,10 +111,10 @@ def define_bcs(
     vel_subspace = spaces.mixed.sub(0)
     pres_subspace = spaces.mixed.sub(1)
 
-    velocity_bcs: list[int, dfem.DirichletBC] = []
-    pressure_bcs: list[int, dfem.DirichletBC] = []
-    velocity_neumann: list[int, dfem.Constant] = []
-    pressure_neumann: list[int, dfem.Constant] = []
+    velocity_bcs: list[tuple[int, dfem.DirichletBC]] = []
+    pressure_bcs: list[tuple[int, dfem.DirichletBC]] = []
+    velocity_neumann: list[tuple[int, dfem.Constant]] = []
+    pressure_neumann: list[tuple[int, dfem.Constant]] = []
     robin_data: list[tuple[int, dfem.Constant, ufl.ExternalOperator]] = []
     velocity_periodic_map: list[dict[int, int]] = []
     pressure_periodic_map: list[dict[int, int]] = []
@@ -205,7 +206,7 @@ def define_bcs(
 
 
 def compute_periodic_dof_pairs(
-    V: dfem.FunctionSpace,
+    function_space: dfem.FunctionSpace,
     mesher: Mesher,
     from_marker: int,
     to_marker: int,
@@ -214,20 +215,11 @@ def compute_periodic_dof_pairs(
 ) -> dict[int, int]:
     """Identify periodic DOF pairs between 'from' and 'to' tagged boundary facets.
 
-    Args:
-        V: Function space on the mesh.
-        facet_tags: MeshTags marking boundary facets (dim = mesh.topology.dim - 1).
-        from_marker: integer tag value for the source boundary facets.
-        to_marker: integer tag value for the target boundary facets.
-        facet_dim: topological dimension of facets (defaults to mesh.topology.dim - 1).
-        tolerance: maximum distance for matching DOF coordinates.
-
-    Returns:
-        A dict mapping each target DOF index to its corresponding source DOF index.
+    Returns a dict mapping each target DOF index to its corresponding source DOF index.
     """
     mesh = mesher.mesh
     facet_dim = facet_dim or mesh.topology.dim - 1
-    coords = V.tabulate_dof_coordinates()[:, : mesh.geometry.dim]
+    coords = function_space.tabulate_dof_coordinates()[:, : mesh.geometry.dim]
 
     # Extract the facet indices for each marker
     facets = mesher.facet_tags.indices
@@ -236,8 +228,8 @@ def compute_periodic_dof_pairs(
     facets_to = facets[markers == to_marker]
 
     # Find all DOFs on each facets
-    from_dofs = dfem.locate_dofs_topological(V, facet_dim, facets_from)
-    to_dofs = dfem.locate_dofs_topological(V, facet_dim, facets_to)
+    from_dofs = dfem.locate_dofs_topological(function_space, facet_dim, facets_from)
+    to_dofs = dfem.locate_dofs_topological(function_space, facet_dim, facets_to)
     if from_dofs.size == 0 or to_dofs.size == 0:
         raise ValueError(
             f"No DOFs found on facets for markers {from_marker} or {to_marker}"
@@ -267,7 +259,7 @@ def compute_periodic_dof_pairs(
 def apply_periodic_constraints(
     obj: iPETScMatrix | iPETScVector, periodic_map: dict[int, int]
 ) -> None:
-    """Merge periodic contributions and zero out 'to' DOFs on a PETSc matrix in-place.
+    """Apply a periodic map to a matrix or vector in-place.
 
     For matrices:
         1. Pulls the original row and column entries of each 'to' DOF.
@@ -279,9 +271,11 @@ def apply_periodic_constraints(
         1. For each (to, from) pair, adds vec[to] into vec[from].
         2. Zeros out all vec[to] entries.
         3. Calls assemble() to finalize PETSc's internal state.
+
+    Examples of usage are shown in `doc.models.fem-bcs` and `tests/unit/FEM/test_bcs.py`.
     """
     if isinstance(obj, iPETScMatrix):
-        # TODO: this dynamic new‐nonzero allocation is only a temporary hack to let the post‐assembly periodic
+        # This dynamic new‐nonzero allocation is only a temporary hack to let the post‐assembly periodic
         # merge run without preallocation errors. Once we fold periodic BCs into assemble_matrix() (refer to
         # FEM.operators), these options can be removed.
         obj.raw.setOption(PETSc.Mat.Option.NEW_NONZERO_LOCATIONS, True)
@@ -321,7 +315,7 @@ def apply_periodic_constraints(
 def _wrap_constant_vector(
     value: float | tuple[float, ...],
 ) -> Callable[[np.ndarray], np.ndarray]:
-    array = np.atleast_1d(value).astype(float)  # Ensure 1D float array
+    array = np.atleast_1d(value).astype(float)
     vector = array[:, np.newaxis]  # Shape (dim, 1)
 
     def _interpolator(x: np.ndarray) -> np.ndarray:
