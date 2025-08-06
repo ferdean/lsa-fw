@@ -1,20 +1,18 @@
-# LSA-FW FEM Module (Operators)
+# LSA-FW FEM Linearized Navier-Stokes Operators
 
 > [Back to FEM Overview](fem.md)
 
 ---
 
 Linear stability analysis of fluid flows requires linearizing the Navier-Stokes equations around a given base flow.
-This module provides tools to assemble the discrete matrices for this linearized system.
+This module provides tools to assemble the discrete matrices for this linearized system using PETSc-compatible routines.
 
-Base flows can be computed with the `SteadyNavierStokesAssembler` described in
-the [Steady Base Flow Solver](fem.md#steady-base-flow-solver) section.
+The central component is the `LinearizedNavierStokesAssembler` class, which encapsulates variational form construction and matrix assembly.
 
-The module supports both time-stepping simulations and eigenanalysis for stabilities, and it provides PETSc features for parallel assembly, block matrix storage and preconditioning.
+## Theoretical Background
 
-## Variational Forms for Linearized Navier-Stokes
-
-The base flow, assumed divergence-free, satisfying the steady Navier-Stokes equations at Reynolds $Re$ is considered known, and thus, an input to the module.
+Let $\overline{\mathbf{u}}, \overline{p}$ denote the base (steady) solution of the incompressible Navier-Stokes equations at Reynolds $\text{Re}$.
+This base flow, assumed divergence-free and satisfying the steady Navier-Stokes equations at Reynolds $\text{Re}$ is considered known, and thus, an input to the module.
 Accordingly, the study of the linearized problem consists on the study of small perturbations on the flow, so that 
 
 $$
@@ -23,26 +21,22 @@ $$
     &\mathbf{u}(\mathbf{x}, t) = \overline{\mathbf{u}}(\mathbf{x}) + \mathbf{u}'(\mathbf{x}, t)\\
     &p(\mathbf{x}, t) = \overline{p}(\mathbf{x}) + p'(\mathbf{x}, t)
 \end{aligned}
-\right.,
+\right..
 $$
 
-where $\overline{\mathbf{u}}, \overline{p}$ represent the base flow, and $\mathbf{u}', p'$ represent the perturbations.
-
-The linearized Navier-Stokes equations for the perturbation are defined as 
+Perturbations $\mathbf{u}', p'$ satisfy the linearized system:
 
 $$
 \left\lbrace
 \begin{aligned}
-    s\mathbf{u}' + (\overline{\mathbf{u}}\cdot\nabla)\mathbf{u}' + (\mathbf{u}'\cdot\nabla)\overline{\mathbf{u}} &= -\nabla p' + \frac{1}{Re}\,\Delta \mathbf{u}' \\
+    s\mathbf{u}' + (\overline{\mathbf{u}}\cdot\nabla)\mathbf{u}' + (\mathbf{u}'\cdot\nabla)\overline{\mathbf{u}} &= -\nabla p' + \frac{1}{\text{Re}}\,\Delta \mathbf{u}' \\
     \nabla\cdot \mathbf{u}' &= 0
 \end{aligned}
 \right.,
 $$
 
-where $s$ is the growth rate in an eigenanalysis.
-For time evolution, one would have $\partial_t \mathbf{u}'$ instead.
-
-Each term in these equations corresponds to a bilinear form that will be assembled into a matrix:
+where $s$ is the temporal growth rate.
+For time evolution, replace $s \mathbf{u}'$ with $\partial_t \mathbf{u}'$.
 
 | Term                        | Expression                                  | Description                                                                                  |
 |-----------------------------|---------------------------------------------|----------------------------------------------------------------------------------------------|
@@ -50,7 +44,7 @@ Each term in these equations corresponds to a bilinear form that will be assembl
 | Convection term             | $(\overline{\mathbf{u}}\cdot\nabla)\mathbf{u}'$       | Advection of the perturbation by the base flow; transports momentum downstream.              |
 | Shear term                  | $(\mathbf{u}'\cdot\nabla)\overline{\mathbf{u}}$       | Interaction of the perturbation with base flow gradients; captures the effect of base flow shear on perturbation dynamics. |
 | Pressure gradient term      | $-\nabla p'$                               | Pressure force acting on the perturbation velocity field; contributes to acceleration and enforces incompressibility. |
-| Viscous diffusion term      | $\frac{1}{Re}\,\Delta \mathbf{u}'$         | Represents momentum diffusion due to viscosity; forms a symmetric positive semi-definite operator. |
+| Viscous diffusion term      | $\frac{1}{\text{Re}}\,\Delta \mathbf{u}'$         | Represents momentum diffusion due to viscosity; forms a symmetric positive semi-definite operator. |
 | Divergence (continuity) term| $\nabla\cdot \mathbf{u}'$                  | Enforces incompressibility of the perturbation velocity field; couples velocity and pressure in a saddle-point system. |
 
 In a finite element context, suitable [function spaces](fem-spaces.md) are chosen.
@@ -59,7 +53,6 @@ From now on in this document, $V$ is used for the velocity (vector) field, and $
 Let $\mathbf{v}$ be a test function in $V$ and $q$ be a test function in $Q$.
 Then, the bilinear forms associated with each term in the linearized Navier–Stokes equations are defined below.
 These forms are assembled into discrete operators acting on the velocity and pressure function spaces.
-Certainly. Here's your section reordered to match the order in which the terms appear in both the equations and the explanatory table:
 
 ### Mass Form
 
@@ -103,7 +96,7 @@ For compatible function spaces, the discrete operators satisfy $D = -G^T$ up to 
 ### Viscous Form
 
 $$
-a_{\text{visc}}(\mathbf{u}, \mathbf{v}) = \frac{1}{Re}\int_\Omega \nabla \mathbf{u} : \nabla \mathbf{v}\,dx
+a_{\text{visc}}(\mathbf{u}, \mathbf{v}) = \frac{1}{\text{Re}}\int_\Omega \nabla \mathbf{u} : \nabla \mathbf{v}\,dx
 $$
 
 Here, the colon '$:$' denotes the Frobenius inner product (or double contraction) between the velocity gradient tensors, defined as
@@ -124,13 +117,11 @@ The mass form $m$ accounts for temporal evolution or eigenvalue scaling and is e
 
 ## Discrete System Structure
 
-The variational forms described above are assembled into a block matrix system that captures the dynamics of the linearized Navier–Stokes equations in mixed velocity-pressure form.
-
-The resulting algebraic system reads
+The full discrete system takes the block form:
 
 $$
 \begin{bmatrix}
-    s\mathbf{M} + \mathbf{C}_1 + \mathbf{C}_2 + \mathbf{B} & \mathbf{G} \\
+    s\mathbf{M} + \mathbf{C}_1 + \mathbf{C}_2 + \mathbf{B} + \mathbf{R} & \mathbf{G} \\
     \mathbf{D} & 0
 \end{bmatrix}
 \begin{bmatrix}
@@ -141,136 +132,127 @@ $$
 \begin{bmatrix}
     0 \\
     0
-\end{bmatrix}.
+\end{bmatrix}
 $$
 
-This system arises in both eigenvalue problems (where $s$ is a complex eigenvalue) and time-stepping schemes (where $s = \frac{1}{\Delta t}$ or similar).
-Its saddle-point nature reflects the incompressibility condition and requires appropriate solvers and pre-conditioners for efficient numerical solution.
+where
 
-## Implementation
+* $\mathbf{M}$ is the velocity mass matrix,
+* $\mathbf{C}_1$, $\mathbf{C}_2$ are convection and shear matrices,
+* $\mathbf{B}$ is the viscous (stiffness) matrix,
+* $\mathbf{R}$ is optional Robin damping,
+* $\mathbf{G}$ is the pressure gradient operator,
+* $\mathbf{D}$ is the divergence operator.
 
-The `operators` module implement the above defined variational forms through the `VariationalForms` collector and exposes an assembler, `LinearizedNavierStokesAssembler`, to compute their associated [PETSc](https://petsc.org/release/) matrices.
+> **Note:** Only homogeneous Neumann and Robin terms are supported in this eigenproblem formulation.
 
-All bilinear forms are implemented as static methods, each returning a variational form suitable for FEniCSx assembly routines.
+The assembled matrices are highly sparse, especially in large-scale problems with second-order or higher-order elements.
+It is essential to use sparse matrix formats and sparse-aware solvers and preconditioners (e.g., Krylov subspace solvers in PETSc or eigensolvers in SLEPc).
+Dense representations should be avoided due to memory and performance constraints.
 
-### Assembler
+As an example, the following figure shows the sparsity pattern of the linear operator matrix for the cylinder-flow case:
 
-The `LinearizedNavierStokesAssembler` encapsulates the full operator assembly pipeline for the linearized problem.
+![Matrix sparisty](assets/fem_ops-matrix.png)
 
-The core interface is
+
+## Nullspace Management
+
+In incompressible flow, pressure is defined up to an additive constant.
+The resulting matrix has a nullspace corresponding to constant pressure modes.
+
+When no pressure Dirichlet condition is applied, this nullspace must be explicitly handled (this is usually done by either explicitly attaching it to assembled PETSc matrices or by pinning DOFs.)
+
+Failing to do so may lead to divergence in Krylov solvers like MINRES, spurious near-zero eigenvalue in spectral computations or ill-conditioned or singular matrices.
+
+Internally, the nullspace is defined by creating a vector $v$ with 1.0 on all pressure DOFs and 0.0 elsewhere, then normalizing:
 
 ```python
-assembler = LinearizedNavierStokesAssembler(
-    base_flow: dolfinx.fem.Function,
+arr[dofs_p] = 1.0
+vec = iPETScVector.from_array(arr)
+vec.scale(1 / vec.norm)
+```
+
+A PETSc `NullSpace` is created from this vector and attached using:
+
+```python
+nullspace.attach_to(matrix)
+```
+
+This approach is compatible with both solvers and eigensolvers.
+
+## API Reference
+
+### `LinearizedNavierStokesAssembler`
+
+```python
+LinearizedNavierStokesAssembler(
+    base_flow: dfem.Function,
     spaces: FunctionSpaces,
     re: float,
-    bcs: BoundaryConditions| None
+    *,
+    bcs: BoundaryConditions | None = None,
+    tags: MeshTags | None = None,
+    use_sponge: bool = False
 )
 ```
 
-where
+* `base_flow`: DolfinX mixed-function $(\overline{\mathbf{u}}, \overline{p})$
+* `spaces`: `FunctionSpaces` container with velocity-pressure spaces (and the mixed space)
+* `re`: Reynolds number
+* `bcs`: Optional boundary conditions (Dirichlet, periodic, Robin, Neumann)
+* `tags`: Optional facet tags
+* `use_sponge`: Optional flag indicating if an additional sponge term is added at the outlet 
 
-- `base_flow` is a dolfinx function in the velocity space, representing $\overline{\mathbf{u}}$,
-- `spaces` is a `FunctionSpaces` container defining velocity and pressure spaces (ref. [fem-spaces](fem-spaces.md)),
-- `re` is the Reynolds number, and
-- `bcs` is an optional `BoundaryConditions` object (ref. [fem-bcs](fem-bcs.md)).
+#### Methods
 
-The assembler provides the following key methods:
+| Method                        | Description                                     |
+| ----------------------------- | ----------------------------------------------- |
+| `assemble_linear_operator()`  | Returns the full operator matrix $A$          |
+| `assemble_mass_matrix()`      | Returns mass matrix $M$ (block-diagonal)      |
+| `assemble_eigensystem()`      | Returns tuple $(A, M)$ for eigenvalue solvers |
+| `clear_cache()`               | Clears internal matrix cache                    |
+| `attach_pressure_nullspace()` | Manually attach nullspace to matrix             |
+| `extract_subblocks()`         | Extract (vv, vp, pv, pp) from mixed matrix      |
 
-- `assemble_mass_matrix()` — Velocity mass matrix
-- `assemble_viscous_matrix()` — Viscous (Laplacian) matrix
-- `assemble_convection_matrix()` — Base flow convection operator
-- `assemble_shear_matrix()` — Shear (base flow gradient) operator
-- `assemble_pressure_gradient_matrix()` — Pressure gradient matrix
-- `assemble_divergence_matrix()` — Divergence matrix
-- `assemble_robin_matrix()` — Optional contribution from Robin boundaries
-- `assemble_neumann_rhs(g, ds)` — RHS vector from Neumann boundary data
-
-For the sake of efficiency, all matrices are cached internally on first use.
-`LinearizedNavierStokesAssembler` also accepts a `CacheStore` object to persist
-assembled matrices to disk using HDF5/XDMF files. The `clear_cache()` method
-invalidates the in-memory cache only.
-
-### Discrete System Assembly
-
-#### Full Linear Operator
-
-The `assemble_linear_operator()` method returns the full system operator $A$ as a PETSc nested matrix,
-
-$$
-\mathbf{A} = \begin{bmatrix} \mathbf{A}_{uu} & \mathbf{G} \\ \mathbf{D} & 0 \end{bmatrix},
-$$
-
-where
-
-- $\mathbf{A}_{uu} = \mathbf{B} + \mathbf{C}_1 + \mathbf{C}_2 + \mathbf{R}$ with diffusion, convection, shear, and optional Robin term,
-- $\mathbf{G}$ comes from the pressure gradient, and
-- $\mathbf{D}$ comes from the velocity divergence.
-
-### Eigenvalue System
-
-The `assemble_eigensystem()` returns a pair of matrices `(A, M)` such that
-
-$$
-\mathbf{A} \mathbf{x} = s \mathbf{M} \mathbf{x}, \quad \text{with } \mathbf{x} = \begin{bmatrix} \mathbf{u} \\ p \end{bmatrix},
-$$
-
-where
-
-- $\mathbf{A}$ is the full linear operator, and
-- $\mathbf{M}$ is the block mass matrix, such that
-  $$
-  \mathbf{M} = \begin{bmatrix} \mathbf{M}_u & 0 \\ 0 & 0 \end{bmatrix}
-  $$
-
-The velocity mass matrix $\mathbf{M}_u$ is nonzero, while the pressure block is null.
-
-### Nullspace Handling
-
-The `attach_pressure_nullspace(mat: iPETScMatrix)` method attaches a constant pressure nullspace to a PETSc matrix.
-
-This will be necessary for saddle-point systems where pressure is only defined up to a constant.
-This function ensures Krylov solvers (e.g. MINRES) handle the system correctly.
-
-## Design Notes
-
-- All forms are assembled with DOLFINx's `assemble_matrix` and respect supplied Dirichlet BCs.
-- Block systems are returned as `iPETScMatrix` wrappers over PETSc `MatNest`.
-- Matrices are cached internally; use `clear_cache()` to recompute. A
-  persistent cache can be enabled by providing a `CacheStore`.
-- Integration with SLEPc is supported via `assemble_eigensystem()`.
-
-## Further Notes
-
-### Parallel Assembly and Matrix Structure
-
-The assembly can be made fully parallel over MPI and leverages PETSc structures to preserve sparsity and block structure.
-
-Benefits include
-
-- memory efficiency, as Zero blocks (e.g., pressure-pressure) are never allocated,
-- modularity, since each block is handled separately, and 
-- preconditioner support, as the design enables `PCFieldSplit` to recognize velocity and pressure fields.
-
-### Using the Assembled Matrices in Eigenvalue Analysis
-
-The assembled `(A, M)` pair from `assemble_eigensystem()` can be directly passed to SLEPc.
-A typical usage pattern looks like:
+## Usage Example
 
 ```python
-from slepc4py import SLEPc
-E = SLEPc.EPS().create(comm)
-E.setOperators(A.raw, M.raw)  # iPETScMatrix wrappers
-E.setProblemType(SLEPc.EPS.ProblemType.GNHEP)
-E.setFromOptions()
-E.solve()
+from FEM.operators import LinearizedNavierStokesAssembler
+from FEM.spaces import define_spaces
+from FEM.bcs import define_bcs
+from Meshing.core import Mesher
+from config import load_cylinder_flow_config, load_bc_config, load_facet_config
+
+# Load mesh and tags
+cfg = load_cylinder_flow_config("geometry.toml")
+facet_markers = load_facet_config("facets.toml")
+
+mesher = Mesher.from_geometry(Geometry.CYLINDER_FLOW, cfg)
+mesher.mark_boundary_facets(facet_markers)
+
+# Define function spaces
+spaces = define_spaces(mesher.mesh, FunctionSpaceType.TAYLOR_HOOD)
+
+# Load BCs for baseflow and perturbation
+bcs = define_bcs(mesher, spaces, load_bc_config("bcs.toml"))
+bcs_pert = define_bcs(mesher, spaces, load_bc_config("bcs_perturbation.toml"))
+
+# Load or compute baseflow
+baseflow = load_baseflow("baseflow/re_40", spaces)
+
+# Assemble eigensystem
+assembler = LinearizedNavierStokesAssembler(
+    base_flow=baseflow,
+    spaces=spaces,
+    re=40.0,
+    bcs=bcs_pert,
+    tags=mesher.facet_tags,
+)
+A, M = assembler.assemble_eigensystem()
 ```
 
-### Using the Assembled Matrices in Time Integration
+## Notes
 
-Instead of eigenvalue analysis, the matrices can be used for time stepping.
-For example, applying implicit Euler:
-
-$$
-(\mathbf{M} - \Delta t \mathbf{A}) \mathbf{u}_{n+1} = \mathbf{M} \mathbf{u}_n.
-$$
+* Matrices are cached automatically after first assembly.
+* Use `CacheStore` to persist matrices across runs.
+* Periodic constraints are applied after assembly.
