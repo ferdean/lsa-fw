@@ -127,8 +127,7 @@ $$
 \begin{bmatrix}
     \mathbf{u} \\
     p
-\end{bmatrix}
-=
+\end{bmatrix} =
 \begin{bmatrix}
     0 \\
     0
