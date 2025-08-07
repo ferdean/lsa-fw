@@ -11,19 +11,7 @@ type = "neumann_velocity"
 value = [0.0, 0.0]
 
 [[BC]]
-# Free-flow
-marker = 3
-type = "neumann_velocity"
-value = [0.0, 0.0]
-
-[[BC]]
-# Free-flow
-marker = 4
-type = "neumann_velocity"
-value = [0.0, 0.0]
-
-[[BC]]
 # Wall
-marker = 5
+marker = 3
 type = "dirichlet_velocity"
 value = [0.0, 0.0]

@@ -1,8 +1,8 @@
 dim = 2
 inlet_length = 3.0
-step_height = 0.5
+step_height = 0.6
 # width = 0.4
 outlet_length = 5.5
-channel_height = 0.9
-resolution = 0.075
-refinement_factor = 0.5
+channel_height = 1.2
+resolution = 0.05
+refinement_factor = 0.25
