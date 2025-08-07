@@ -1,4 +1,4 @@
-# LSA-FW FEM Module (Function Spaces)
+# LSA-FW FEM Function Spaces
 
 > [Back to FEM Overview](fem.md)
 
