@@ -24,7 +24,7 @@ from FEM.utils import Scalar
 from lib.loggingutils import setup_logging
 from Meshing.core import Mesher
 from Meshing.geometries import Geometry
-from Meshing.plot import plot_mesh
+from Meshing.plot import plot_mesh, PlotMode
 from Solver.baseflow import (
     BaseFlowSolver,
     compute_recirculation_length,
@@ -76,7 +76,7 @@ for re in range(20, 60):
     try:
         baseflow = load_baseflow(_CASE_DIR / "baseflow" / f"re_{int(re)}", spaces)
         if __show_plots:
-            plot_mixed_function(baseflow, scale=0)
+            plot_mixed_function(baseflow, PlotMode.INTERACTIVE, scale=0)
 
     except Exception:
         bf_solver = BaseFlowSolver(spaces, bcs=bcs, tags=mesher.facet_tags)
