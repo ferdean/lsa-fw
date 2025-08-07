@@ -11,7 +11,10 @@ from FEM.bcs import (
     BoundaryConditionType,
     define_bcs,
 )
-from FEM.operators import LinearizedNavierStokesAssembler
+from FEM.operators import (
+    LinearizedNavierStokesAssembler,
+    StationaryNavierStokesAssembler,
+)
 from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
 from Meshing.core import Mesher
 from Meshing.utils import Shape, iCellType
@@ -71,8 +74,19 @@ def test_assembler(
     )
 
 
+@pytest.fixture
+def test_stationary_assembler(
+    test_spaces: FunctionSpaces, test_bcs: BoundaryConditions
+) -> StationaryNavierStokesAssembler:
+    return StationaryNavierStokesAssembler(
+        spaces=test_spaces,
+        re=1.0,
+        bcs=test_bcs,
+    )
+
+
 class TestLinearizedAssembler:
-    """Tests for the perturbed flow assembler."""
+    """Tests for the perturbation flow assembler."""
 
     def test_linear_operator_shape(
         self, test_assembler: LinearizedNavierStokesAssembler
@@ -158,7 +172,7 @@ class TestLinearizedAssembler:
         G = subblocks[0, 1]
         D = subblocks[1, 0]
 
-        D.axpy(1.0, G.T)  # D + G^T
+        D.axpy(-1.0, G.T)
         assert D.norm < 1e-10
 
     def test_pressure_nullspace(
@@ -229,3 +243,106 @@ class TestLinearizedAssembler:
         test_assembler.clear_cache()
         M4 = test_assembler.assemble_mass_matrix(key="M")
         assert M4 is not M1, "clear_cache should also invalidate mass matrix entries"
+
+    def test_non_homogeneous_natural_bcs(
+        self, test_spaces: FunctionSpaces, zero_base_flow: dfem.Function
+    ) -> None:
+        """Test that non-homogeneous Neumann or Robin BCs raise an error."""
+        # Neumann BC with non-zero value
+        neumann_bcs = BoundaryConditions(
+            velocity=[],
+            pressure=[],
+            velocity_neumann=[
+                (1, dfem.Constant(test_spaces.velocity.mesh, (1.0, 0.0)))
+            ],
+            pressure_neumann=[],
+            robin_data=[],
+            velocity_periodic_map=[],
+            pressure_periodic_map=[],
+        )
+        with pytest.raises(ValueError):
+            LinearizedNavierStokesAssembler(
+                base_flow=zero_base_flow, spaces=test_spaces, re=1.0, bcs=neumann_bcs
+            )
+
+        # Robin BC with non-zero target value
+        robin_target = dfem.Constant(test_spaces.velocity.mesh, (0.1, 0.0))
+        robin_bcs = BoundaryConditions(
+            velocity=[],
+            pressure=[],
+            velocity_neumann=[],
+            pressure_neumann=[],
+            robin_data=[
+                (1, dfem.Constant(test_spaces.velocity.mesh, 1.0), robin_target)
+            ],
+            velocity_periodic_map=[],
+            pressure_periodic_map=[],
+        )
+        with pytest.raises(ValueError):
+            LinearizedNavierStokesAssembler(
+                base_flow=zero_base_flow, spaces=test_spaces, re=1.0, bcs=robin_bcs
+            )
+
+
+class TestStationaryAssembler:
+    """Tests for the stationary flow assembler."""
+
+    def test_jacobian_residual_shape(
+        self, test_stationary_assembler: StationaryNavierStokesAssembler
+    ) -> None:
+        """Test that the assembled jacobian and residual match the expected dimensions."""
+        A, b = test_stationary_assembler.get_matrix_forms()
+        n = A.shape[0]
+        assert A.shape == (n, n)
+        assert b.size == n
+
+    def test_jacobian_positive_definite(
+        self, test_stationary_assembler: StationaryNavierStokesAssembler
+    ) -> None:
+        """Test that the jacobian is PD."""
+        A, _ = test_stationary_assembler.get_matrix_forms()
+        for _ in range(10):
+            x = A.create_vector_right()
+            x.set_random()
+            val = x.dot(A @ x)
+            assert val > 0 or np.isclose(val, 0)
+
+    def test_nonzero_rhs(
+        self, test_spaces: FunctionSpaces, test_bcs: BoundaryConditions
+    ) -> None:
+        """Verify that the RHS changes if the forcing term is nonzero."""
+        zero_rhs_assembler = StationaryNavierStokesAssembler(
+            spaces=test_spaces,
+            re=1.0,
+            bcs=test_bcs,
+            f=dfem.Constant(test_spaces.velocity.mesh, (0.0, 0.0)),
+        )
+        _, b0 = zero_rhs_assembler.get_matrix_forms()
+
+        nonzero_rhs_assembler = StationaryNavierStokesAssembler(
+            spaces=test_spaces,
+            re=1.0,
+            bcs=test_bcs,
+            f=dfem.Constant(test_spaces.velocity.mesh, (1.0, 0.0)),
+        )
+        _, b1 = nonzero_rhs_assembler.get_matrix_forms()
+
+        assert not np.allclose(b0.raw, b1.raw)
+
+    def test_cache(
+        self, test_stationary_assembler: StationaryNavierStokesAssembler
+    ) -> None:
+        """Verify that specifying the same key reuses the cache, and different keys give new objects."""
+        A1, b1 = test_stationary_assembler.get_matrix_forms(key_jac="A", key_res="b")
+        A2, b2 = test_stationary_assembler.get_matrix_forms(key_jac="A", key_res="b")
+        assert A1 is A2
+        assert b1 is b2
+
+        A3, b3 = test_stationary_assembler.get_matrix_forms(key_jac="C", key_res="d")
+        assert A3 is not A1
+        assert b3 is not b1
+
+        test_stationary_assembler.clear_cache()
+        A4, b4 = test_stationary_assembler.get_matrix_forms(key_jac="A", key_res="b")
+        assert A4 is not A1
+        assert b4 is not b1
