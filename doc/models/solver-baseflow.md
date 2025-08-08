@@ -44,8 +44,8 @@ $$
 
 $$
 \begin{align*}
-\int_\Omega (\mathbf{u} \cdot \nabla \mathbf{u}) \cdot \mathbf{v}\,dx + \frac{1}{\text{Re}}\int_\Omega \nabla \mathbf{u} : \nabla \mathbf{v}\,dx -& \int_\Omega p\,(\nabla \cdot \mathbf{v})\,dx + \int_\Omega q\,(\nabla \cdot \mathbf{u})\,dx + \int_{\Gamma_R} \alpha\, (\mathbf{u}\cdot \mathbf{v})\,ds &= \cdots\\
-& \cdots= \int_{\Gamma_N} \mathbf{g}\cdot \mathbf{v}\,ds + \int_{\Gamma_R} \alpha\, (\mathbf{g}\cdot \mathbf{v})\,ds.
+\int_\Omega (\mathbf{u} \cdot \nabla \mathbf{u}) \cdot \mathbf{v}dx + \frac{1}{\text{Re}}\int_\Omega \nabla \mathbf{u} : \nabla \mathbf{v}dx -& \int_\Omega p(\nabla \cdot \mathbf{v})dx + \int_\Omega q(\nabla \cdot \mathbf{u})dx + \int_{\Gamma_R} \alpha (\mathbf{u}\cdot \mathbf{v})ds &= \cdots\\
+& \cdots= \int_{\Gamma_N} \mathbf{g}\cdot \mathbf{v}ds + \int_{\Gamma_R} \alpha (\mathbf{g}\cdot \mathbf{v})ds.
 \end{align*}
 $$
 
@@ -67,7 +67,7 @@ The source term $\mathbf{f}$ is assumed zero by default.
 The weak form used in the implementation reads:
 
 $$
-\int_\Omega \nabla \mathbf{u} : \nabla \mathbf{v} \,dx  + \int_\Omega p\,(\nabla \cdot \mathbf{v})\,dx  + \int_\Omega q\,(\nabla \cdot \mathbf{u})\,dx = \int_\Omega \mathbf{f} \cdot \mathbf{v} \,dx + \cdots
+\int_\Omega \nabla \mathbf{u} : \nabla \mathbf{v} dx  + \int_\Omega p(\nabla \cdot \mathbf{v})dx  + \int_\Omega q(\nabla \cdot \mathbf{u})dx = \int_\Omega \mathbf{f} \cdot \mathbf{v} dx + \cdots
 $$
 
 where the right-hand side includes any Neumann or Robin terms.
