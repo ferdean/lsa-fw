@@ -4,9 +4,12 @@ Provides a linear solver interface that can be extended for different linear sol
 """
 
 import logging
+from pathlib import Path
 
 import dolfinx.fem as dfem
+import matplotlib.pyplot as plt
 import scipy.sparse.linalg
+from matplotlib.ticker import MaxNLocator
 from mpi4py import MPI
 
 from FEM.operators import BaseAssembler
@@ -16,6 +19,7 @@ from lib.loggingutils import log_global, log_rank
 from Solver.utils import KSPType, PreconditionerType, iKSP
 
 logger = logging.getLogger(__name__)
+plt.rcParams.update({"font.family": "serif", "font.size": 10})
 
 
 class LinearSolver:
@@ -27,11 +31,12 @@ class LinearSolver:
         self._ab_cache: dict[str, tuple[iPETScMatrix, iPETScVector, iPETScVector]] = {}
         self._ksp_cache: dict[str, iKSP] = {}
         self._lu_cache: dict[str, scipy.sparse.linalg.SuperLU] = {}
+        self._res_hist: dict[str, list[float]] = {}
 
     def direct_lu_solve(
         self,
         *,
-        show_plot: bool = True,
+        show_plot: bool = False,
         plot_scale: float = 0.1,
         use_scipy: bool = True,
         key: int | str | None = None,
@@ -64,7 +69,7 @@ class LinearSolver:
     def direct_scipy_solve(
         self,
         *,
-        show_plot: bool = True,
+        show_plot: bool = False,
         plot_scale: float = 0.1,
         key: int | str | None = None,
     ) -> dfem.Function:
@@ -115,9 +120,10 @@ class LinearSolver:
         tol: float = 1e-12,
         rtol: float = 1e-8,
         max_it: int = 1000,
-        show_plot: bool = True,
+        show_plot: bool = False,
         plot_scale: float = 0.1,
         key: int | str | None = None,
+        enable_monitor: bool = True,
     ) -> dfem.Function:
         """Iterative solve using Conjugate Gradient (CG)."""
         return self._solve(
@@ -129,6 +135,7 @@ class LinearSolver:
             show_plot=show_plot,
             plot_scale=plot_scale,
             key=key,
+            enable_monitor=enable_monitor,
         )
 
     def gmres_solve(
@@ -138,9 +145,10 @@ class LinearSolver:
         rtol: float = 1e-8,
         max_it: int = 1000,
         restart: int = 30,
-        show_plot: bool = True,
+        show_plot: bool = False,
         plot_scale: float = 0.1,
         key: int | str | None = None,
+        enable_monitor: bool = True,
     ) -> dfem.Function:
         """Iterative solve using GMRES."""
         return self._solve(
@@ -153,6 +161,7 @@ class LinearSolver:
             show_plot=show_plot,
             plot_scale=plot_scale,
             key=key,
+            enable_monitor=enable_monitor,
         )
 
     def _solve(
@@ -167,6 +176,7 @@ class LinearSolver:
         plot_scale: float,
         key: int | str | None,
         restart: int | None = None,
+        enable_monitor: bool = True,
     ) -> dfem.Function:
         log_global(logger, logging.INFO, f"{ksp_type.name} solve started.")
         cache_key = key or f"{ksp_type.name.lower()}_{id(self)}"
@@ -214,6 +224,15 @@ class LinearSolver:
             if restart is not None and ksp_type is KSPType.GMRES:
                 solver.raw.setGMRESRestart(restart)
 
+            if enable_monitor and ksp_type is not KSPType.PREONLY:
+                self._res_hist[cache_key] = []  # Reset history
+
+                def _monitor(ksp, its, rnorm):
+                    # Note: PETSc reports 'preconditioned residual norm' by default
+                    self._res_hist[cache_key].append(float(rnorm))
+
+                solver.raw.setMonitor(_monitor)
+
             solver.set_from_options(prefix=f"{cache_key}_")
             self._ksp_cache[cache_key] = solver
         else:
@@ -221,6 +240,15 @@ class LinearSolver:
                 logger, logging.DEBUG, "Using cached iKSP solver for %s", ksp_type.name
             )
             solver = self._ksp_cache[cache_key]
+
+            if enable_monitor and ksp_type is not KSPType.PREONLY:
+                # Ensure history reset when reusing the solver
+                self._res_hist[cache_key] = []
+
+                def _monitor(ksp, its, rnorm):
+                    self._res_hist[cache_key].append(float(rnorm))
+
+                solver.raw.setMonitor(_monitor)
 
         # Solve and time
         t0 = MPI.Wtime()
@@ -238,6 +266,47 @@ class LinearSolver:
 
         log_global(logger, logging.INFO, f"{ksp_type.name} solve completed.")
         return self.assembler.sol
+
+    def get_residual_history(self, *, key: int | str | None = None) -> list[float]:
+        """Return the stored residual history for the last solve with this key."""
+        cache_key = key or next(reversed(self._res_hist), "")
+        return list(self._res_hist.get(cache_key, []))
+
+    def plot_residuals(
+        self,
+        *,
+        key: int | str | None = None,
+        output_path: Path = Path(".") / "ksp_residuals.png",
+        title: str | None = None,
+    ) -> None:
+        """Plot KSP residual history (semi-log) and save to disk."""
+        cache_key = key or next(reversed(self._res_hist), None)
+        if cache_key is None or cache_key not in self._res_hist:
+            log_global(logger, logging.WARNING, "No residual history to plot.")
+            return
+
+        history = self._res_hist[cache_key]
+        if not history:
+            log_global(logger, logging.WARNING, "Residual history is empty.")
+            return
+
+        fig, ax = plt.subplots(figsize=(6, 3))
+        ax.semilogy(history, label="KSP residuals", color="k", linewidth=1.5)
+        ax.set_xlabel(r"Iteration, $k$ (-)")
+        ax.set_ylabel(r"$\|\mathbf{r}_k\|_{L2}$ (-)")
+        if title:
+            ax.set_title(title)
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        ax.grid(which="major", linestyle="-", linewidth=0.8)
+        ax.minorticks_on()
+        ax.grid(which="minor", linestyle=":", color="gray", linewidth=0.5)
+        ax.tick_params(which="major", direction="in", length=3, width=0.5)
+        ax.tick_params(which="minor", direction="in", length=1.25, width=0.5)
+        fig.tight_layout()
+        fig.savefig(output_path, dpi=330)
+        plt.close(fig)
+
+        log_global(logger, logging.INFO, "KSP residual plot saved to %s", output_path)
 
 
 # NOTE: More solver interfaces (BiCGSTAB, etc.) can be added as needed
