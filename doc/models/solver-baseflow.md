@@ -23,7 +23,7 @@ This utility module solves the steady, incompressible Navier-Stokes equation in 
 $$
 \left\lbrace
 \begin{align*}
-(\mathbf{u} \cdot \nabla ) \mathbf{u} + \nabla p - \frac{1}{\text{Re}} \Delta\mathbf{u} = \mathbf{0} \\
+(\mathbf{u} \cdot \nabla ) \mathbf{u} + \nabla p - \frac{1}{\text{Re}} \Delta\mathbf{u} = \mathbf{f} \\
 \nabla \cdot \mathbf{u} = 0
 \end{align*}\right.,
 $$
