@@ -38,7 +38,7 @@ from petsc4py import PETSc
 
 from FEM.bcs import BoundaryConditions
 from FEM.operators import StationaryNavierStokesAssembler, StokesAssembler
-from FEM.plot import plot_mixed_function
+from FEM.plot import plot_mixed_function, PlotMode
 from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
 from lib.cache import CacheStore
 from lib.loggingutils import log_global
@@ -133,7 +133,10 @@ class BaseFlowSolver:
 
         if show_plot:
             plot_mixed_function(
-                sol, scale=plot_scale, title=f"Baseflow (Re = {re:.2f})"
+                sol,
+                PlotMode.INTERACTIVE,
+                scale=plot_scale,
+                title=f"Baseflow (Re = {re:.2f})",
             )
 
         if cache is not None and key is not None:

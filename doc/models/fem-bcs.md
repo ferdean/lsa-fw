@@ -112,7 +112,7 @@ The resulting container is a dataclass with the following fields:
 
 ### Periodic Utilities
 
-Periodic DOF maps are generated automatically during define_bcs, based on the `PERIODIC` condition configuration.
+Periodic DOF maps are generated automatically during `define_bcs`, based on the `PERIODIC` condition configuration.
 The resulting map can be applied to matrices or vectors with:
 
 ```python
@@ -195,7 +195,7 @@ In LSA-FW, periodic conditions are supported as a first-class type (`PERIODIC`) 
 Formally, a periodic boundary condition couples the solution across two facets $\Gamma_L$ and $\Gamma_R$ such that
 
 $$
-u|_{\Gamma_L} = u|_{\Gamma_R}.
+u|_ {\Gamma_L} = u|_{\Gamma_R}.
 $$
 
 This constraint is enforced by identifying and merging corresponding DOFs on each boundary.

@@ -1,4 +1,4 @@
-# LSA-FW FEM Module (Function Spaces)
+# LSA-FW FEM Function Spaces
 
 > [Back to FEM Overview](fem.md)
 
@@ -203,6 +203,7 @@ from FEM.spaces import define_spaces, FunctionSpaceType
 
 spaces = define_spaces(mesh, FunctionSpaceType.MINI)
 V, Q = spaces.velocity, spaces.pressure
+mixed_space = spaces.mixed  # This is the recommended space for NS assemblers
 ```
 
 This approach allows for consistent and composable space definitions across the LSA-FW framework, and supports downstream modules such as boundary condition handling, weak form assembly, and solver setup.

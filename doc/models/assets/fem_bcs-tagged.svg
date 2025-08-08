@@ -30,9 +30,9 @@
      inkscape:zoom="1.490625"
      inkscape:cx="331.40461"
      inkscape:cy="184.15094"
-     inkscape:window-width="2400"
-     inkscape:window-height="1261"
-     inkscape:window-x="2391"
+     inkscape:window-width="1920"
+     inkscape:window-height="991"
+     inkscape:window-x="-9"
      inkscape:window-y="-9"
      inkscape:window-maximized="1"
      inkscape:current-layer="svg6" />
@@ -42,136 +42,136 @@
      id="desc1">&#10;Creator: GL2PS 1.4.2, (C) 1999-2020 C. Geuzaine&#10;For: VTK&#10;CreationDate: Mon Aug  4 11:46:25 2025&#10;</desc>
   <defs
      id="defs1" />
+  <circle
+     style="opacity:0.97093;fill:none;stroke:#70006e;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
+     id="path1"
+     cx="102.03886"
+     cy="107.87915"
+     r="6.1268249" />
   <g
-     id="g12"
-     transform="translate(6.5000162,7.0002311)">
-    <circle
-       style="opacity:0.97093;fill:none;stroke:#70006e;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-       id="path1"
-       cx="95.538849"
-       cy="100.87892"
-       r="6.1268249" />
-    <g
-       id="g7"
-       transform="translate(-324.28122,-231.69969)">
-      <path
-         style="opacity:0.97093;fill:none;fill-opacity:0;stroke:#0000ff;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-         d="M 325.03145,433.20754 V 231.94969"
-         id="path6" />
-      <path
-         style="opacity:0.97093;fill:none;fill-opacity:0;stroke:#ff0000;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-         d="M 324.53145,432.70754 H 811.1752"
-         id="path7" />
-      <path
-         style="opacity:0.97093;fill:none;fill-opacity:0;stroke:#ccd540;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-         d="M 324.53145,232.44969 H 811.1752"
-         id="path7-3" />
-      <path
-         style="opacity:0.97093;fill:none;fill-opacity:0;stroke:#5ba94c;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-         d="M 810.6752,433.20754 V 231.94969"
-         id="path6-6" />
-    </g>
+     id="g7"
+     transform="translate(-317.7812,-224.69946)">
+    <path
+       style="opacity:0.97093;fill:none;fill-opacity:0;stroke:#0000ff;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
+       d="M 325.03145,433.20754 V 231.94969"
+       id="path6" />
+    <path
+       style="opacity:0.97093;fill:none;fill-opacity:0;stroke:#ff0000;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
+       d="M 324.53145,432.70754 H 811.1752"
+       id="path7" />
+    <path
+       style="opacity:0.97093;fill:none;fill-opacity:0;stroke:#ccd540;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
+       d="M 324.53145,232.44969 H 811.1752"
+       id="path7-3" />
+    <path
+       style="opacity:0.97093;fill:none;fill-opacity:0;stroke:#5ba94c;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
+       d="M 810.6752,433.20754 V 231.94969"
+       id="path6-6" />
+  </g>
+  <g
+     id="g1"
+     transform="matrix(0.62536883,0,0,0.62536883,93.657801,98.972302)">
     <rect
        style="opacity:0.97093;fill:#70006e;fill-opacity:0.972549;stroke:none;stroke-width:2.76431;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
        id="rect7-8"
        width="97.399994"
        height="18.616352"
-       x="389.60001"
-       y="247.8286" />
+       x="396.10004"
+       y="254.82883" />
     <rect
        style="opacity:0.97093;fill:#ccd540;fill-opacity:0.972549;stroke:none;stroke-width:2.76431;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
        id="rect7-83"
        width="97.399994"
        height="18.616352"
-       x="292.19998"
-       y="247.8286" />
+       x="298.70001"
+       y="254.82883" />
     <rect
        style="opacity:0.97093;fill:#0000ff;fill-opacity:0.972549;stroke:none;stroke-width:2.76431;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
        id="rect7"
        width="97.399994"
        height="18.616352"
-       x="-5.6843419e-14"
-       y="247.8286" />
+       x="6.5000162"
+       y="254.82883" />
     <rect
        style="opacity:0.97093;fill:#ff0000;fill-opacity:1;stroke:none;stroke-width:2.76431;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
        id="rect7-2"
        width="97.399994"
        height="18.616352"
-       x="194.79996"
-       y="247.8286" />
+       x="201.29997"
+       y="254.82883" />
     <rect
        style="opacity:0.97093;fill:#5ca94c;fill-opacity:0.972549;stroke:none;stroke-width:2.76431;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
        id="rect7-6"
        width="97.399994"
        height="18.616352"
-       x="97.399994"
-       y="247.8286" />
+       x="103.90001"
+       y="254.82883" />
     <text
        xml:space="preserve"
        style="font-weight:bold;font-size:11px;line-height:1.25;font-family:'Latin Modern Sans';-inkscape-font-specification:'Latin Modern Sans Bold';text-align:center;text-anchor:middle;opacity:0.97093;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-       x="243.14249"
-       y="237.92595"
+       x="249.6425"
+       y="244.92618"
        id="text12"><tspan
          sodipodi:role="line"
          id="tspan12"
          style="fill:#000000;fill-opacity:1;stroke-width:1.5"
-         x="243.14249"
-         y="237.92595">Facet Tags</tspan></text>
+         x="249.6425"
+         y="244.92618">Facet Tags</tspan></text>
     <text
        xml:space="preserve"
        style="font-weight:bold;font-size:11px;line-height:1.25;font-family:'Latin Modern Sans';-inkscape-font-specification:'Latin Modern Sans Bold';text-align:center;text-anchor:middle;opacity:0.97093;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-       x="48.705505"
-       y="283.80453"
+       x="55.205521"
+       y="290.80478"
        id="text12-0"><tspan
          sodipodi:role="line"
          id="tspan12-7"
          style="fill:#000000;fill-opacity:1;stroke-width:1.5"
-         x="48.705505"
-         y="283.80453">1</tspan></text>
+         x="55.205521"
+         y="290.80478">1</tspan></text>
     <text
        xml:space="preserve"
        style="font-weight:bold;font-size:11px;line-height:1.25;font-family:'Latin Modern Sans';-inkscape-font-specification:'Latin Modern Sans Bold';text-align:center;text-anchor:middle;opacity:0.97093;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-       x="146.10556"
-       y="283.80453"
+       x="152.60558"
+       y="290.80478"
        id="text12-0-4"><tspan
          sodipodi:role="line"
          id="tspan12-7-9"
          style="fill:#000000;fill-opacity:1;stroke-width:1.5"
-         x="146.10556"
-         y="283.80453">2</tspan></text>
+         x="152.60558"
+         y="290.80478">2</tspan></text>
     <text
        xml:space="preserve"
        style="font-weight:bold;font-size:11px;line-height:1.25;font-family:'Latin Modern Sans';-inkscape-font-specification:'Latin Modern Sans Bold';text-align:center;text-anchor:middle;opacity:0.97093;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-       x="243.50552"
-       y="283.80453"
+       x="250.00554"
+       y="290.80478"
        id="text12-0-4-8"><tspan
          sodipodi:role="line"
          id="tspan12-7-9-6"
          style="fill:#000000;fill-opacity:1;stroke-width:1.5"
-         x="243.50552"
-         y="283.80453">3</tspan></text>
+         x="250.00554"
+         y="290.80478">3</tspan></text>
     <text
        xml:space="preserve"
        style="font-weight:bold;font-size:11px;line-height:1.25;font-family:'Latin Modern Sans';-inkscape-font-specification:'Latin Modern Sans Bold';text-align:center;text-anchor:middle;opacity:0.97093;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-       x="340.90549"
-       y="283.80453"
+       x="347.40552"
+       y="290.80478"
        id="text12-0-4-0"><tspan
          sodipodi:role="line"
          id="tspan12-7-9-0"
          style="fill:#000000;fill-opacity:1;stroke-width:1.5"
-         x="340.90549"
-         y="283.80453">4</tspan></text>
+         x="347.40552"
+         y="290.80478">4</tspan></text>
     <text
        xml:space="preserve"
        style="font-weight:bold;font-size:11px;line-height:1.25;font-family:'Latin Modern Sans';-inkscape-font-specification:'Latin Modern Sans Bold';text-align:center;text-anchor:middle;opacity:0.97093;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1.5;stroke-miterlimit:4.1;stroke-dasharray:none;stroke-opacity:1;paint-order:stroke fill markers"
-       x="438.30551"
-       y="283.80453"
+       x="444.80554"
+       y="290.80478"
        id="text12-0-4-2"><tspan
          sodipodi:role="line"
          id="tspan12-7-9-4"
          style="fill:#000000;fill-opacity:1;stroke-width:1.5"
-         x="438.30551"
-         y="283.80453">5</tspan></text>
+         x="444.80554"
+         y="290.80478">5</tspan></text>
   </g>
   <metadata
      id="metadata12">

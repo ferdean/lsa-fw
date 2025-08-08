@@ -24,8 +24,7 @@ from FEM.utils import Scalar
 from lib.loggingutils import setup_logging
 from Meshing.core import Mesher
 from Meshing.geometries import Geometry
-from Meshing.plot import plot_mesh
-from Meshing.utils import Shape
+from Meshing.plot import plot_mesh, PlotMode
 from Solver.baseflow import (
     BaseFlowSolver,
     compute_recirculation_length,
@@ -56,9 +55,7 @@ bcs_perturbation_cfg = load_bc_config(_CFG_DIR / "bcs_perturbation.toml")
 
 # Get (or create) mesh
 try:
-    mesher = Mesher.from_file(
-        _CASE_DIR / "mesh" / "mesh.xdmf", Shape.CUSTOM_XDMF, gdim=2
-    )
+    mesher = Mesher.from_file(_CASE_DIR / "mesh" / "mesh.xdmf", gdim=2)
 except (ValueError, RuntimeError):
     mesher = Mesher.from_geometry(Geometry.CYLINDER_FLOW, cylinder_cfg)
     mesher.mark_boundary_facets(facet_cfg)
@@ -74,12 +71,12 @@ spaces = define_spaces(mesher.mesh, FunctionSpaceType.TAYLOR_HOOD)
 bcs = define_bcs(mesher, spaces, bcs_cfg)
 bcs_perturbation = define_bcs(mesher, spaces, bcs_perturbation_cfg)
 
-for re in range(2, 60):
+for re in range(20, 60):
     # Solve baseflow
     try:
         baseflow = load_baseflow(_CASE_DIR / "baseflow" / f"re_{int(re)}", spaces)
         if __show_plots:
-            plot_mixed_function(baseflow, scale=0)
+            plot_mixed_function(baseflow, PlotMode.INTERACTIVE, scale=0)
 
     except Exception:
         bf_solver = BaseFlowSolver(spaces, bcs=bcs, tags=mesher.facet_tags)

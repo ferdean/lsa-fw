@@ -24,6 +24,17 @@ ENV LIBGL_ALWAYS_SOFTWARE=true \
     MESA_ERROR_BACKTRACE_DISABLE=1 \
     MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
 
+# Install minimal LaTeX for matplotlib + extra tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    texlive-latex-base \
+    texlive-latex-recommended \
+    texlive-latex-extra \
+    texlive-fonts-recommended \
+    texlive-fonts-extra \
+    dvipng \
+    cm-super \
+ && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Install extra Python packages
 RUN pip install --no-cache-dir \
     numpy \
