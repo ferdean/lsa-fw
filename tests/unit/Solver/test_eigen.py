@@ -1,5 +1,8 @@
 """Tests for Solver.eigen.py"""
 
+# mypy: disable-error-code="attr-defined, name-defined"
+
+
 import logging
 
 import numpy as np

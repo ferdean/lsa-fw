@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum, auto
-from typing import Callable, Sequence, assert_never
+from typing import Callable, Sequence, Any, Tuple, cast
 
 import dolfinx.fem as dfem
+import dolfinx.mesh as dmesh
 import numpy as np
 from petsc4py import PETSc
 import ufl  # type: ignore[import-untyped]
@@ -47,39 +48,6 @@ class BoundaryConditionType(StrEnum):
             raise ValueError(f"No type found for {value}.") from e
 
 
-@dataclass(frozen=True)
-class BoundaryCondition:
-    """Configuration object for a single boundary condition."""
-
-    marker: int
-    """Facet marker for the boundary condition."""
-    type: BoundaryConditionType
-    """Type of boundary condition."""
-    value: (
-        float | tuple[int, ...] | tuple[float, ...] | Callable[[np.ndarray], np.ndarray]
-    )
-    """Value of the boundary condition.
-
-    May be:
-      - a scalar (e.g. for pressure)
-      - a tuple (e.g. constant vector velocity)
-      - a tuple of 2 ints (for periodic BC)
-      - a callable returning a NumPy array evaluated at spatial coordinates.
-    """
-    robin_alpha: float | None = None
-    """Robin coefficient (only used for Robin BCs)."""
-
-    @classmethod
-    def from_config(cls, config: BoundaryConditionsConfig) -> BoundaryCondition:
-        """Get boundary condition from config."""
-        return cls(
-            marker=config.marker,
-            type=BoundaryConditionType.from_string(config.type),
-            value=config.value,
-            robin_alpha=config.robin_alpha,
-        )
-
-
 @dataclass
 class BoundaryConditions:
     """Container for all boundary conditions of a domain."""
@@ -101,21 +69,26 @@ class BoundaryConditions:
 
 
 def define_bcs(
-    mesher: Mesher, spaces: FunctionSpaces, configs: Sequence[BoundaryCondition]
+    mesher: Mesher, spaces: FunctionSpaces, configs: Sequence[BoundaryConditionsConfig]
 ) -> BoundaryConditions:
     """Define and construct all boundary conditions."""
     mesh = mesher.mesh
     tags = mesher.facet_tags
     dim = mesh.topology.dim
 
+    if tags is None:
+        raise ValueError("Mesh boundaries are not properly tagged.")
+
     vel_subspace = spaces.mixed.sub(0)
     pres_subspace = spaces.mixed.sub(1)
 
     velocity_bcs: list[tuple[int, dfem.DirichletBC]] = []
     pressure_bcs: list[tuple[int, dfem.DirichletBC]] = []
-    velocity_neumann: list[tuple[int, dfem.Constant]] = []
-    pressure_neumann: list[tuple[int, dfem.Constant]] = []
-    robin_data: list[tuple[int, dfem.Constant, ufl.ExternalOperator]] = []
+    velocity_neumann: list[tuple[int, ufl.ExternalOperator | dfem.Constant]] = []
+    pressure_neumann: list[tuple[int, ufl.ExternalOperator | dfem.Constant]] = []
+    robin_data: list[
+        tuple[int, dfem.Constant, ufl.ExternalOperator | dfem.Constant]
+    ] = []
     velocity_periodic_map: list[dict[int, int]] = []
     pressure_periodic_map: list[dict[int, int]] = []
 
@@ -126,14 +99,12 @@ def define_bcs(
         match cfg.type:
             case BoundaryConditionType.DIRICHLET_VELOCITY:
                 fn = dfem.Function(spaces.velocity)
-
                 interpolator = (
                     cfg.value
                     if callable(cfg.value)
                     else _wrap_constant_vector(cfg.value)
                 )
                 fn.interpolate(interpolator)
-
                 dofs = dfem.locate_dofs_topological(
                     (vel_subspace, spaces.velocity), dim - 1, facets
                 )
@@ -141,14 +112,12 @@ def define_bcs(
 
             case BoundaryConditionType.DIRICHLET_PRESSURE:
                 fn = dfem.Function(spaces.pressure)
-
                 interpolator = (
                     cfg.value
                     if callable(cfg.value)
-                    else _wrap_constant_vector(cfg.value)
+                    else _wrap_constant_scalar(_to_scalar_value(cfg.value))
                 )
                 fn.interpolate(interpolator)
-
                 dofs = dfem.locate_dofs_topological(
                     (pres_subspace, spaces.pressure), dim - 1, facets
                 )
@@ -158,41 +127,50 @@ def define_bcs(
                 if callable(cfg.value):
                     g_vec = ufl.as_vector(cfg.value(ufl.SpatialCoordinate(mesh)))
                 else:
-                    g_vec = dfem.Constant(mesh, cfg.value)
+                    g_vec = _to_vector_constant(mesh, cfg.value)
                 velocity_neumann.append((marker, g_vec))
 
             case BoundaryConditionType.NEUMANN_PRESSURE:
                 if callable(cfg.value):
                     h_expr = ufl.as_scalar(cfg.value(ufl.SpatialCoordinate(mesh)))
                 else:
-                    h_expr = dfem.Constant(mesh, float(cfg.value))
+                    h_expr = _to_scalar_constant(mesh, cfg.value)
                 pressure_neumann.append((marker, h_expr))
 
             case BoundaryConditionType.ROBIN:
                 if cfg.robin_alpha is None:
                     raise ValueError("robin_alpha must be provided for Robin BC")
                 alpha = dfem.Constant(mesh, Scalar(cfg.robin_alpha))
-
                 if callable(cfg.value):
                     g_expr = ufl.as_vector(cfg.value(ufl.SpatialCoordinate(mesh)))
                 else:
-                    g_expr = dfem.Constant(mesh, cfg.value)
-
+                    g_expr = _to_vector_constant(mesh, cfg.value)
                 robin_data.append((cfg.marker, alpha, g_expr))
 
             case BoundaryConditionType.PERIODIC:
-                from_marker, to_marker = cfg.value
+                # Expect a pair of integer facet markers
+                if not (isinstance(cfg.value, tuple) and len(cfg.value) == 2):
+                    raise TypeError(
+                        "PERIODIC.value must be a tuple[int, int] of (from_marker, to_marker)"
+                    )
+                from_marker_raw, to_marker_raw = cast(Tuple[Any, Any], cfg.value)
+                if not isinstance(from_marker_raw, (int, np.integer)) or not isinstance(
+                    to_marker_raw, (int, np.integer)
+                ):
+                    raise TypeError("PERIODIC markers must be integers.")
+                from_marker_i = int(from_marker_raw)
+                to_marker_i = int(to_marker_raw)
                 v_map = compute_periodic_dof_pairs(
-                    spaces.velocity, mesher, from_marker, to_marker
+                    spaces.velocity, mesher, from_marker_i, to_marker_i
                 )
                 p_map = compute_periodic_dof_pairs(
-                    spaces.pressure, mesher, from_marker, to_marker
+                    spaces.pressure, mesher, from_marker_i, to_marker_i
                 )
                 velocity_periodic_map.append(v_map)
                 pressure_periodic_map.append(p_map)
 
             case _:
-                assert_never(cfg.type)
+                raise AssertionError(f"Unhandled boundary condition type: {cfg.type!r}")
 
     return BoundaryConditions(
         velocity=velocity_bcs,
@@ -221,9 +199,13 @@ def compute_periodic_dof_pairs(
     facet_dim = facet_dim or mesh.topology.dim - 1
     coords = function_space.tabulate_dof_coordinates()[:, : mesh.geometry.dim]
 
+    tags = mesher.facet_tags
+    if tags is None:
+        raise ValueError("Mesh boundaries are not properly tagged.")
+
     # Extract the facet indices for each marker
-    facets = mesher.facet_tags.indices
-    markers = mesher.facet_tags.values
+    facets = tags.indices
+    markers = tags.values
     facets_from = facets[markers == from_marker]
     facets_to = facets[markers == to_marker]
 
@@ -275,11 +257,9 @@ def apply_periodic_constraints(
     Examples of usage are shown in `doc.models.fem-bcs` and `tests/unit/FEM/test_bcs.py`.
     """
     if isinstance(obj, iPETScMatrix):
-        # This dynamic new‐nonzero allocation is only a temporary hack to let the post‐assembly periodic
-        # merge run without preallocation errors. Once we fold periodic BCs into assemble_matrix() (refer to
-        # FEM.operators), these options can be removed.
-        obj.raw.setOption(PETSc.Mat.Option.NEW_NONZERO_LOCATIONS, True)
-        obj.raw.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)
+        # Temporary: relax PETSc preallocation complaints for post-assembly edits
+        obj.raw.setOption(PETSc.Mat.Option.NEW_NONZERO_LOCATIONS, True)  # type: ignore[attr-defined]
+        obj.raw.setOption(PETSc.Mat.Option.NEW_NONZERO_ALLOCATION_ERR, False)  # type: ignore[attr-defined]
 
         for to_dof, from_dof in periodic_map.items():
             cols, row_vals = obj.get_row(to_dof)  # row
@@ -322,3 +302,42 @@ def _wrap_constant_vector(
         return np.tile(vector, (1, x.shape[1]))  # Shape (dim, n_points)
 
     return _interpolator
+
+
+def _wrap_constant_scalar(value: float) -> Callable[[np.ndarray], np.ndarray]:
+    v = float(value)
+
+    def _interpolator(x: np.ndarray) -> np.ndarray:
+        return np.full((1, x.shape[1]), v)
+
+    return _interpolator
+
+
+def _to_vector_constant(
+    mesh: dmesh.Mesh, value: float | tuple[float, ...] | tuple[int, ...]
+) -> dfem.Constant:
+    dim = mesh.geometry.dim
+    arr = np.asarray(value, dtype=float).reshape(-1)
+    if arr.size == 1:
+        arr = np.repeat(arr, dim)
+    if arr.size != dim:
+        raise ValueError(
+            f"Vector value must have length {dim}, got shape {tuple(arr.shape)}"
+        )
+    return dfem.Constant(mesh, arr)
+
+
+def _to_scalar_constant(mesh: dmesh.Mesh, value: Any) -> dfem.Constant:
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return dfem.Constant(mesh, Scalar(value))
+    raise TypeError(
+        f"Scalar value expected for pressure Neumann/Dirichlet, got {type(value)}"
+    )
+
+
+def _to_scalar_value(value: Any) -> float:
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return float(value)
+    raise TypeError(
+        f"Scalar value expected for pressure Dirichlet/Neumann, got {type(value)}"
+    )

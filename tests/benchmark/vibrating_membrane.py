@@ -9,7 +9,7 @@ H1 space) to apply the framework to the membrane benchmark.
 """
 
 from pathlib import Path
-from typing import Final, Sequence
+from typing import Final, Sequence, cast
 
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
@@ -19,9 +19,8 @@ from basix.ufl import element
 from dolfinx.fem.petsc import assemble_matrix
 from ufl import TestFunction, TrialFunction
 
-from config import load_bc_config, load_facet_config
+from config import load_bc_config, load_facet_config, BoundaryConditionsConfig
 from FEM.bcs import (
-    BoundaryCondition,
     BoundaryConditionType,
     _wrap_constant_vector,  # HACK: no private methods should be used
 )
@@ -39,6 +38,8 @@ _B: Final[float] = 4.0
 _NUM_EIG: Final[int] = 15
 _MESH_DIVS: Final[tuple[int, int]] = (32, 32)
 _CONFIG_DIR: Final[Path] = Path(__file__).parent / "vibrating_membrane"
+
+plt.rcParams.update({"font.family": "serif", "font.size": 10})
 
 
 def get_mesher(nxy: tuple[int, int], *, show_plot: bool = False) -> Mesher:
@@ -76,7 +77,7 @@ def define_velocity_bcs(
     mesh: dmesh.Mesh,
     V: dfem.FunctionSpace,
     tags: dmesh.MeshTags,
-    configs: Sequence[BoundaryCondition],
+    configs: Sequence[BoundaryConditionsConfig],
 ) -> list[dfem.DirichletBC]:
     """Assemble homogeneous Dirichlet velocity BCs on V for the vibrating membrane.
 
@@ -146,7 +147,14 @@ def _run_case(nxy: tuple[int, int]) -> tuple[list[float], list[float]]:
     mesher = get_mesher(nxy)
     V = get_function_space(mesher.mesh)
     bc_configs = load_bc_config(_CONFIG_DIR / "bcs.toml")
-    bcs = define_velocity_bcs(mesher.mesh, V, mesher.facet_tags, bc_configs)
+
+    # mesher.facet_tags is Optional in the Mesher API; we mark and require it for this benchmark.
+    assert (
+        mesher.facet_tags is not None
+    ), "Facet tags must be defined (mark_boundary_facets must have run)."
+    tags: dmesh.MeshTags = cast(dmesh.MeshTags, mesher.facet_tags)
+
+    bcs = define_velocity_bcs(mesher.mesh, V, tags, bc_configs)
 
     M, A = assemble_eigensystem(V, bcs)
 
@@ -205,8 +213,8 @@ def run_convergence_analysis(resolutions: list[tuple[int, int]] | None = None) -
     """
     resolutions = resolutions or [(8, 8), (16, 16), (32, 32), (64, 64), (96, 96)]
 
-    hs = []
-    rel_errors = []
+    hs: list[float] = []
+    rel_errors: list[float] = []
 
     print("\nBenchmark - Vibrating membrane (convergence analysis):\n")
     print("\tQuadratic elements (P2, Lagrange)")
@@ -216,32 +224,34 @@ def run_convergence_analysis(resolutions: list[tuple[int, int]] | None = None) -
         print(f"\t[>] Running mesh {nxy}...")
 
         numerical, analytic = _run_case(nxy)
-        rel_err = np.mean(
-            [
-                abs(num_val - ana_val) / ana_val
-                for num_val, ana_val in zip(numerical, analytic)
-            ]
+        rel_err = float(
+            np.mean(
+                [
+                    abs(num_val - ana_val) / ana_val
+                    for num_val, ana_val in zip(numerical, analytic)
+                ]
+            )
         )
         print(f"\t        rel_err = {rel_err:.2e}")
 
         hs.append(1 / max(nxy))
         rel_errors.append(rel_err)
 
-    hs = np.array(hs)
-    rel_errors = np.array(rel_errors)
+    # Keep original lists as lists; create arrays for vectorized math to avoid
+    # reassigning a different type to list-typed variables (mypy clean).
+    hs_arr = np.array(hs, dtype=float)
+    rel_errors_arr = np.array(rel_errors, dtype=float)
 
     # Generate reference line: e_ref = C * h^4
-    h_ref = np.array([hs[0], hs[-1]])
-    e_ref = rel_errors[-2] * (h_ref / hs[-2]) ** 4
+    h_ref = np.array([hs_arr[0], hs_arr[-1]], dtype=float)
+    e_ref = rel_errors_arr[-2] * (h_ref / hs_arr[-2]) ** 4
 
     plt.figure(figsize=(6, 4))
-    plt.loglog(
-        hs, rel_errors, marker="o", linestyle="-", color="k", label="Rel. error (-)"
-    )
-    plt.loglog(h_ref, e_ref, linestyle="--", color="gray", label="$h^4$")
+    plt.loglog(hs_arr, rel_errors_arr, marker="o", linestyle="-", color="k")
+    plt.loglog(h_ref, e_ref, linestyle="--", color="r", label="$h^4$")
 
-    plt.xlabel("Mesh size (-)")
-    plt.ylabel("Relative error (-)")
+    plt.xlabel(r"Mesh size (-)")
+    plt.ylabel(r"Relative error (-)")
     plt.grid(True, which="both", ls="--")
     plt.tick_params(axis="both", which="both", direction="in", top=True, right=True)
     plt.legend()
@@ -260,4 +270,4 @@ def run_convergence_analysis(resolutions: list[tuple[int, int]] | None = None) -
 
 if __name__ == "__main__":
     run_default()
-    # run_convergence_analysis([(8, 8), (16, 16), (32, 32), (64, 64), (96, 96)])
+    run_convergence_analysis([(8, 8), (16, 16), (32, 32), (64, 64), (96, 96)])

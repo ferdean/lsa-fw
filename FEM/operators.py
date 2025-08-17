@@ -7,6 +7,8 @@ It supports eigenvalue and time-dependent formulations using PETSc block matrice
 shear, pressure, and divergence operators.
 """
 
+# mypy: disable-error-code="attr-defined, name-defined"
+
 from __future__ import annotations
 
 import logging
@@ -55,7 +57,7 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-def _extract_bcs(bcs: BoundaryConditions | None) -> tuple[
+def _extract_bcs(bcs: BoundaryConditions) -> tuple[
     list[dfem.DirichletBC],
     list[dfem.DirichletBC],
     list[tuple[int, dfem.Constant]],
@@ -64,8 +66,6 @@ def _extract_bcs(bcs: BoundaryConditions | None) -> tuple[
     list[dict[int, int]],
     list[dict[int, int]],
 ]:
-    if bcs is None:
-        return [], [], [], [], [], [], []
     velocity_bcs = [bc for _, bc in bcs.velocity]
     pressure_bcs = [bc for _, bc in bcs.pressure]
     return (
@@ -85,7 +85,7 @@ class BaseAssembler(ABC):
     def __init__(
         self,
         spaces: FunctionSpaces,
-        bcs: BoundaryConditions | None,
+        bcs: BoundaryConditions,
         *,
         tags: MeshTags | None = None,
     ) -> None:
@@ -101,8 +101,8 @@ class BaseAssembler(ABC):
         ) = _extract_bcs(bcs)
         self._spaces = spaces
         self._ds = iMeasure.ds(spaces.mixed.mesh, tags)
-        self._mat_cache: dict[str, iPETScMatrix] = {}
-        self._vec_cache: dict[str, iPETScVector] = {}
+        self._mat_cache: dict[str | int, iPETScMatrix] = {}
+        self._vec_cache: dict[str | int, iPETScVector] = {}
 
     @property
     @abstractmethod
@@ -123,7 +123,7 @@ class BaseAssembler(ABC):
         pass
 
     @property
-    def bcs(self) -> tuple[dfem.DirichletBC]:
+    def bcs(self) -> tuple[dfem.DirichletBC, ...]:
         return (*self._u_bcs, *self._p_bcs)
 
     @property
@@ -159,11 +159,13 @@ class StokesAssembler(BaseAssembler):
     def __init__(
         self,
         spaces: FunctionSpaces,
-        bcs: BoundaryConditions | None = None,
+        bcs: BoundaryConditions,
+        *,
+        tags: MeshTags | None = None,
         f: dfem.Function | None = None,
     ) -> None:
         """Initialize Stokes assembler."""
-        super().__init__(spaces, bcs)
+        super().__init__(spaces, bcs, tags=tags)
         self._f = f or dfem.Constant(
             spaces.velocity.mesh, (0.0,) * spaces.velocity.mesh.topology.dim
         )
@@ -219,7 +221,7 @@ class StokesAssembler(BaseAssembler):
         key_res = f"res_{id(self._residual)}"
 
         if key_jac not in self._mat_cache:
-            A = assemble_matrix(self.jacobian, bcs=self.bcs)
+            A = assemble_matrix(self.jacobian, bcs=list(self.bcs))
             A.assemble()
             A_wrapper = iPETScMatrix(A)
             if not self._p_bcs:
@@ -230,7 +232,7 @@ class StokesAssembler(BaseAssembler):
 
         if key_res not in self._vec_cache:
             b = assemble_vector(self.residual)
-            dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [self.bcs])
+            dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [list(self.bcs)])
             self._apply_dirichlet(b)
             self._vec_cache[key_res] = iPETScVector(b)
 
@@ -268,6 +270,10 @@ class VariationalForms:
     def forcing(f: dfem.Function, v: Argument) -> Form:
         return -inner(f, v) * dx
 
+    @staticmethod
+    def stiffness(u: Argument, v: Argument) -> Form:
+        return inner(grad(u), grad(v)) * dx
+
 
 class StationaryNavierStokesAssembler(BaseAssembler):
     """Finite element operator assembler for stationary Navier-Stokes equations."""
@@ -275,12 +281,12 @@ class StationaryNavierStokesAssembler(BaseAssembler):
     def __init__(
         self,
         spaces: FunctionSpaces,
+        bcs: BoundaryConditions,
         re: float,
         *,
-        f: dfem.Function | None = None,
-        bcs: BoundaryConditions | None = None,
-        initial_guess: dfem.Function | None = None,
         tags: MeshTags | None = None,
+        f: dfem.Function | None = None,
+        initial_guess: dfem.Function | None = None,
     ) -> None:
         """Initialize."""
         super().__init__(spaces, bcs, tags=tags)
@@ -355,7 +361,7 @@ class StationaryNavierStokesAssembler(BaseAssembler):
                 logging.INFO,
                 "No cached matrix found. Assembling linearized operator.",
             )
-            A = assemble_matrix(self._jacobian, bcs=self.bcs)
+            A = assemble_matrix(self._jacobian, bcs=list(self.bcs))
             A.assemble()
             A_wrapper = iPETScMatrix(A)
             if not self._p_bcs:
@@ -372,7 +378,7 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         if key_res not in self._vec_cache:
             log_rank(logger, logging.INFO, "No cached vector found. Assembling RHS.")
             b = assemble_vector(self.residual)
-            dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [self.bcs])
+            dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [list(self.bcs)])
             self._apply_dirichlet(b)
             self._vec_cache[key_res] = iPETScVector(b)
 
@@ -387,8 +393,8 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
         base_flow: dfem.Function,
         spaces: FunctionSpaces,
         re: float,
+        bcs: BoundaryConditions,
         *,
-        bcs: BoundaryConditions | None = None,
         tags: MeshTags | None = None,
         use_sponge: bool = False,
     ) -> None:
@@ -469,7 +475,7 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
         for marker, alpha, g_expr in self._robin_data:
             a += alpha * inner(self._u - g_expr, self._v) * self._ds(marker)
 
-        A_raw = assemble_matrix(dfem.form(a, dtype=Scalar), bcs=self.bcs)
+        A_raw = assemble_matrix(dfem.form(a, dtype=Scalar), bcs=list(self.bcs))
         A_raw.assemble()
 
         A = iPETScMatrix(A_raw)
@@ -511,7 +517,7 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
 
         a_mass = VariationalForms.mass(self._u, self._v)
 
-        M_raw = assemble_matrix(dfem.form(a_mass, dtype=Scalar), bcs=self.bcs)
+        M_raw = assemble_matrix(dfem.form(a_mass, dtype=Scalar), bcs=list(self.bcs))
         M_raw.assemble()
 
         M = iPETScMatrix(M_raw)

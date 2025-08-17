@@ -1,5 +1,7 @@
 """LSA-FW FEM utilities."""
 
+# mypy: disable-error-code="attr-defined, name-defined"
+
 from __future__ import annotations
 
 import logging
@@ -91,11 +93,11 @@ class iMeasure:
     """Helper for constructing tagged facet measures."""
 
     @staticmethod
-    def ds(mesh: Mesh, tags: MeshTags, name: str = "ds") -> Measure:
+    def ds(mesh: Mesh, tags: MeshTags | None = None, name: str = "ds") -> Measure:
         return Measure(name, domain=mesh, subdomain_data=tags)
 
     @staticmethod
-    def dS(mesh: Mesh, tags: MeshTags, name: str = "dS") -> Measure:
+    def dS(mesh: Mesh, tags: MeshTags | None = None, name: str = "dS") -> Measure:
         return Measure(name, domain=mesh, subdomain_data=tags)
 
 
@@ -159,7 +161,7 @@ class iPETScMatrix:
     @classmethod
     def create_aij(
         cls,
-        shape: tuple[int],
+        shape: tuple[int, int],
         comm: PETSc.Comm = PETSc.COMM_WORLD,
         nnz: int | list[int] | None = None,
     ) -> iPETScMatrix:
@@ -191,33 +193,31 @@ class iPETScMatrix:
         - If given a NumPy ndarray, creates a dense PETSc matrix.
         - If given a SciPy sparse matrix, creates an AIJ PETSc matrix with identical sparsity.
         """
-        if isinstance(matrix, cls):
-            return matrix
+        match matrix:
+            case iPETScMatrix():
+                return matrix
 
-        if isinstance(matrix, PETSc.Mat):
-            return cls(matrix)
+            case PETSc.Mat():
+                return cls(matrix)
 
-        if isinstance(matrix, np.ndarray):
-            mat = PETSc.Mat().createDense(matrix.shape, array=matrix, comm=comm)
-            mat.assemble()
-            return cls(mat)
+            case np.ndarray():
+                mat = PETSc.Mat().createDense(matrix.shape, array=matrix, comm=comm)
+                mat.assemble()
+                return cls(mat)
 
-        if sparse.isspmatrix(matrix):
-            csr = matrix.tocsr()
-            row_nnz = (csr.indptr[1:] - csr.indptr[:-1]).tolist()
-            mat = PETSc.Mat().createAIJ(
-                csr.shape,
-                nnz=row_nnz,
-                comm=comm,
-            )
-            coo = csr.tocoo()
-            for i, j, v in zip(coo.row, coo.col, coo.data):
-                mat.setValue(i, j, v, addv=PETSc.InsertMode.INSERT_VALUES)
-            return cls(mat)
+            case sparse.spmatrix():
+                csr = matrix.tocsr()
+                row_nnz = (csr.indptr[1:] - csr.indptr[:-1]).tolist()
+                mat = PETSc.Mat().createAIJ(csr.shape, nnz=row_nnz, comm=comm)
+                coo = csr.tocoo()
+                for i, j, v in zip(coo.row, coo.col, coo.data):
+                    mat.setValue(i, j, v, addv=PETSc.InsertMode.INSERT_VALUES)
+                return cls(mat)
 
-        raise TypeError(
-            f"Cannot construct iPETScMatrix from object of type {type(matrix)}"
-        )
+            case _:
+                raise TypeError(
+                    f"Cannot construct iPETScMatrix from object of type {type(matrix)}"
+                )
 
     @classmethod
     def load(cls, path: Path, comm=PETSc.COMM_WORLD) -> iPETScMatrix:
@@ -830,7 +830,7 @@ class iPETScVector:
         new_vec = self._vec.duplicate()
         return iPETScVector(new_vec)
 
-    def assemble(self) -> iPETScVector:
+    def assemble(self) -> None:
         """(Re)assemble vector after any change."""
         self._vec.assemble()
 

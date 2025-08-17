@@ -61,7 +61,7 @@ def spy(
     if isinstance(matrix, iPETScBlockMatrix):
         matrix = matrix.to_aij()
 
-    comm = spaces.mixed.mesh.comm
+    comm = matrix.comm
 
     if comm.size > 1:
         log_global(
@@ -175,14 +175,18 @@ def _plot_mixed_function_pyvista(
             & (grid_u.points[:, 1] >= domain[0][1])
             & (grid_u.points[:, 1] <= domain[1][1])
         )
-        grid_u = grid_u.extract_points(mask, adjacent_cells=True)
+        idx = np.nonzero(mask)[0]
+        grid_u = grid_u.extract_points(
+            idx, adjacent_cells=True  # type:ignore[arg-type]
+        )
 
     plotter_u = pyvista.Plotter()
     if title:
         plotter_u.add_text(f"{title} — Velocity", position="upper_edge", font_size=12)
-    plotter_u.add_mesh(grid_u, show_edges=False, show_scalar_bar=False, cmap=cmap)
-    plotter_u.add_mesh(glyphs, cmap=cmap)
-    plotter_u.view_xy()
+
+    plotter_u.add_mesh(grid_u, show_edges=False, show_scalar_bar=False, cmap=cmap)  # type: ignore[arg-type]
+    plotter_u.add_mesh(glyphs)
+    plotter_u.view_xy()  # type:ignore[call-arg]
     plotter_u.show()
 
     grid_p = pyvista.UnstructuredGrid(c_p, ct_p, x_p)
@@ -195,8 +199,10 @@ def _plot_mixed_function_pyvista(
             & (grid_p.points[:, 1] >= domain[0][1])
             & (grid_p.points[:, 1] <= domain[1][1])
         )
-        grid_p = grid_p.extract_points(mask, adjacent_cells=True)
-
+        idx = np.nonzero(mask)[0]
+        grid_p = grid_p.extract_points(
+            idx, adjacent_cells=True  # type:ignore[arg-type]
+        )
     plotter_p = pyvista.Plotter()
     if title:
         plotter_p.add_text(f"{title} — Pressure", position="upper_edge", font_size=12)
@@ -204,10 +210,10 @@ def _plot_mixed_function_pyvista(
         grid_p,
         scalars="pressure",
         show_edges=False,
-        cmap=cmap,
+        cmap=cmap,  # type: ignore[arg-type]
         clim=[-np.abs(p_all).max(), np.abs(p_all).max()],
     )
-    plotter_p.view_xy()
+    plotter_p.view_xy()  # type:ignore[call-arg]
     plotter_p.show()
 
 

@@ -124,7 +124,7 @@ def test_invalid_custom_file_path() -> None:
     """Test that non-existent custom mesh file raises error."""
     invalid_path = Path("non_existent_file.msh")
     with pytest.raises(FileNotFoundError):
-        Mesher.from_file(invalid_path, Shape.CUSTOM_MSH)
+        Mesher.from_file(invalid_path)
 
 
 def test_mark_boundary_facets_assigns_tags() -> None:
@@ -179,7 +179,9 @@ def test_mesher_from_mesh() -> None:
     facet_dim = mesh.topology.dim - 1
     entities = np.array([0, 1], dtype=np.int64)
     values = np.array([10, 20], dtype=np.int32)
-    facet_tags = dmesh.meshtags(mesh, facet_dim, entities, values)
+    facet_tags = dmesh.meshtags(
+        mesh, facet_dim, entities, values  # type:ignore[arg-type]
+    )
 
     mesher = Mesher.from_mesh(mesh, facet_tags=facet_tags, cell_tags=None)
 

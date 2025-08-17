@@ -5,8 +5,8 @@ import dolfinx.mesh as dmesh
 import numpy as np
 import pytest
 
+from config import BoundaryConditionsConfig
 from FEM.bcs import (
-    BoundaryCondition,
     BoundaryConditions,
     BoundaryConditionType,
     define_bcs,
@@ -42,10 +42,10 @@ def test_spaces(test_mesh: dmesh.Mesh) -> FunctionSpaces:
 
 
 @pytest.fixture(scope="module")
-def test_bcs(test_mesher: Mesher, test_spaces: FunctionSpaces) -> None:
+def test_bcs(test_mesher: Mesher, test_spaces: FunctionSpaces) -> BoundaryConditions:
     """Test Dirichlet velocity boundary condition."""
     configs = [
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1,
             type=BoundaryConditionType.DIRICHLET_VELOCITY,
             value=(1.0, 0.0),
@@ -121,26 +121,38 @@ class TestLinearizedAssembler:
             assert x.dot(M @ x) > 0
             del x  # Garbage-collect vector to ensure randomization
 
-    def test_mass_subblocks(self, test_assembler: LinearizedNavierStokesAssembler):
+    def test_mass_subblocks(
+        self, test_assembler: LinearizedNavierStokesAssembler
+    ) -> None:
         """Check mass subblocks."""
         M = test_assembler.assemble_mass_matrix()
         blocks = test_assembler.extract_subblocks(M)
 
         n_u, _ = test_assembler.spaces.velocity_dofs
 
-        Mv = blocks[0, 0]
+        # Name blocks and assert non-None for type narrowing
+        vv = blocks[0, 0]  # velocity–velocity
+        vp = blocks[0, 1]  # velocity–pressure
+        pv = blocks[1, 0]  # pressure–velocity
+        pp = blocks[1, 1]  # pressure–pressure
 
-        assert Mv.shape == (n_u, n_u)
-        assert Mv.is_numerically_symmetric()
+        assert vv is not None
+        assert vp is not None
+        assert pv is not None
+        assert pp is not None
+
+        # VV block properties
+        assert vv.shape == (n_u, n_u)
+        assert vv.is_numerically_symmetric()
         for _ in range(10):
-            y = Mv.create_vector_right()
+            y = vv.create_vector_right()
             y.set_random()
-            assert y.dot(Mv @ y) > 0
+            assert y.dot(vv @ y) > 0
 
-        # All other blocks should be zero
-        assert blocks[0, 1].norm < 1e-10  # vp
-        assert blocks[1, 0].norm < 1e-10  # pv
-        assert blocks[1, 1].norm < 1e-10  # pp
+        # All other blocks should be (numerically) zero
+        assert vp.norm < 1e-10
+        assert pv.norm < 1e-10
+        assert pp.norm < 1e-10
 
     def test_linear_operator_subblocks(
         self, test_assembler: LinearizedNavierStokesAssembler
@@ -151,13 +163,24 @@ class TestLinearizedAssembler:
         assert L.norm > 0
 
         blocks = test_assembler.extract_subblocks(L)
-        # Velocity–velocity block must be non-zero
-        assert blocks[0, 0].norm > 0
-        # Gradient and divergence blocks should both be non-zero
-        assert blocks[1, 0].norm > 0
-        assert blocks[0, 1].norm > 0
-        # Pressure–pressure block should be zero
-        assert blocks[1, 1].norm < 1e-10
+
+        # Name blocks and assert non-None for type narrowing
+        vv = blocks[0, 0]  # velocity–velocity
+        vp = blocks[0, 1]  # velocity–pressure (gradient)
+        pv = blocks[1, 0]  # pressure–velocity (divergence)
+        pp = blocks[1, 1]  # pressure–pressure
+
+        assert vv is not None
+        assert vp is not None
+        assert pv is not None
+        assert pp is not None
+
+        # Expected non-zeros
+        assert vv.norm > 0
+        assert pv.norm > 0
+        assert vp.norm > 0
+        # PP should be zero
+        assert pp.norm < 1e-10
 
     def test_gradient_divergence_adjoints(
         self, test_assembler: LinearizedNavierStokesAssembler
