@@ -60,8 +60,8 @@ def test_load_cylinder_flow_config(tmp_path: Path):
     """Test loading cylinder flow geometry configuration."""
     toml = """\
 dim = 2
-length = 2.2
-height = 0.41
+x_range = [0.0, 2.2]
+y_range = [0.0, 0.41]
 cylinder_radius = 0.05
 cylinder_center = [0.2, 0.2]
 resolution = 0.05
@@ -75,14 +75,14 @@ influence_radius = 0.15
         config_path
     ) == config.CylinderFlowGeometryConfig(
         dim=2,
-        length=2.2,
-        height=0.41,
         cylinder_radius=0.05,
         cylinder_center=(0.2, 0.2),
+        x_range=(0.0, 2.2),
+        y_range=(0.0, 0.41),
         resolution=0.05,
         resolution_around_cylinder=0.01,
         influence_radius=0.15,
-        width=None,
+        z_range=None,
     )
 
 

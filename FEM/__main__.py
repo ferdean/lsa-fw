@@ -5,5 +5,5 @@ from petsc4py import PETSc
 from .cli import main
 
 if __name__ == "__main__":
-    PETSc.Options().setValue("viewer_binary_skip_info", "")
+    PETSc.Options().setValue("viewer_binary_skip_info", "")  # type:ignore[attr-defined]
     main()

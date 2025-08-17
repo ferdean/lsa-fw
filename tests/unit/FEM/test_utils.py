@@ -1,5 +1,8 @@
 """Tests for FEM.utils module."""
 
+# mypy: disable-error-code="attr-defined, name-defined"
+
+
 from pathlib import Path
 
 import numpy as np

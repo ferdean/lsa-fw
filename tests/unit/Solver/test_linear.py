@@ -9,8 +9,8 @@ import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 from mpi4py import MPI
 
+from config import BoundaryConditionsConfig
 from FEM.bcs import (
-    BoundaryCondition,
     BoundaryConditions,
     BoundaryConditionType,
     define_bcs,
@@ -47,7 +47,7 @@ def test_spaces(test_mesh: dmesh.Mesh) -> FunctionSpaces:
 def test_bcs(test_mesher: Mesher, test_spaces: FunctionSpaces) -> BoundaryConditions:
     """Homogeneous Dirichlet velocity on all boundaries; leave pressure unconstrained (assembler pins one DOF)."""
     configs = [
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1,
             type=BoundaryConditionType.DIRICHLET_VELOCITY,
             value=(0.0, 0.0),

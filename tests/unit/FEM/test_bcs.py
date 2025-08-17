@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 import ufl
 
+from config import BoundaryConditionsConfig
 from FEM.bcs import (
-    BoundaryCondition,
     BoundaryConditionType,
     apply_periodic_constraints,
     compute_periodic_dof_pairs,
@@ -52,7 +52,7 @@ def test_dirichlet_velocity_bc(
 ) -> None:
     """Test Dirichlet velocity boundary condition."""
     configs = [
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1,
             type=BoundaryConditionType.DIRICHLET_VELOCITY,
             value=(1.0, 0.0),
@@ -77,7 +77,7 @@ def test_dirichlet_pressure_bc(
 ) -> None:
     """Test Dirichlet pressure boundary condition."""
     configs = [
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1,
             type=BoundaryConditionType.DIRICHLET_PRESSURE,
             value=1.0,
@@ -105,7 +105,7 @@ def test_callable_dirichlet_bc(
     def _velocity_field(x: np.ndarray) -> np.ndarray:
         return np.vstack((np.sin(x[0]), np.cos(x[1])))
 
-    config = BoundaryCondition(
+    config = BoundaryConditionsConfig(
         marker=1,
         type=BoundaryConditionType.DIRICHLET_VELOCITY,
         value=_velocity_field,
@@ -121,7 +121,7 @@ def test_callable_dirichlet_bc(
 def test_neumann_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     """Test Neumann boundary condition."""
     configs = [
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1,
             type=BoundaryConditionType.NEUMANN_VELOCITY,
             value=(0.0, -1.0),
@@ -144,7 +144,7 @@ def test_neumann_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
 def test_robin_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     """Test Robin boundary condition."""
     configs = [
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1,
             type=BoundaryConditionType.ROBIN,
             value=(0.0, 0.0),
@@ -169,19 +169,19 @@ def test_robin_bc(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
 def test_mixed_bcs(mesher_with_tags: Mesher, spaces: FunctionSpaces) -> None:
     """Test combination of Dirichlet, Neumann, and Robin boundary conditions."""
     configs = [
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1, type=BoundaryConditionType.DIRICHLET_VELOCITY, value=(1.0, 0.0)
         ),
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1, type=BoundaryConditionType.NEUMANN_VELOCITY, value=(0.0, -1.0)
         ),
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1,
             type=BoundaryConditionType.ROBIN,
             value=(0.0, 0.0),
             robin_alpha=0.1,
         ),
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1, type=BoundaryConditionType.DIRICHLET_PRESSURE, value=1.0
         ),
     ]

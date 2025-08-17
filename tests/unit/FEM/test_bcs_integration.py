@@ -4,8 +4,8 @@ import dolfinx.fem as dfem
 import numpy as np
 import ufl
 
+from config import BoundaryConditionsConfig
 from FEM.bcs import (
-    BoundaryCondition,
     BoundaryConditions,
     BoundaryConditionType,
     define_bcs,
@@ -36,6 +36,7 @@ def _get_mesher(*, show_plot: bool = True) -> Mesher:
         if np.isclose(x[1], 1):
             # Top
             return 4
+        raise ValueError
 
     mesher.mark_boundary_facets(_facet_tags)
 
@@ -48,19 +49,19 @@ def _get_mesher(*, show_plot: bool = True) -> Mesher:
 def _get_neumann_bcs(mesher: Mesher, spaces: FunctionSpaces) -> BoundaryConditions:
     """Get Dirichlet and Neumann boundary conditions."""
     bc_cfgs = [
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1, type=BoundaryConditionType.NEUMANN_VELOCITY, value=(0.0, 0.0)
         ),
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=1, type=BoundaryConditionType.DIRICHLET_PRESSURE, value=0.0
         ),
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=2, type=BoundaryConditionType.NEUMANN_VELOCITY, value=(0.0, 0.0)
         ),
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=3, type=BoundaryConditionType.DIRICHLET_VELOCITY, value=(0.0, 0.0)
         ),
-        BoundaryCondition(
+        BoundaryConditionsConfig(
             marker=4, type=BoundaryConditionType.DIRICHLET_VELOCITY, value=(1.0, 0.0)
         ),
     ]
