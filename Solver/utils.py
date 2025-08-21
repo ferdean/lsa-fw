@@ -11,7 +11,6 @@ from petsc4py import PETSc
 from slepc4py import SLEPc
 
 from FEM.utils import iComplexPETScVector, iPETScMatrix, iPETScVector
-from lib.loggingutils import log_rank
 
 logger = logging.getLogger(__name__)
 
@@ -182,13 +181,7 @@ class iEpsSolver:
         M: iPETScMatrix | None = None,
         comm: PETSc.Comm = PETSc.COMM_WORLD,
     ) -> None:
-        """Initialize SLEPc solver wrapper.
-
-        Args:
-            - A: Left-hand operator matrix (for Ax = λMx).
-            - M: Right-hand operator matrix (for Ax = λMx).
-            - comm: PETSc communicator.
-        """
+        """Initialize SLEPc solver wrapper."""
         self._eps = SLEPc.EPS().create(comm=comm)
         if M is not None and A is None:
             raise ValueError(
@@ -203,11 +196,11 @@ class iEpsSolver:
         return self._eps
 
     def set_operators(self, A: iPETScMatrix, M: iPETScMatrix | None = None) -> None:
-        """Set the matrix operators for the generalized eigenproblem Ax = λMx."""
+        """Set the matrix operators for the generalized eigenproblem Ax + λMx = 0."""
         if M is not None:
-            self._eps.setOperators(A.raw, M.raw)
+            self._eps.setOperators(-A.raw, M.raw)
         else:
-            self._eps.setOperators(A.raw)
+            self._eps.setOperators(-A.raw)
 
     def set_problem_type(self, problem_type: iEpsProblemType) -> None:
         """Set the eigenproblem type. Refer to iEpsProblemType enum."""

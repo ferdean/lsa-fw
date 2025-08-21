@@ -79,7 +79,7 @@ class CacheStore:
             return None
         fn = dfem.Function(V)
         with dio.XDMFFile(comm, str(path), "r") as xdmf:
-            xdmf.read_function(fn, name="function")
+            xdmf.read_function(fn)
         return fn
 
     def save_function(
@@ -87,7 +87,7 @@ class CacheStore:
     ) -> None:
         path = self._path(key, "xdmf")
         with dio.XDMFFile(comm, str(path), "w") as xdmf:
-            xdmf.write_function(fn, name="function")
+            xdmf.write_function(fn)
 
     def load_matrix(
         self, key: str, comm: MPI.Comm = PETSc.COMM_WORLD

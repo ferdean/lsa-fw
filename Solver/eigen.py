@@ -106,8 +106,8 @@ class EigenSolver:
         self._solver = iEpsSolver(A, M)
 
         self._solver.set_problem_type(cfg.problem_type)
-        self._solver.set_dimensions(cfg.num_eig)
         self._solver.set_tolerances(cfg.atol, cfg.max_it)
+        self._solver.set_dimensions(cfg.num_eig)
 
     @property
     def solver(self) -> iEpsSolver:
