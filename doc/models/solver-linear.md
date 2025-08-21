@@ -188,8 +188,3 @@ sol = solver.gmres_solve(tol=1e-10, rtol=1e-8, max_it=500)
 # Direct LU (serial)
 sol_direct = solver.direct_lu_solve(use_scipy=True)
 ```
-
-
-
-
-
