@@ -36,7 +36,7 @@ from config import (
     load_facet_config,
     load_step_flow_config,
 )
-from FEM.bcs import BoundaryCondition, define_bcs
+from FEM.bcs import define_bcs
 from FEM.spaces import FunctionSpaceType, define_spaces
 from lib.cache import CacheStore
 from lib.loggingutils import log_global, setup_logging
@@ -67,9 +67,7 @@ def _run_baseflow(args: argparse.Namespace) -> None:
 
     spaces = define_spaces(mesher.mesh, FunctionSpaceType.TAYLOR_HOOD)
 
-    bc_cfgs = [
-        BoundaryCondition.from_config(cfg) for cfg in load_bc_config(args.bc_config)
-    ]
+    bc_cfgs = load_bc_config(args.bc_config)
     bcs = define_bcs(mesher, spaces, bc_cfgs)
 
     solver = BaseFlowSolver(spaces, bcs=bcs)
