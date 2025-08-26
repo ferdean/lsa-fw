@@ -34,7 +34,7 @@ It leverages
 
 | File                             | Purpose                                                                      |
 | -------------------------------- | ---------------------------------------------------------------------------- |
-| `baseflow.py`                    | Steady base flow solver (Newton iterations for incompressible Navier–Stokes) |
+| `baseflow.py`                    | Steady baseflow solver (Newton iterations for incompressible Navier–Stokes) |
 | `linear.py`                      | Wrappers for PETSc and SciPy linear solvers                                  |
 | `nonlinear.py` / `nonlinear2.py` | Interfaces for Newton-type nonlinear problem solvers                         |
 | `eigen.py`                       | Generalized eigensolver based on SLEPc                                       |
@@ -42,7 +42,7 @@ It leverages
 
 ## Submodules Index
 
-* [Base flow solver](solver-baseflow.md)
+* [Baseflow solver](solver-baseflow.md)
 * [Linear solvers](solver-linear.md)
 * [Nonlinear solvers](solver-nonlinear.md)
 * [Eigenvalue solvers](solver-eigen.md)
@@ -51,9 +51,9 @@ It leverages
 
 ### Python Scripting
 
-The `Solver` package can be used directly in Python to compute steady base flows, assemble linear stability matrices, and solve eigenvalue problems.
+The `Solver` package can be used directly in Python to compute steady baseflows, assemble linear stability matrices, and solve eigenvalue problems.
 
-#### Steady Base Flow
+#### Steady Baseflow
 
 ```python
 from FEM.spaces import define_spaces, FunctionSpaceType
@@ -75,12 +75,12 @@ mesher = Mesher.from_geometry(Geometry.CYLINDER_FLOW, geo_cfg)
 spaces = define_spaces(mesher.mesh, FunctionSpaceType.TAYLOR_HOOD)
 bcs = define_bcs(mesher, spaces, bc_cfgs)
 
-# Solve steady base flow at Re=80
+# Solve steady baseflow at Re=80
 solver = BaseFlowSolver(spaces, bcs=bcs)
 solution = solver.solve(re=80.0, steps=3)  # Contains velocity and pressure fields
 ```
 
-This script computes the steady Navier–Stokes base flow around a cylinder at Reynolds number 80.
+This script computes the steady Navier–Stokes baseflow around a cylinder at Reynolds number 80.
 
 #### Eigenvalue Problem
 
@@ -128,7 +128,7 @@ python -m Solver --help
 
 Currently, the CLI provides one subcommand: `baseflow`.
 
-#### Steady Base Flow (`baseflow`)
+#### Steady Baseflow (`baseflow`)
 
 ```bash
 python -m Solver -p baseflow \

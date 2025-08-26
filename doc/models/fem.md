@@ -67,14 +67,6 @@ It is built on top of FEniCSx and supports modular, extensible finite element fo
 - [Function spaces](fem-spaces.md)
 - [Boundary conditions](fem-bcs.md)
 - [Linearized operators](fem-operators.md)
-- [Steady base flow solver](#steady-base-flow-solver)
-
-## Steady Base Flow Solver
-
-`SteadyNavierStokesAssembler` implements a Newton iteration for the steady
-incompressible Navier–Stokes equations. It constructs the residual and Jacobian
-forms and exposes a `solve()` method that returns the converged velocity and
-pressure fields.
 
 ## Future Extensions
 

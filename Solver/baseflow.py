@@ -9,14 +9,14 @@ Navier-Stokes equations. Under the hood, it:
   - Solves the stationary Navier-Stokes equations using Newton's method with an adjustable damping factor.
   - Can plot the resulting mixed velocity-pressure field for visualization.
 
-The computed base flow can then be used as the background state for linear stability analyses or perturbation solvers.
+The computed baseflow can then be used as the background state for linear stability analyses or perturbation solvers.
 
 Example:
 ```python
 # Upstream: build mesh, define FunctionSpaces and BoundaryConditions...
 solver = BaseFlowSolver(spaces, bcs)
 
-# Compute base flow at Re = 100 with 5-step ramp and 0.8 damping, and show plot
+# Compute baseflow at Re = 100 with 5-step ramp and 0.8 damping, and show plot
 baseflow = solver.solve(
     re=100.0,
     ramp=True,

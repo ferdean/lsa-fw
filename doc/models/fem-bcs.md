@@ -32,7 +32,7 @@ For elliptic and incompressible flow problems such as Stokes or Navier–Stokes,
 * Neumann conditions correspond to stress or flux balance, suitable for outflows or natural boundary segments.
 * Robin conditions are hybrid constraints and arise naturally in stabilized formulations or as sponge terms in perturbation analysis.
 
-In stability analysis of incompressible flows, boundary conditions affect both the base flow and the perturbation problem.
+In stability analysis of incompressible flows, boundary conditions affect both the baseflow and the perturbation problem.
 For instance, using a Robin condition with a large $\alpha$ on outflow boundaries can suppress spurious eigenmodes, by enforcing a sponge-like damping of velocity perturbations.
 
 Mathematically, boundary conditions modify the variational space or appear as additional terms in the weak form.

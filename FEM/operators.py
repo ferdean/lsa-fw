@@ -1,7 +1,7 @@
 """LSA-FW FEM linearized operator assembly.
 
 This module implements the variational forms and discrete assembly routines for the linearized incompressible
-Navier-Stokes equations around a steady base flow.
+Navier-Stokes equations around a steady baseflow.
 
 It supports eigenvalue and time-dependent formulations using PETSc block matrices, including mass, viscous, convection,
 shear, pressure, and divergence operators.
@@ -386,7 +386,7 @@ class StationaryNavierStokesAssembler(BaseAssembler):
 
 
 class LinearizedNavierStokesAssembler(BaseAssembler):
-    """FEM assembler for the linearized Navier-Stokes operator around a stationary base flow."""
+    """FEM assembler for the linearized Navier-Stokes operator around a stationary baseflow."""
 
     def __init__(
         self,
@@ -400,7 +400,7 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
     ) -> None:
         """Initialize the linearized Navier-Stokes assembler."""
         if base_flow.function_space != spaces.mixed:
-            raise ValueError("Base flow must be defined on the mixed function space.")
+            raise ValueError("Baseflow must be defined on the mixed function space.")
 
         if _has_non_homogeneous_neumann(bcs) or _has_non_homogeneous_robin(bcs):
             raise ValueError(

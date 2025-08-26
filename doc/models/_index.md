@@ -2,8 +2,8 @@
 
 - [Meshing](meshing.md): Mesh generation, import/export, CFD benchmark geometries.
 - [FEM](fem.md): Function spaces, boundary conditions, matrix assembly.
-- [Base flow](baseflow.md): Steady Navier–Stokes solver used to compute the background flow.
-- ...
+- [Solver](solver.md): Baseflow, linear/nonlinear solvers and eigen-solvers.
+- [Adjoint sensitivity](adjoint.md).
 
 ---
 

@@ -4,7 +4,7 @@
 
 ---
 
-Linear stability analysis of fluid flows requires linearizing the Navier-Stokes equations around a given base flow.
+Linear stability analysis of fluid flows requires linearizing the Navier-Stokes equations around a given baseflow.
 This module provides tools to assemble the discrete matrices for this linearized system using PETSc-compatible routines.
 
 The central component is the `LinearizedNavierStokesAssembler` class, which encapsulates variational form construction and matrix assembly.
@@ -12,7 +12,7 @@ The central component is the `LinearizedNavierStokesAssembler` class, which enca
 ## Theoretical Background
 
 Let $\overline{\mathbf{u}}, \overline{p}$ denote the base (steady) solution of the incompressible Navier-Stokes equations at Reynolds $\text{Re}$.
-This base flow, assumed divergence-free and satisfying the steady Navier-Stokes equations at Reynolds $\text{Re}$ is considered known, and thus, an input to the module.
+This baseflow, assumed divergence-free and satisfying the steady Navier-Stokes equations at Reynolds $\text{Re}$ is considered known, and thus, an input to the module.
 Accordingly, the study of the linearized problem consists on the study of small perturbations on the flow, so that 
 
 $$
@@ -41,8 +41,8 @@ For time evolution, replace $s \mathbf{u}'$ with $\partial_t \mathbf{u}'$.
 | Term                        | Expression                                  | Description                                                                                  |
 |-----------------------------|---------------------------------------------|----------------------------------------------------------------------------------------------|
 | Growth rate term            | $s\mathbf{u}'$                             | Represents temporal evolution; in eigenanalysis, $s$ is the spectral growth rate; in time-dependent simulations, it corresponds to $\partial_t \mathbf{u}'$. |
-| Convection term             | $(\overline{\mathbf{u}}\cdot\nabla)\mathbf{u}'$       | Advection of the perturbation by the base flow; transports momentum downstream.              |
-| Shear term                  | $(\mathbf{u}'\cdot\nabla)\overline{\mathbf{u}}$       | Interaction of the perturbation with base flow gradients; captures the effect of base flow shear on perturbation dynamics. |
+| Convection term             | $(\overline{\mathbf{u}}\cdot\nabla)\mathbf{u}'$       | Advection of the perturbation by the baseflow; transports momentum downstream.              |
+| Shear term                  | $(\mathbf{u}'\cdot\nabla)\overline{\mathbf{u}}$       | Interaction of the perturbation with baseflow gradients; captures the effect of baseflow shear on perturbation dynamics. |
 | Pressure gradient term      | $-\nabla p'$                               | Pressure force acting on the perturbation velocity field; contributes to acceleration and enforces incompressibility. |
 | Viscous diffusion term      | $\frac{1}{\text{Re}}\,\Delta \mathbf{u}'$         | Represents momentum diffusion due to viscosity; forms a symmetric positive semi-definite operator. |
 | Divergence (continuity) term| $\nabla\cdot \mathbf{u}'$                  | Enforces incompressibility of the perturbation velocity field; couples velocity and pressure in a saddle-point system. |
@@ -110,7 +110,7 @@ This symmetric bilinear form yields the diffusion (stiffness) matrix for the vel
 ### Physical Interpretation
 
 The viscous term $a_{\text{visc}}$ yields a symmetric positive semi-definite stiffness matrix that models momentum diffusion and dissipative effects.
-The convection and shear terms, $a_{\text{conv}}$ and $a_{\text{shear}}$, collectively define the linearized advection operator, and are responsible for non-self-adjoint behavior when the base flow is nonzero.
+The convection and shear terms, $a_{\text{conv}}$ and $a_{\text{shear}}$, collectively define the linearized advection operator, and are responsible for non-self-adjoint behavior when the baseflow is nonzero.
 
 The pressure and continuity terms enforce the incompressibility constraint, coupling velocity and pressure through a saddle-point system with a nullspace in pressure.
 The mass form $m$ accounts for temporal evolution or eigenvalue scaling and is essential for both time-marching and spectral stability analyses.
