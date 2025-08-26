@@ -5,7 +5,7 @@
 We study the generalized eigenvalue problem (EVP)
 
 $$
-\mathbf{A}(\mu)\,\mathbf{v}=\sigma\,\mathbf{B}\,\mathbf{v}, \tag{1}
+\mathbf{A}(\mu)\mathbf{v}=\sigma\mathbf{B}\mathbf{v}, \quad (1)
 $$
 
 with parameter vector $\mu\in\mathbb{R}^p$.
@@ -19,7 +19,7 @@ Adjoint modes reduce eigenvalue sensitivity to just one direct solve, one adjoin
 After computing a direct eigenpair $(\sigma,\mathbf{v})$ of $(1)$, one can obtain the adjoint mode $\mathbf{a}$ from the (discrete) adjoint problem
 
 $$
-\mathbf{A}(\mu)^H\,\mathbf{a}=\sigma^*\,\mathbf{B}^H\,\mathbf{a}.
+\mathbf{A}(\mu)^H\mathbf{a}=\sigma^*\mathbf{B}^H\mathbf{a}.
 $$
 
 Then, for each parameter component $\mu_i$,
@@ -27,8 +27,8 @@ Then, for each parameter component $\mu_i$,
 $$
 \boxed{\displaystyle
 \frac{\partial \sigma}{\partial \mu_i}
-= \frac{\mathbf{a}^{H}\,(\partial_{\mu_i}\mathbf{A})\,\mathbf{v}}
-       {\mathbf{a}^{H}\mathbf{B}\,\mathbf{v}} }.
+= \frac{\mathbf{a}^{H}(\partial_{\mu_i}\mathbf{A})\mathbf{v}}
+       {\mathbf{a}^{H}\mathbf{B}\mathbf{v}} }.
 $$
 
 This is a key result that will be derived later in this document.
@@ -48,8 +48,8 @@ To obtain $\partial \sigma/\partial \mu_i$ by finite differences one must
 Consequently, cost scales like
 
 $$
-\underbrace{(2p)}_{\text{central differences}}
-\times \big(\underbrace{C_{\mathrm{asm}}}_{\text{full assembly}}
+\underbrace{(2p)}_ {\text{central differences}}
+\times \big(\underbrace{C_ {\mathrm{asm}}}_ {\text{full assembly}}
 +\underbrace{C_{\mathrm{eig}}}_{\text{eigen-solve}}\big),
 $$
 
@@ -70,9 +70,9 @@ By using the adjoint theory, once can instead compute:
 Thus, the total cost in this case is
 
 $$
-2\,C_{\mathrm{eig}}
-\;+\;\underbrace{C_{\mathrm{bf\text{-}sens}}}_{\text{optional, once per physical parameter}}
-\;+\;\underbrace{p\,C_{\mathrm{ip}}}_{\text{$p$ inner products / form applications}},
+2C_{\mathrm{eig}}
++\underbrace{C_{\mathrm{bf\text{-}sens}}}_ {\text{optional, once per physical parameter}}
++\underbrace{pC_{\mathrm{ip}}}_{\text{$p$ inner products / form applications}},
 $$
 
 with $C_{\mathrm{ip}}\ll C_{\mathrm{eig}}$ and $C_{\mathrm{bf\text{-}sens}}\ll C_{\mathrm{eig}}$ (one linear solve on the steady Jacobian, typically reusable).
@@ -102,7 +102,7 @@ For the incompressible Navier–Stokes equations, $\mathbf{A}$ is generally non-
 The **adjoint** eigenproblem is defined by the bi-orthogonal eigenvectors $\mathbf{a}$ satisfying
 
 $$
-\mathbf{a}^H \mathbf{A}(\mu) = \sigma^* \mathbf{a}^H \mathbf{B} \tag{2},
+\mathbf{a}^H \mathbf{A}(\mu) = \sigma^* \mathbf{a}^H \mathbf{B}, \quad (2)
 $$
 
 where $\mathbf{a}$ is the adjoint eigenvector associated with $\sigma^*$ (the complex conjugate of $\sigma$).
@@ -117,7 +117,7 @@ The total derivative $d\sigma/d\mu$ can be obtained using an adjoint-based appro
 Differentiating (1) with respect to $\mu$, noting that $\sigma = \sigma(\mu)$ and $\mathbf{v} = \mathbf{v}(\mu)$, we obtain
 
 $$
-(\partial_\mu \mathbf{A})\mathbf{v} + \mathbf{A}(\partial_\mu \mathbf{v}) - (\partial_\mu \sigma)\mathbf{B}\mathbf{v} - \sigma \mathbf{B} (\partial_\mu \mathbf{v}) = 0, \tag{3}
+(\partial_\mu \mathbf{A})\mathbf{v} + \mathbf{A}(\partial_\mu \mathbf{v}) - (\partial_\mu \sigma)\mathbf{B}\mathbf{v} - \sigma \mathbf{B} (\partial_\mu \mathbf{v}) = 0,  \quad (3)
 $$
 
 where $\partial_\mu \equiv \frac{\partial}{\partial \mu}$.
@@ -131,7 +131,7 @@ The term $(\mathbf{A}-\sigma \mathbf{B})(\partial_\mu \mathbf{v})$ vanishes when
 Taking the inner product with $\mathbf{a}^H$ and using this adjoint orthogonality, we isolate the eigenvalue derivative
 
 $$
-\frac{d\sigma}{d\mu} = \frac{\mathbf{a}^H(\partial_\mu \mathbf{A})\mathbf{v}}{\mathbf{a}^H\mathbf{B}\mathbf{v}}, \tag{4}
+\frac{d\sigma}{d\mu} = \frac{\mathbf{a}^H(\partial_\mu \mathbf{A})\mathbf{v}}{\mathbf{a}^H\mathbf{B}\mathbf{v}}, \quad (4)
 $$
 
 which is the *total* derivative of the eigenvalue with respect to the parameter.
@@ -139,7 +139,7 @@ which is the *total* derivative of the eigenvalue with respect to the parameter.
 Equation (4) is the fundamental sensitivity result: it shows that the eigenvalue drift $d\sigma$ is proportional to the structural perturbation $d\mathbf{A}$ applied to the system, weighted by the direct and adjoint mode shapes.
 
 This equation is the basis for eigenvalue sensitivity analysis in global stability as introduced by Bottaro *et al.* [[1]](#references).
-In particular, (4) reproduces the expression used to define baseflow sensitivity and optional perturbations, and it underlies the 'wavemaker' analysis of Giannetti and Luchini [[2]](#references) for global modes.
+In particular, (4) reproduces the expression used to define itivity and optional perturbations, and it underlies the 'wavemaker' analysis of Giannetti and Luchini [[2]](#references) for global modes.
 
 > Remark: In practice, one often scales $\mathbf{a}$ and $\mathbf{v}$ such that $\mathbf{a}^H \mathbf{B} \mathbf{v} = 1$, in which case $d\sigma/d\mu = \mathbf{a}^H (\partial_\mu \mathbf{A})\mathbf{v}$.
 
@@ -153,17 +153,20 @@ The parametric derivative $\partial_\mu \mathbf{A}$ in $(4)$ generally consists 
 
 The later arises because the baseflow itself changes with $\mu$, altering the linearized operator.
 
-To compute this *implicit* component, one must obtain the sensitivity of the baseflow tot he parameter, $\mathbf{\overline{u}}_\mu(x) \equiv \partial \mathbf{\overline{u}}/\partial \mu$ (and similarly $\overline{p}_\mu$ for pressure).
+To compute this *implicit* component, one must obtain the sensitivity of the baseflow tot he parameter, 
+
+$$
+\mathbf{\overline{u}}_\mu(x) \equiv \partial \mathbf{\overline{u}}/\partial \mu
+$$
+
+(and similarly $\overline{p}_\mu$ for pressure).
+
 This is accomplished by differentiating the steady-state governing equations with respect to $\mu$.
 
 As detailed in the [LSA-FW baseflow solver](solver-baseflow.md) documentation, the baseflow $(\overline{\mathbf{u}}, \overline{p})$ satisfies the incompressible Navier-Stokes equations, 
 
 $$
-\left\lbrace
-\begin{align*}
-(\mathbf{\overline{u}} \cdot \nabla ) \mathbf{\overline{u}} + \nabla \overline{p} - \frac{1}{\text{Re}} \Delta\mathbf{\overline{u}} = \mathbf{f} \\
-\nabla \cdot \mathbf{\overline{u}} = 0
-\end{align*}\right., \tag{5}
+\left\lbrace\begin{align*}(\mathbf{\overline{u}} \cdot \nabla ) \mathbf{\overline{u}} + \nabla \overline{p} - \frac{1}{\text{Re}} \Delta\mathbf{\overline{u}} = \mathbf{f} \\\nabla \cdot \mathbf{\overline{u}} = 0 \end{align*}\right., \quad (5)
 $$
 
 where the parameter $\mu$ can, for example, be $\mu = \text{Re}$, or enter the equations via fluid properties, boundary conditions or forcing.
@@ -176,7 +179,7 @@ $$
 \begin{align*}
 (\mathbf{\overline{u}} \cdot \nabla )\partial_\text{Re} \mathbf{\overline{u}} + (\mathbf{\partial_\text{Re} \overline{u}} \cdot \nabla )\mathbf{\overline{u}} + \nabla \partial_\text{Re} \overline{p} - \frac{1}{\text{Re}} \Delta\partial_\text{Re} \mathbf{\overline{u}} =-\frac{1}{\text{Re}^2} \Delta \mathbf{\overline{u}} \\
 \nabla \cdot \partial_\text{Re} \mathbf{\overline{u}} = 0
-\end{align*}\right.. \tag{6}
+\end{align*}\right.. \quad (6)
 $$
 
 Here the right-hand side comes from the explicit $\text{Re}$-dependence of the diffusion term.
@@ -186,10 +189,10 @@ Equation $(6)$ is a linear inhomogeneous Navier–Stokes system that can be solv
 In more general terms, for an arbitrary parameter $\mu$, we would write the steady-state equations as $F(\mathbf{\overline{u}},\mu)=0$ and obtain the linearized system
 
 $$
-\mathcal{L}_B(\mathbf{\overline{u}}) = -F_\mu(\mathbf{\overline{u}},\mu) \tag{7}
+\mathcal{L}_ B(\mathbf{\overline{u}}) = -F_\mu(\mathbf{\overline{u}},\mu) \quad (7)
 $$
 
-where $\mathcal{L}_B(\mathbf{\overline{u}})$ is the Jacobian of the steady Navier–Stokes operator with respect to the state, and $-F_\mu$ is the partial derivative of the steady equations with respect to the parameter (the source term).
+where $\mathcal{L}_ B(\mathbf{\overline{u}})$ is the Jacobian of the steady Navier–Stokes operator with respect to the state, and $-F_\mu$ is the partial derivative of the steady equations with respect to the parameter (the source term).
 Equation $(6)$ is a specific instance of $(7)$. 
 
 Solving this linear system yields $\mathbf{\overline{u}}_\mu(\mathbf{\overline{x}})$, the rate of change of the baseflow with the parameter. 
@@ -207,7 +210,7 @@ In the incompressible Navier–Stokes linearization, the baseflow enters the per
 Using an index-free notation, the Frechét derivative of $\mathbf{A}$ with respect to $\mathbf{\overline{u}}$ applied to an arbitrary vector field $w(\mathbf{x})$ and acting on a perturbation $q=(\mathbf{u}',p')$ is
 
 $$
-(\partial_\mathbf{\overline{u}}\mathbf{A})[w]q = (w\cdot \nabla) \mathbf{u}' + (\mathbf{u}' \cdot \nabla) w, \tag{8}
+(\partial_\mathbf{\overline{u}}\mathbf{A})[w]q = (w\cdot \nabla) \mathbf{u}' + (\mathbf{u}' \cdot \nabla) w, \quad (8)
 $$
 
 which represents the two ways a change in baseflow can affect the linearized momentum equations.
@@ -219,7 +222,7 @@ The second term is the variation of the 'shear' or baseflow gradient term.
 Consequently, the total parameter dependence of $\mathbf{A}$ can now be decomposed as 
 
 $$
-\partial_\mu \mathbf{A} = \underbrace{(\partial_\mu \mathbf{A})_\text{explicit}}_{\text{coeff. change}} + \underbrace{\partial_\mathbf{\overline{u}}\mathbf{A}[\mathbf{\overline{u}_\mu}]}_{\text{baseflow change}}, \tag{9}
+\partial_\mu \mathbf{A} = \underbrace{(\partial_\mu \mathbf{A})_ \text{explicit}}_ {\text{coeff. change}} + \underbrace{\partial_\mathbf{\overline{u}}\mathbf{A} \[\mathbf{\overline{u}_ \mu}\]}_{\text{baseflow change}}, \quad (9)
 $$
 
 where the first term is non-zero only if $\mu$ appears explicitly in the equations (for example, in the $\mu = \text{Re}$ case), and the second term accounts for the operator change due to baseflow adjustments.
@@ -228,31 +231,31 @@ To see the effect ot the baseflow variation on the eigenvalue, we insert the abo
 The contribution from the baseflow change is then
 
 $$
-\mathbf{a}^H [(\partial_\mathbf{\overline{u}} \mathbf{A})[\mathbf{\overline{u}}_\mu]] \mathbf{v}.
+\mathbf{a}^H \[(\partial_\mathbf{\overline{u}} \mathbf{A})\[ \mathbf{\overline{u}}_\mu \]\] \mathbf{v}.
 $$.
 
 Using the definition $(8)$ and converting to a continuous inner-product notation, this term can be written as an integral over the flow domain,
 
 $$
-\mathbf{a}^{H}\!\left[(\partial_{\mathbf{\overline{u}}}\mathbf{A})[\mathbf{\overline{u}}_{\mu}]\right]\mathbf{v}
-=\int_{\Omega} \mathbf{a}^{*}(x)\cdot\Big[(\mathbf{\overline{u}}_{\mu}\cdot\nabla)\mathbf{v}+(\mathbf{v}\cdot\nabla)\mathbf{\overline{u}}_{\mu}\Big]\; d\Omega ,
+\mathbf{a}^{H}\!\left[(\partial_{\mathbf{\overline{u}}}\mathbf{A})\[\mathbf{\overline{u}}_ {\mu}\]\right\]\mathbf{v}
+=\int_{\Omega} \mathbf{a}^{* }(x)\cdot\Big\[(\mathbf{\overline{u}}_ {\mu}\cdot\nabla)\mathbf{v}+(\mathbf{v}\cdot\nabla)\mathbf{\overline{u}}_{\mu}\Big\] d\Omega ,
 $$
 
-where $\mathbf{a}^{*}$ denotes the complex-conjugate of $\mathbf{a}$ (since $\mathbf{a}^{H}$ is the conjugate transpose).
+where $\mathbf{a}^* $ denotes the complex-conjugate of $\mathbf{a}$ (since $\mathbf{a}^{H}$ is the conjugate transpose).
 By applying integration by parts to shift derivatives off of $\mathbf{v}$ and onto $\mathbf{a}^{*}$ (and assuming the boundary terms vanish under the chosen adjoint boundary conditions or homogeneous far-field conditions), this expression can be symmetrized.
 
 In particular, for divergence-free fields one finds:
 
 $$
-\int_{\Omega} \mathbf{a}^{*}\cdot\big[(\mathbf{\overline{u}}_{\mu}\cdot\nabla)\mathbf{v}\big]\; d\Omega
-= -\int_{\Omega} \big(\mathbf{\overline{u}}_{\mu}\cdot\nabla \mathbf{a}^{*}\big)\cdot \mathbf{v} \; d\Omega ,
+\int_{\Omega} \mathbf{a}^{* }\cdot\big[(\mathbf{\overline{u}}_{\mu}\cdot\nabla)\mathbf{v}\big] d\Omega
+= -\int_{\Omega} \big(\mathbf{\overline{u}}_{\mu}\cdot\nabla \mathbf{a}^{*}\big)\cdot \mathbf{v}  d\Omega ,
 $$
 
 and
 
 $$
-\int_{\Omega} \mathbf{a}^{*}\cdot\big[(\mathbf{v}\cdot\nabla)\mathbf{\overline{u}}_{\mu}\big]\; d\Omega
-= \int_{\Omega} \big(\mathbf{\overline{u}}_{\mu}\cdot\nabla \mathbf{a}^{*}\big)\cdot \mathbf{v} \; d\Omega ,
+\int_{\Omega} \mathbf{a}^{* }\cdot\big[(\mathbf{v}\cdot\nabla)\mathbf{\overline{u}}_{\mu}\big] d\Omega
+= \int_{\Omega} \big(\mathbf{\overline{u}}_{\mu}\cdot\nabla \mathbf{a}^{*}\big)\cdot \mathbf{v}  d\Omega ,
 $$
 
 where we have used $\nabla\!\cdot \mathbf{\overline{u}}_{\mu}=\nabla\!\cdot \mathbf{v}=0$ and assumed sufficient decay or cancellation on the boundaries.
@@ -262,11 +265,11 @@ Adding them together, we obtain:
 
 $$
 \mathbf{a}^{H}\!\left[(\partial_{\mathbf{\overline{u}}}\mathbf{A})[\mathbf{\overline{u}}_{\mu}]\right]\mathbf{v}
-= -\,2\int_{\Omega} \big(\mathbf{\overline{u}}_{\mu}\!\cdot\nabla \mathbf{a}^{*}\big)\cdot \mathbf{v} \, d\Omega ,
-\tag{10}
+= -2\int_{\Omega} \big(\mathbf{\overline{u}}_{\mu}\!\cdot\nabla \mathbf{a}^{*}\big)\cdot \mathbf{v}  d\Omega ,
+\quad (10)
 $$
 
-which is a manifestly symmetric overlap of $\mathbf{\overline{u}}_{\mu}$, the adjoint mode gradient, and the direct mode.
+which is a manifestly symmetric overlap of $\mathbf{\overline{u}}_ {\mu}$, the adjoint mode gradient, and the direct mode.
 This symmetric form highlights that regions where the baseflow sensitivity $\mathbf{\overline{u}}_{\mu}$ is large **and** the direct and adjoint mode have large gradients (indicating a strong convective 'self-interaction') will contribute most to shifting the eigenvalue.
 
 In other words, $(10)$ identifies the sensitive regions of the flow (often called the 'wavemaker' when localized). 
@@ -287,34 +290,34 @@ Thus,  the explicit operator derivative is
 
 $$
 \big(\partial_{\text{Re}}\mathbf{A}\big)_{\text{explicit}}
-= -\,\frac{1}{\text{Re}^{2}}\,\Delta , \tag{11}
+= -\frac{1}{\text{Re}^{2}}\Delta , \quad (11)
 $$
 
 i.e., a scaling of the Laplacian (acting on the velocity perturbation).
 
-Meanwhile, the implicit part requires solving the baseflow sensitivity equations $(6)$ for $\mathbf{\overline{u}}_{\text{Re}}(x)$.
+Meanwhile, the implicit part requires solving the baseflow sensitivity equations $(6)$ for $\mathbf{\overline{u}}_ {\text{Re}}(x)$.
 Once it is obtained, one can evaluate $(\partial_{\mathbf{\overline{u}}}\mathbf{A})[\mathbf{\overline{u}}_{\text{Re}}]$ as described by $(8)$.
 
 Substituting these into the general sensitivity formula $(4)$, we obtain a complete expression for the eigenvalue sensitivity to $\text{Re}$.
 
-Using $\mathbf{a}$ for the adjoint mode and $\mathbf{v}$ for the direct mode (with $\mathbf{a}^{H}\mathbf{B}\,\mathbf{v}=1$), the result can be written as
+Using $\mathbf{a}$ for the adjoint mode and $\mathbf{v}$ for the direct mode (with $\mathbf{a}^{H}\mathbf{B}\mathbf{v}=1$), the result can be written as
 
 $$
 \frac{d\sigma}{d\text{Re}}
 = \mathbf{a}^{H}\!\left[\big(\partial_{\text{Re}}\mathbf{A}\big)_{\text{explicit}}
-+ \big(\partial_{\overline{\mathbf{u}}}\mathbf{A}\big)\!\left[\overline{\mathbf{u}}_{\text{Re}}\right]\right]\mathbf{v}\,,
++ \big(\partial_{\overline{\mathbf{u}}}\mathbf{A}\big)\!\left[\overline{\mathbf{u}}_{\text{Re}}\right]\right]\mathbf{v},
 $$
 
 or, in expanded form, as the sum of an explicit and a baseflow contribution,
 
 $$
 \frac{d\sigma}{d\text{Re}}
-= -\,\frac{1}{\text{Re}^{2}}\int_{\Omega} \nabla \mathbf{a}^{*} : \nabla \mathbf{v}\, d\Omega
-\;-\; \int_{\Omega}\!\left[\,
+= -\frac{1}{\text{Re}^{2}}\int_{\Omega} \nabla \mathbf{a}^{*} : \nabla \mathbf{v} d\Omega
+- \int_{\Omega}\!\left[
 \big(\overline{\mathbf{u}}_{\text{Re}}\!\cdot\!\nabla \mathbf{a}^{*}\big)\!\cdot\!\mathbf{v}
 + \big(\overline{\mathbf{u}}_{\text{Re}}\!\cdot\!\nabla \mathbf{v}\big)\!\cdot\!\mathbf{a}^{*}
-\,\right]\! d\Omega ,
-\tag{12}
+\right]\! d\Omega ,
+\quad (12)
 $$
 
 where the first term comes from $(11)$ and the second term comes from the definition $(8)$ (prior to symmetrization).
@@ -336,8 +339,8 @@ The symmetric form derived in $(10)$ can also be applied to simplify $(12)$.
 Noting that
 
 $$
-\int_{\Omega}\big(\overline{\mathbf{u}}_{\text{Re}}\!\cdot\!\nabla \mathbf{v}\big)\!\cdot\!\mathbf{a}^{*}\, d\Omega
-= \int_{\Omega}\big(\overline{\mathbf{u}}_{\text{Re}}\!\cdot\!\nabla \mathbf{a}^{*}\big)\!\cdot\!\mathbf{v}\, d\Omega
+\int_{\Omega}\big(\overline{\mathbf{u}}_ {\text{Re}}\!\cdot\!\nabla \mathbf{v}\big)\!\cdot\!\mathbf{a}^{* } d\Omega
+= \int_{\Omega}\big(\overline{\mathbf{u}}_{\text{Re}}\!\cdot\!\nabla \mathbf{a}^{*}\big)\!\cdot\!\mathbf{v} d\Omega
 $$
 
 under the divergence–free assumption, we can combine the two baseflow terms.
@@ -345,9 +348,9 @@ Then $(12)$ becomes
 
 $$
 \frac{d\sigma}{d\text{Re}}
-= -\,\frac{1}{\text{Re}^{2}}\int_{\Omega} \nabla \mathbf{a}^{*} : \nabla \mathbf{v}\, d\Omega
-\;-\; 2 \int_{\Omega} \big(\overline{\mathbf{u}}_{\text{Re}}\!\cdot\!\nabla \mathbf{a}^{*}\big)\!\cdot\!\mathbf{v}\, d\Omega ,
-\tag{13}
+= -\frac{1}{\text{Re}^{2}}\int_{\Omega} \nabla \mathbf{a}^{*} : \nabla \mathbf{v} d\Omega
+- 2 \int_{\Omega} \big(\overline{\mathbf{u}}_{\text{Re}}\!\cdot\!\nabla \mathbf{a}^{*}\big)\!\cdot\!\mathbf{v} d\Omega ,
+\quad (13)
 $$
 
 which is equivalent to $(12)$ but highlights the symmetric adjoint–direct interaction driving the baseflow sensitivity.
@@ -375,14 +378,14 @@ It has been assumed that the velocity perturbations and baseflow sensitivity fie
 In a discretized setting, one typically works with mixed function spaces(velocity-pressure), as described in [LSA-FW FEM Spaces](./fem-spaces.md).
 The inner product $\langle \mathbf{a}, \mathbf{B}, \mathbf{v} \rangle$ in $(4)$ is effectively an $L^2$ inner product on velocities because $\mathbf{B}$ has the effect of weighting the velocity components (and annihilating pressure components).
 
-The pressure does not explicitly appear in the sensitivity formula except through its influence on $\mathbf{\overline{u}}_\mu$ and the enforcement of $\nabla\cdot \mathbf{\overline{u}}_\mu = 0$.
-In a finite-element weak formulation, the pressure acts as a Lagrange multiplier enforcing incompressibility; differentiating this constraint yields $\nabla\cdot \mathbf{\overline{u}}_\mu = 0$ in $(6)$.
+The pressure does not explicitly appear in the sensitivity formula except through its influence on $\mathbf{\overline{u}}_ \mu$ and the enforcement of $\nabla\cdot \mathbf{\overline{u}}_ \mu = 0$.
+In a finite-element weak formulation, the pressure acts as a Lagrange multiplier enforcing incompressibility; differentiating this constraint yields $\nabla\cdot \mathbf{\overline{u}}_ \mu = 0$ in $(6)$.
 We have also used $\nabla\cdot \mathbf{v}=0$ and $\nabla\cdot \mathbf{\overline{u}}_\mu=0$ to simplify terms in the integration by parts.
 
 ### Linearity
 
 The sensitivity analysis here is first-order (linear perturbations in both the baseflow and operator).
-It assumes the baseflow variation $\mathbf{\overline{u}}_\mu\;d\mu$ is small enough that higher-order terms are negligible.
+It assumes the baseflow variation $\mathbf{\overline{u}}_\mud\mu$ is small enough that higher-order terms are negligible.
 
 This is generally valid in the asymptotic sense for infinitesimal $d\mu$.
 If one requires large parameter changes, higher-order derivatives (as recently studied by Müller et al. [[3]](#references)) or a re-linearization may be needed for accuracy, but those are beyond the scope of this first-order analysis.
@@ -409,7 +412,7 @@ A possible API could include:
 
 All routines will reuse the existing FEM operators, spaces, boundary-condition machinery, and PETSc/SLEPc wrappers.
 
-### Baseflow sensitivity $\left(\overline{\mathbf{u}}_ {\mu},\;\overline{p}_{\mu}\right)$
+### Baseflow sensitivity $\left(\overline{\mathbf{u}}_ {\mu},\overline{p}_{\mu}\right)$
 
 
 
@@ -417,7 +420,7 @@ All routines will reuse the existing FEM operators, spaces, boundary-condition m
 At the converged baseflow, the Jacobian
 
 $$
-\mathbf{J} = \partial_{(\overline{\mathbf{u}},\,\overline{p})} F(\overline{\mathbf{u}}, \overline{p}; \mu)
+\mathbf{J} = \partial_{(\overline{\mathbf{u}},\overline{p})} F(\overline{\mathbf{u}}, \overline{p}; \mu)
 $$
 
 can be assembled (same forms, spaces, and BCs as the Newton step).
@@ -427,14 +430,14 @@ can be assembled (same forms, spaces, and BCs as the Newton step).
 $$
 \mathbf{J}
 \begin{bmatrix}
-   \overline{\mathbf{u}}_{\mu} \\[2pt] p_{\mu}
-\end{bmatrix} = -\,F_{\mu}(\overline{\mathbf{u}}, \overline{p}; \mu).
+   \overline{\mathbf{u}}_ {\mu} \\[2pt] p_{\mu}
+\end{bmatrix} = -F_{\mu}(\overline{\mathbf{u}}, \overline{p}; \mu).
 $$
 
 3. For $\mu = \text{Re}$ (with $\nu = 1/\text{Re}$), $F_{\mu}$ is analytic:
 
    $$
-   F_{\mu}^{(u)} = +\frac{1}{\text{Re}^{2}}\,\Delta\,\overline{\mathbf{u}}.
+   F_{\mu}^{(u)} = +\frac{1}{\text{Re}^{2}}\Delta\overline{\mathbf{u}}.
    $$
 
    The right-hand side can therefore reuse the viscous form to evaluate $\Delta\overline{\mathbf{u}}$ and be scaled by $1/\text{Re}^{2}$.
@@ -460,14 +463,14 @@ Two equivalent options are possible:
 * Explicit adjoint operator. The transpose/conjugate of the assembled blocks can be used to solve
 
   $$
-  \mathbf{A}^{H}\mathbf{a} = \sigma^{*}\,\mathbf{B}^{H}\mathbf{a}.
+  \mathbf{A}^{H}\mathbf{a} = \sigma^{*}\mathbf{B}^{H}\mathbf{a}.
   $$
 
 
 In both cases, $\mathbf{a}$ should be scaled to satisfy the bi-orthogonality
 
 $$
-\mathbf{a}^{H}\mathbf{B}\,\mathbf{v} = 1.
+\mathbf{a}^{H}\mathbf{B}\mathbf{v} = 1.
 $$
 
 > **Notes.** Adjoint BCs should mirror the direct BCs so that boundary terms vanish in the sensitivity integrals.
@@ -480,7 +483,7 @@ Once the above terms have been computed, we can assemble the scalar derivative u
 
    $$
    \mathbf{a}^{H} \big(\partial_{\text{Re}}\mathbf{A}\big)\mathbf{v}
-   = -\frac{1}{\text{Re}^{2}} \int_{\Omega} \nabla \mathbf{a}^{*} : \nabla \mathbf{v}\, d\Omega.
+   = -\frac{1}{\text{Re}^{2}} \int_{\Omega} \nabla \mathbf{a}^{*} : \nabla \mathbf{v} d\Omega.
    $$
 
    In UFL this can be written as follows:
@@ -494,8 +497,8 @@ Once the above terms have been computed, we can assemble the scalar derivative u
    $$
    \mathbf{a}^{H}\!\left[(\partial_{\overline{\mathbf{u}}}\mathbf{A})[\overline{\mathbf{u}}_{\mu}]\right]\mathbf{v}
    = \int_{\Omega}
-   \Big[(\overline{\mathbf{u}}_{\mu}\!\cdot\!\nabla\mathbf{v})\!\cdot\!\mathbf{a}^{*}
-       +(\mathbf{v}\!\cdot\!\nabla\overline{\mathbf{u}}_{\mu})\!\cdot\!\mathbf{a}^{*}\Big]\, d\Omega.
+   \Big[(\overline{\mathbf{u}}_ {\mu}\!\cdot\!\nabla\mathbf{v})\!\cdot\!\mathbf{a}^{* }
+       +(\mathbf{v}\!\cdot\!\nabla\overline{\mathbf{u}}_{\mu})\!\cdot\!\mathbf{a}^{*}\Big] d\Omega.
    $$
 
    This can be evaluated by reusing the existing convection and shear forms with $\overline{\mathbf{u}}_{\mu}$ as the base field.
@@ -518,7 +521,7 @@ The implementation will include a finite-difference check:
 2. Form the centered difference
 
    $$
-   \frac{\sigma(\mu+\Delta\mu)-\sigma(\mu-\Delta\mu)}{2\,\Delta\mu}
+   \frac{\sigma(\mu+\Delta\mu)-\sigma(\mu-\Delta\mu)}{2\Delta\mu}
    $$
 
    and compare against the adjoint prediction.
