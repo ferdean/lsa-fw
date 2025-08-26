@@ -4,7 +4,7 @@ This command-line interface assembles finite element matrices (A, M)
 for linear stability analysis of incompressible Navier-Stokes flows.
 
 Subcommands:
-- assemble: Load a mesh, define FE spaces and BCs, compute base flow, and
+- assemble: Load a mesh, define FE spaces and BCs, compute baseflow, and
             assemble the FEM system for eigenvalue analysis.
 
 Example usage:
@@ -62,16 +62,14 @@ def _get_baseflow(
 ) -> dfem.Function:
     """Load baseflow from disk or compute it if not provided."""
     if base_flow_path:
-        log_global(logger, logging.INFO, "Loading base flow from '%s'", base_flow_path)
+        log_global(logger, logging.INFO, "Loading baseflow from '%s'", base_flow_path)
         u_base = load_baseflow(base_flow_path, spaces)
     else:
-        log_global(
-            logger, logging.INFO, "Computing base flow from scratch (Re=%g).", re
-        )
+        log_global(logger, logging.INFO, "Computing baseflow from scratch (Re=%g).", re)
         u_base = BaseFlowSolver(spaces, bcs=bcs).solve(re=re)
 
     if show_plot:
-        plot_mixed_function(u_base, PlotMode.INTERACTIVE, scale=0.0, title="Base flow")
+        plot_mixed_function(u_base, PlotMode.INTERACTIVE, scale=0.0, title="Baseflow")
 
     return u_base
 
@@ -105,7 +103,7 @@ def assemble_fem(args: argparse.Namespace) -> None:
     else:
         raise ValueError("Boundary condition config (--bcs) must be provided.")
 
-    # Base flow
+    # Baseflow
     base_flow = _get_baseflow(spaces, args.base_flow, args.re, bcs, show_plot=args.plot)
 
     # Assembly
@@ -152,7 +150,7 @@ def main() -> None:
     assemble.add_argument(
         "--bcs", type=Path, required=True, help="Boundary condition config TOML"
     )
-    assemble.add_argument("--base_flow", type=Path, help="Path to base flow folder")
+    assemble.add_argument("--base_flow", type=Path, help="Path to baseflow folder")
     assemble.add_argument("--re", type=float, default=80.0, help="Reynolds number")
     assemble.add_argument(
         "--output_path",

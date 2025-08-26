@@ -1,4 +1,4 @@
-# LSA-FW Solver Base Flow
+# LSA-FW Solver Baseflow
 
 > [Back to Solver Overview](solver.md)
 
@@ -6,15 +6,15 @@
 
 ## Introduction
 
-The base flow solver module, through its main object `BaseFlowSolver`, computes the steady-state (base) flow solution of the incompressible Navier-Stokes equations in non-dimensional form.
-This base flow serves as the background solution around which linear perturbations are introduced in global stability analysis.
+The baseflow solver module, through its main object `BaseFlowSolver`, computes the steady-state (base) flow solution of the incompressible Navier-Stokes equations in non-dimensional form.
+This baseflow serves as the background solution around which linear perturbations are introduced in global stability analysis.
 
 The solver performs the following steps:
 
 1. Solves a Stokes problem to obtain a smooth, physically meaningful initial guess.
 2. Optionally, ramps the Reynolds number from $\text{Re} = 1$ to the target value in order to improve robustness.
 3. Solves the full steady Navier-Stokes equations using the (optionally damped) Newton's method.
-4. Provides optional plotting and caching of the resulting base flow.
+4. Provides optional plotting and caching of the resulting baseflow.
 
 ## Mathematical Formulation
 
@@ -76,17 +76,17 @@ where the right-hand side includes any Neumann or Robin terms.
 
 Using the Stokes flow as an initial guess improves robustness, especially at moderate and high Reynolds numbers where Newton's method is highly sensitive to initial conditions.
 
-## Base Flow Examples
+## Baseflow Examples
 
 ### Cylinder Flow
 
-![Cylinder base flow](assets/solver_baseflow-example_cylinder.png)
+![Cylinder baseflow](assets/solver_baseflow-example_cylinder.png)
 
 This domain models flow past a circular cylinder in a confined channel, a classic benchmark for vortex shedding and instability.
 
 ### Backward-Facing Step
 
-![Step base flow](assets/solver_baseflow-example_step.png)
+![Step baseflow](assets/solver_baseflow-example_step.png)
 
 This geometry illustrates flow separation and reattachment, and is commonly used in reattachment length studies.
 
@@ -208,4 +208,4 @@ python -m Solver baseflow \
     --re 80.0 --steps 5 --damping 0.8 --plot # example
 ```
 
-This builds the mesh, loads boundary conditions, computes the base flow, and optionally plots it.
+This builds the mesh, loads boundary conditions, computes the baseflow, and optionally plots it.

@@ -68,7 +68,7 @@ def test_assembler(
     test_spaces: FunctionSpaces,
     test_bcs: BoundaryConditions,
 ) -> LinearizedNavierStokesAssembler:
-    """Define an assembler for the linearized system with zero base flow."""
+    """Define an assembler for the linearized system with zero baseflow."""
     return LinearizedNavierStokesAssembler(
         base_flow=zero_base_flow, spaces=test_spaces, re=1.0, bcs=test_bcs
     )

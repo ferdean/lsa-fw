@@ -14,7 +14,7 @@ For now on in the documentation, a 'mesh' (or grid) refers to a finite decomposi
 Formally, let
 
 $$
-\mathcal{T}_ h = \[K_i\]_{i=1}^N
+\mathcal{T}_ h = [K_i]_{i=1}^N
 $$
 
 denote a conforming mesh, where
@@ -150,18 +150,18 @@ In the following figure, an schematic representation of the step flow domain wit
 Mesh adaptivity plays a crucial role in the accurate simulation and stability analysis of fluid flows.
 In global stability problems, regions of high velocity gradient, vorticity, or instability sensitivity require finer resolution to accurately capture spatial modes and associated eigenvalues.
 
-The current adaptive strategy is based only on the steady base flow solution obtained over a coarse initial mesh.
+The current adaptive strategy is based only on the steady baseflow solution obtained over a coarse initial mesh.
 However, future work is planned in order to enhance mesh refinement:
 
 * Vorticity-driven refinement: using $\omega = \nabla \times \mathbf{u}_b$
-* Adjoint-based sensitivity: refining regions of high sensitivity of eigenvalues to base flow perturbations
+* Adjoint-based sensitivity: refining regions of high sensitivity of eigenvalues to baseflow perturbations
 * Mode-driven: leveraging previously computed global modes to guide refinement
 
 The workflow is as follows:
 
-1. Solve the base flow (e.g., via steady Navier–Stokes) on a baseline mesh.
-Refer to the [base flow solver section](baseflow.md).
-2. Compute refinement indicators based on the base flow field, typically:
+1. Solve the baseflow (e.g., via steady Navier–Stokes) on a baseline mesh.
+Refer to the [baseflow solver section](baseflow.md).
+2. Compute refinement indicators based on the baseflow field, typically:
    * Velocity gradients
    * Magnitude of velocity
    * Distance to boundaries or obstacles
@@ -169,7 +169,7 @@ Refer to the [base flow solver section](baseflow.md).
 
 This method allows high-fidelity resolution near key flow structures such as shear layers, recirculation zones, and obstacle wakes.
 
-As an example, the following figure shows the outputted adapted mesh, based on the resolved velocity magnitude field of the base flow for the flow over a cylinder (the boundary conditions and physical constraints are now irrelevant).
+As an example, the following figure shows the outputted adapted mesh, based on the resolved velocity magnitude field of the baseflow for the flow over a cylinder (the boundary conditions and physical constraints are now irrelevant).
 The red dotted line represents a symmetry axis.
 
 ![Adapted mesh](assets/meshing-adapt.png)

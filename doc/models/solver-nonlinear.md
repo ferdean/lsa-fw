@@ -79,11 +79,11 @@ SNES (Scalable Nonlinear Equations Solvers) in PETSc provides a flexible framewo
 ### Residual Convergence Example
 
 The figure below shows the Newton residual norm across a Reynolds ramp used for robust baseflow convergence.
-It is solved sequentially at increasing $Re$ (e.g., $Re=1 \rightarrow 21 \rightarrow 42$), reusing each converged state as the initial guess for the next stage.
+It is solved sequentially at increasing $\text{Re}$ (e.g., $\text{Re}=1 \rightarrow 21 \rightarrow 42$), reusing each converged state as the initial guess for the next stage.
 
 The curve concatenates the Newton residuals over all stages.
-Red dashed vertical lines mark the transitions between Reynolds numbers, and each transition is annotated with the corresponding $Re$ in red.
-Within each $Re$ block, the residual typically exhibits the steep decay expected of Newton's method near the solution; a small jump at each $Re$ change reflects the harder problem that follows, after which the line search drives the residual back down to the target tolerance.
+Red dashed vertical lines mark the transitions between Reynolds numbers, and each transition is annotated with the corresponding $\text{Re}$ in red.
+Within each $\text{Re}$ block, the residual typically exhibits the steep decay expected of Newton's method near the solution; a small jump at each $\text{Re}$ change reflects the harder problem that follows, after which the line search drives the residual back down to the target tolerance.
 
 ![Newton Residual Convergence](assets/solver_nonlinear-snes_residuals.png)
 
