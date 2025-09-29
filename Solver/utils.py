@@ -168,6 +168,24 @@ class iEpsWhich(Enum):
         """Convert to the corresponding SLEPc.EPS.Which value."""
         return self.value
 
+    def to_arpack(self) -> str:
+        """Convert to the corresponding ARPACK textual type."""
+        match self:
+            case iEpsWhich.LARGEST_REAL:
+                return "LR"
+            case iEpsWhich.LARGEST_IMAGINARY:
+                return "LI"
+            case iEpsWhich.SMALLEST_REAL:
+                return "SR"
+            case iEpsWhich.SMALLEST_IMAGINARY:
+                return "SI"
+            case iEpsWhich.LARGEST_MAGNITUDE:
+                return "LM_abs"
+            case _:
+                raise ValueError(
+                    f"Unsupported type for ARPACK-based eigensolver: {self.name}."
+                )
+
 
 class iEpsSolver:
     """Minimal wrapper around SLEPc EPS solver to provide a safe, consistent interface.
@@ -196,11 +214,11 @@ class iEpsSolver:
         return self._eps
 
     def set_operators(self, A: iPETScMatrix, M: iPETScMatrix | None = None) -> None:
-        """Set the matrix operators for the generalized eigenproblem Ax + λMx = 0."""
+        """Set the matrix operators for the generalized eigenproblem Ax = λMx."""
         if M is not None:
-            self._eps.setOperators(-A.raw, M.raw)
+            self._eps.setOperators(A.raw, M.raw)
         else:
-            self._eps.setOperators(-A.raw)
+            self._eps.setOperators(A.raw)
 
     def set_problem_type(self, problem_type: iEpsProblemType) -> None:
         """Set the eigenproblem type. Refer to iEpsProblemType enum."""
@@ -225,7 +243,7 @@ class iEpsSolver:
 
     def set_target(self, sigma: float | complex) -> None:
         """Set spectral transformation shift (target)."""
-        self._eps.setTarget(Scalar(sigma))
+        self._eps.setTarget(Scalar(sigma.real))
 
     def set_interval(self, a: float, b: float) -> None:
         """Compute eigenvalues in real interval [a, b]."""
@@ -374,7 +392,7 @@ class iKSP:
             self._ksp.setOptionsPrefix(prefix)
         self._ksp.setFromOptions()
 
-    def solve(self, b: iPETScVector, x: iPETScVector | None = None) -> None:
+    def solve(self, b: iPETScVector, x: iPETScVector | None = None) -> iPETScVector:
         """Solve the linear system Ax = b.
 
         If x is not provided, a new vector is created.
@@ -382,6 +400,7 @@ class iKSP:
         if x is None:
             x = b.duplicate()
         self._ksp.solve(b.raw, x.raw)
+        return x
 
     def get_solution(self) -> iPETScVector:
         """Retrieve the solution vector from the last solve."""
