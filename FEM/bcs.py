@@ -38,6 +38,8 @@ class BoundaryConditionType(StrEnum):
     """Periodic BC."""
     ROBIN = auto()
     """Weak Robin BC."""
+    SYMMETRY = auto()
+    """Symmetric BC (no penetration, free-slip)."""
 
     @classmethod
     def from_string(cls, value: str) -> BoundaryConditionType:
@@ -169,6 +171,12 @@ def define_bcs(
                 velocity_periodic_map.append(v_map)
                 pressure_periodic_map.append(p_map)
 
+            case BoundaryConditionType.SYMMETRY:
+                # TODO: Right now, the `comp` parameter is hard-coded to '1'. This parameter should be configurable
+                # per boundary via TOML file.
+                bc = _dirichlet_component_zero(vel_subspace, comp=1, facets=facets)
+                velocity_bcs.append((marker, bc))
+
             case _:
                 raise AssertionError(f"Unhandled boundary condition type: {cfg.type!r}")
 
@@ -290,6 +298,19 @@ def apply_periodic_constraints(
         raise TypeError(
             f"Unsupported object type: {type(obj)}. Expected iPETScMatrix or iPETScVector."
         )
+
+
+def _dirichlet_component_zero(
+    subspace: dfem.FunctionSpace, comp: int, facets: np.ndarray
+) -> dfem.DirichletBC:
+    comp_subspace = subspace.sub(comp)  # Component subspace (scalar)
+    fdim = subspace.mesh.topology.dim - 1
+
+    dofs_pair = dfem.locate_dofs_topological((comp_subspace, subspace), fdim, facets)
+    dofs_sub = dofs_pair[0] if isinstance(dofs_pair, (list, tuple)) else dofs_pair
+
+    zero = dfem.Constant(subspace.mesh, Scalar(0.0))
+    return dfem.dirichletbc(zero, dofs_sub, comp_subspace)
 
 
 def _wrap_constant_vector(

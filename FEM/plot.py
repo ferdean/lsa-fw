@@ -28,7 +28,6 @@ from .utils import iPETScBlockMatrix, iPETScMatrix
 for log in ("matplotlib", "PIL.PngImagePlugin"):
     logging.getLogger(log).setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
-
 plt.rcParams.update(
     {
         "text.usetex": True,
@@ -40,28 +39,42 @@ plt.rcParams.update(
         "ytick.labelsize": 8,
         "xtick.direction": "in",
         "ytick.direction": "in",
+        "savefig.bbox": "tight",
     }
 )
 
 _DEFAULT_FIGSIZE: Final[tuple[float, float]] = (6, 3)
 
 
+def _as_real(a: np.ndarray, *, part: str = "real") -> np.ndarray:
+    if np.iscomplexobj(a):
+        return a.real if part == "real" else a.imag
+    return np.asarray(a, dtype=np.float64)
+
+
 def spy(
-    matrix: iPETScMatrix | iPETScBlockMatrix,
+    matrix_a: iPETScMatrix | iPETScBlockMatrix,
+    matrix_b: iPETScMatrix | iPETScBlockMatrix,
     out_path: Path,
-    dpi: int = 300,
     *,
     spaces: FunctionSpaces | None = None,
 ) -> None:
-    """Plot the sparsity pattern of an iPETScMatrix as a static PNG.
+    """Plot sparsity patterns of two (block) PETSc matrices side by side and export as vector graphics."""
+    suffix = out_path.suffix.lower()
+    if suffix not in {".pdf", ".svg"}:
+        raise ValueError(
+            f"Only vector formats .pdf and .svg are supported (got {suffix!r})."
+        )
 
-    If function spaces are given as an argument, the output plot reorders the matrix so that the DOFs are ordered by
-    type: [u_1 u_2 ... u_n p_1 p_2 ... p_m].
-    """
-    if isinstance(matrix, iPETScBlockMatrix):
-        matrix = matrix.to_aij()
+    if isinstance(matrix_a, iPETScBlockMatrix):
+        matrix_a = matrix_a.to_aij()
+    if isinstance(matrix_b, iPETScBlockMatrix):
+        matrix_b = matrix_b.to_aij()
 
-    comm = matrix.comm
+    comm_petsc = matrix_a.comm
+    if matrix_b.comm != comm_petsc:
+        raise RuntimeError("Both matrices must live on the same MPI communicator.")
+    comm = comm_petsc.tompi4py()
 
     if comm.size > 1:
         log_global(
@@ -83,15 +96,35 @@ def spy(
             global_dofs_p = np.sort(np.concatenate(dofs_p))
             perm = np.concatenate([global_dofs_u, global_dofs_p])
 
-    csr = _to_csr_global(matrix)
-    if csr is None:
-        # Non-root ranks drop out here
-        return
+    csr_a = _to_csr_global(matrix_a)
+    csr_b = _to_csr_global(matrix_b)
+    if csr_a is None or csr_b is None:
+        return  # Non-root ranks exit
 
     if perm is not None:
-        csr = csr[perm, :][:, perm]
+        csr_a = csr_a[perm, :][:, perm]
+        csr_b = csr_b[perm, :][:, perm]
 
-    _save_plot(csr, out_path.with_suffix(".png"), dpi)
+    fig, axes = plt.subplots(1, 2, figsize=(6, 4))
+    ax_left, ax_right = axes
+
+    ax_left.spy(csr_a, color="k", markersize=1, rasterized=True)
+    ax_right.spy(csr_b, color="k", markersize=1, rasterized=True)
+
+    ax_left.set_title(r"Linearized operator")
+    ax_right.set_title(r"Mass matrix")
+
+    for ax in (ax_left, ax_right):
+        ax.set_xlabel(r"column index")
+        ax.set_ylabel(r"row index")
+        ax.ticklabel_format(style="plain", useOffset=False, axis="both")
+
+    fig.tight_layout()
+    fig.savefig(out_path)
+    plt.close(fig)
+
+    if comm.rank == 0:
+        log_global(logger, logging.INFO, "Sparsity plot written to %s", out_path)
 
 
 def plot_mixed_function(
@@ -166,6 +199,7 @@ def _plot_mixed_function_pyvista(
 
     grid_u = pyvista.UnstructuredGrid(c_u, ct_u, x_u)
     grid_u["velocity"] = u_all
+    grid_u["u_x"] = u_all[:, 0]
     glyphs = grid_u.glyph(orient="velocity", factor=scale)
 
     if domain is not None:
@@ -184,7 +218,15 @@ def _plot_mixed_function_pyvista(
     if title:
         plotter_u.add_text(f"{title} — Velocity", position="upper_edge", font_size=12)
 
-    plotter_u.add_mesh(grid_u, show_edges=False, show_scalar_bar=False, cmap=cmap)  # type: ignore[arg-type]
+    ux_max = float(np.abs(grid_u["u_x"]).max())
+    plotter_u.add_mesh(
+        grid_u,
+        scalars="u_x",
+        show_edges=False,
+        show_scalar_bar=True,
+        clim=[-ux_max, ux_max],
+        cmap=cmap,
+    )
     plotter_u.add_mesh(glyphs)
     plotter_u.view_xy()  # type:ignore[call-arg]
     plotter_u.show()
@@ -261,9 +303,9 @@ def _plot_mixed_function_matplotlib(
     triangles = np.array(triangle_cells)
     xy = coords[:, :2]
     tri = Triangulation(xy[:, 0], xy[:, 1], triangles)
-    u_vals = u.x.array.reshape((-1, 2))
-    u_mag = np.linalg.norm(u_vals, axis=1)
-    p_vals = p.x.array
+    u_vals = _as_real(u.x.array.reshape((-1, 2)))
+    # u_mag = np.linalg.norm(u_vals, axis=1)
+    p_vals = _as_real(p.x.array)
 
     if domain:
         (xmin, ymin), (xmax, ymax) = domain
@@ -276,7 +318,7 @@ def _plot_mixed_function_matplotlib(
     )
 
     ax0, ax1 = axs
-    tpc_u = ax0.tripcolor(tri, u_mag, shading="gouraud", cmap="viridis")
+    tpc_u = ax0.tripcolor(tri, u_vals[:, 0], shading="gouraud", cmap="viridis")
     ax0.set_ylabel(r"$y$ (-)")
     ax0.set_xlim(xmin, xmax)
     ax0.set_ylim(ymin, ymax)
@@ -310,7 +352,7 @@ def _plot_mixed_function_matplotlib(
     for ax, tpc, label in zip(
         axs,
         [tpc_u, tpc_p],
-        [r"$\|\mathbf{\tilde{\bar{u}}}\|_{L_2}$", r"$\tilde{p}$ (-)"],
+        [r"$\mathbf{\tilde{u}}_{x}$", r"$\tilde{p}$ (-)"],
     ):
         ax.set_aspect("equal", adjustable="box")
         ax.tick_params(direction="in")

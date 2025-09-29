@@ -245,6 +245,19 @@ class iPETScMatrix:
         result.axpy(Scalar(1.0), other.raw)
         return iPETScMatrix(result)
 
+    def __sub__(self, other: object) -> iPETScMatrix:
+        """Perform matrix addition."""
+        if not isinstance(other, iPETScMatrix):
+            raise NotImplementedError(f"Cannot add iPETScMatrix with {type(other)}")
+        if self.shape != other.shape:
+            raise ValueError(
+                f"Incompatible matrix shapes: {self.shape} vs {other.shape}"
+            )
+
+        result = self._mat.duplicate(copy=True)
+        result.axpy(Scalar(-1.0), other.raw)
+        return iPETScMatrix(result)
+
     def __radd__(self, other: object) -> iPETScMatrix:
         """Perform matrix addition from the right."""
         return self.__add__(other)
@@ -442,9 +455,10 @@ class iPETScMatrix:
         """Print the matrix."""
         self._mat.view()
 
-    def scale(self, alpha: int | float | complex) -> None:
+    def scale(self, alpha: int | float | complex) -> iPETScMatrix:
         """Scale the matrix by a constant factor."""
         self._mat.scale(Scalar(alpha))
+        return self
 
     def shift(self, alpha: int | float | complex) -> None:
         """Shift the diagonal of the matrix by a constant."""
