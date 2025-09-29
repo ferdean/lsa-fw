@@ -56,7 +56,7 @@ def load_bc_config(path: Path) -> Sequence[BoundaryConditionsConfig]:
     cfg = read_toml(path)
     bcs: Sequence[BoundaryConditionsConfig] = []
     for bc in cfg.get("BC"):
-        raw_value = bc.get("value")
+        raw_value = bc.get("value", 0.0)
         # for periodic we expect two ints
         if bc.get("type").lower().strip() == "periodic":
             if (
