@@ -1,5 +1,6 @@
 """Tests for FEM.operators module."""
 
+from FEM.utils import iPETScMatrix
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
 import numpy as np
@@ -18,6 +19,32 @@ from FEM.operators import (
 from FEM.spaces import FunctionSpaces, FunctionSpaceType, define_spaces
 from Meshing.core import Mesher
 from Meshing.utils import Shape, iCellType
+
+
+# --- helpers (module scope, near top of file) --------------------------------
+
+
+def _diag_entries(mat: iPETScMatrix, idx: list[int] | np.ndarray) -> np.ndarray:
+    idx = np.asarray(idx, dtype=int)
+    out = np.empty(idx.size, dtype=float)
+    for k, i in enumerate(idx):
+        out[k] = mat.get_value(int(i), int(i))
+    return out
+
+
+def _rows_are_identity(
+    mat: iPETScMatrix, rows: list[int] | np.ndarray, atol: float = 1e-12
+) -> bool:
+    for r in rows:
+        cols, vals = mat.get_row(int(r))
+        for c, v in zip(cols, vals):
+            if c == r:
+                if not np.isclose(v, 1.0, atol=atol):
+                    return False
+            else:
+                if not np.isclose(v, 0.0, atol=atol):
+                    return False
+    return True
 
 
 @pytest.fixture(scope="module")
@@ -195,7 +222,7 @@ class TestLinearizedAssembler:
         G = subblocks[0, 1]
         D = subblocks[1, 0]
 
-        D.axpy(-1.0, G.T)
+        D.axpy(1.0, G.T)
         assert D.norm < 1e-10
 
     def test_pressure_nullspace(
@@ -305,6 +332,121 @@ class TestLinearizedAssembler:
             LinearizedNavierStokesAssembler(
                 base_flow=zero_base_flow, spaces=test_spaces, re=1.0, bcs=robin_bcs
             )
+
+    def test_eigen_ignores_pressure_dirichlet(
+        self,
+        test_mesher: Mesher,
+        test_spaces: FunctionSpaces,
+        zero_base_flow: dfem.Function,
+    ) -> None:
+        """Test that pressure Dirichlet BCs are not enforced."""
+        cfgs = [
+            BoundaryConditionsConfig(
+                marker=1,
+                type=BoundaryConditionType.DIRICHLET_PRESSURE,
+                value=0.0,
+            )
+        ]
+        bcs_with_p = define_bcs(test_mesher, test_spaces, cfgs)
+
+        with pytest.raises(ValueError):
+            _ = LinearizedNavierStokesAssembler(
+                base_flow=zero_base_flow, spaces=test_spaces, re=1.0, bcs=bcs_with_p
+            )
+
+    def test_dirichlet_rows_are_identity(
+        self,
+        test_bcs: BoundaryConditions,
+        test_spaces: FunctionSpaces,
+        zero_base_flow: dfem.Function,
+    ) -> None:
+        """Test that velocity Dirichlet rows/cols are identical identity rows in both A and M."""
+        asm = LinearizedNavierStokesAssembler(
+            base_flow=zero_base_flow, spaces=test_spaces, re=1.0, bcs=test_bcs
+        )
+        A = asm.assemble_linear_operator()
+        M = asm.assemble_mass_matrix()
+
+        dirichlet_rows: list[int] = []
+        for _, bc in test_bcs.velocity:
+            dirichlet_rows.extend(list(bc.dof_indices()[0]))
+        assert dirichlet_rows, "No velocity Dirichlet rows found."
+
+        assert _rows_are_identity(
+            A, dirichlet_rows
+        ), "A: Dirichlet rows are not identity."
+        assert _rows_are_identity(
+            M, dirichlet_rows
+        ), "M: Dirichlet rows are not identity."
+
+    def test_vv_block_symmetric_for_zero_baseflow(
+        self, test_assembler: LinearizedNavierStokesAssembler
+    ) -> None:
+        """Tes that with zero baseflow, VV is symmetric."""
+        L = test_assembler.assemble_linear_operator()
+        vv = test_assembler.extract_subblocks(L)[0, 0]
+        assert (
+            vv.is_numerically_symmetric()
+        ), "VV block should be symmetric for zero baseflow."
+
+    def test_block_structure_vp_pv_nonzero_pp_zero(
+        self, test_assembler: LinearizedNavierStokesAssembler
+    ) -> None:
+        """Test that the structure of the linear operator is as expected."""
+        L = test_assembler.assemble_linear_operator()
+        blocks = test_assembler.extract_subblocks(L)
+        vp, pv, pp = blocks[0, 1], blocks[1, 0], blocks[1, 1]
+
+        assert vp.norm > 0, "VP (gradient) should be nonzero."
+        assert pv.norm > 0, "PV (divergence) should be nonzero."
+        assert pp.norm < 1e-12, "PP block should be numerically zero."
+
+    def test_sponge_affects_vv_only_psd_increment(
+        self,
+        test_spaces: FunctionSpaces,
+        test_bcs: BoundaryConditions,
+        zero_base_flow: dfem.Function,
+    ) -> None:
+        """Test that sponge adds a positive mass-like term to VV; VP, PV, PP unchanged."""
+        asm0 = LinearizedNavierStokesAssembler(
+            base_flow=zero_base_flow,
+            spaces=test_spaces,
+            re=1.0,
+            bcs=test_bcs,
+            use_sponge=False,
+        )
+        asm1 = LinearizedNavierStokesAssembler(
+            base_flow=zero_base_flow,
+            spaces=test_spaces,
+            re=1.0,
+            bcs=test_bcs,
+            use_sponge=True,
+        )
+        A0 = asm0.assemble_linear_operator()
+        A1 = asm1.assemble_linear_operator()
+
+        B0 = asm0.extract_subblocks(A0)
+        B1 = asm1.extract_subblocks(A1)
+
+        # VV increment
+        dvv = B1[0, 0]
+        dvv.axpy(-1.0, B0[0, 0])
+        assert dvv.is_numerically_symmetric()
+
+        for _ in range(6):
+            y = dvv.create_vector_right()
+            y.set_random()
+            assert y.dot(dvv @ y) >= -1e-12, "Sponge increment on VV is not PSD."
+
+        # Other blocks unchanged
+        for blk1, blk0, name in [
+            (B1[0, 1], B0[0, 1], "VP"),
+            (B1[1, 0], B0[1, 0], "PV"),
+            (B1[1, 1], B0[1, 1], "PP"),
+        ]:
+            diff = blk1
+            diff.axpy(-1.0, blk0)
+            assert diff.norm < 1e-10, f"Sponge unexpectedly changed {name}."
 
 
 class TestStationaryAssembler:

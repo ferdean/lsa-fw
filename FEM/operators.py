@@ -28,6 +28,7 @@ from ufl import (  # type: ignore[import-untyped]
     Form,
     TestFunctions,
     TrialFunctions,
+    conj,
     div,
     dx,
     grad,
@@ -166,20 +167,16 @@ class StokesAssembler(BaseAssembler):
     ) -> None:
         """Initialize Stokes assembler."""
         super().__init__(spaces, bcs, tags=tags)
-        self._f = f or dfem.Constant(
-            spaces.velocity.mesh, (0.0,) * spaces.velocity.mesh.topology.dim
-        )
-        self._g = dfem.Constant(
-            spaces.velocity.mesh, (0.0,) * spaces.velocity.mesh.topology.dim
-        )
+
+        zeros = tuple(Scalar(0.0) for _ in range(spaces.velocity.mesh.topology.dim))
+        self._f = f or dfem.Constant(spaces.velocity.mesh, zeros)
+        self._g = dfem.Constant(spaces.velocity.mesh, zeros)
 
         self._u, self._p = TrialFunctions(spaces.mixed)
         self._v, self._q = TestFunctions(spaces.mixed)
 
         self._wh = dfem.Function(spaces.mixed)
         self._apply_dirichlet(self._wh)
-
-        # TODO: handle periodic constraints
 
         self._jacobian, self._residual = self._build_forms()
 
@@ -197,21 +194,18 @@ class StokesAssembler(BaseAssembler):
 
     def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
         bform = (
-            inner(grad(self._u), grad(self._v)) * dx
-            + inner(self._p, div(self._v)) * dx
-            + inner(div(self._u), self._q) * dx
+            inner(grad(self._u), conj(grad(self._v))) * dx
+            + inner(self._p, conj(div(self._v))) * dx
+            + inner(div(self._u), conj(self._q)) * dx
         )
-        lform = -inner(self._f, self._v) * dx
 
-        # The pressure term seems to have the incorrect sign. This is done deliberately, so that the resulting
-        # block system is symmetric. This symmetry lets us reuse later symmetric solvers and pre-conditioners for
-        # both the Stokes and Navier–Stokes operators.
+        lform = inner(self._f, conj(self._v)) * dx
 
+        # Natural BCs (tests conjugated)
         for marker, g in self._v_neumann:
-            lform += inner(self._v, g) * self._ds(marker)
-
+            lform += inner(g, conj(self._v)) * self._ds(marker)
         for marker, g in self._p_neumann:
-            lform += inner(self._q, g) * self._ds(marker)
+            lform += inner(g, conj(self._q)) * self._ds(marker)
 
         return bform, lform
 
@@ -223,12 +217,11 @@ class StokesAssembler(BaseAssembler):
         if key_jac not in self._mat_cache:
             A = assemble_matrix(self.jacobian, bcs=list(self.bcs))
             A.assemble()
-            A_wrapper = iPETScMatrix(A)
-            if not self._p_bcs:
-                # Pin pressure DOF
-                _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
-                A_wrapper.pin_dof(self._dofs_p[0])
-            self._mat_cache[key_jac] = A_wrapper
+            Aw = iPETScMatrix(A)
+            # if not self._p_bcs:
+            #     _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
+            #     Aw.pin_dof(self._dofs_p[0])
+            self._mat_cache[key_jac] = Aw
 
         if key_res not in self._vec_cache:
             b = assemble_vector(self.residual)
@@ -244,35 +237,35 @@ class VariationalForms:
 
     @staticmethod
     def mass(u: Argument, v: Argument) -> Form:
-        return inner(u, v) * dx
+        return inner(u, conj(v)) * dx
 
     @staticmethod
     def convection(u: Argument, v: Argument, u_base: dfem.Function) -> Form:
-        return inner(dot(u_base, nabla_grad(u)), v) * dx
+        return inner(dot(u_base, nabla_grad(u)), conj(v)) * dx
 
     @staticmethod
     def shear(u: Argument, v: Argument, u_base: dfem.Function) -> Form:
-        return inner(dot(u, grad(u_base)), v) * dx
+        return inner(dot(u, grad(u_base)), conj(v)) * dx
 
     @staticmethod
     def pressure_gradient(p: Argument, v: Argument) -> Form:
-        return inner(p, div(v)) * dx
+        return -inner(p, conj(div(v))) * dx
 
     @staticmethod
     def viscous(u: Argument, v: Argument, re: float) -> Form:
-        return (1.0 / re) * inner(grad(u), grad(v)) * dx
+        return (1.0 / re) * inner(grad(u), conj(grad(v))) * dx
 
     @staticmethod
     def divergence(u: Argument, q: Argument) -> Form:
-        return inner(div(u), q) * dx
+        return inner(div(u), conj(q)) * dx
 
     @staticmethod
     def forcing(f: dfem.Function, v: Argument) -> Form:
-        return -inner(f, v) * dx
+        return -inner(f, conj(v)) * dx
 
     @staticmethod
     def stiffness(u: Argument, v: Argument) -> Form:
-        return inner(grad(u), grad(v)) * dx
+        return inner(grad(u), conj(grad(v))) * dx
 
 
 class StationaryNavierStokesAssembler(BaseAssembler):
@@ -292,9 +285,8 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         super().__init__(spaces, bcs, tags=tags)
 
         self._re = re
-        self._f = f or dfem.Constant(
-            spaces.velocity.mesh, (0.0,) * spaces.velocity.mesh.topology.dim
-        )
+        zeros = tuple(Scalar(0.0) for _ in range(spaces.velocity.mesh.topology.dim))
+        self._f = f or dfem.Constant(spaces.velocity.mesh, zeros)
 
         self._v, self._q = TestFunctions(spaces.mixed)
         self._wh = dfem.Function(spaces.mixed)  # Solution
@@ -336,13 +328,13 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         form = convection + diffusion + pressure + divergence + forcing
 
         for marker, g in self._v_neumann:
-            form += inner(self._v, g) * self._ds(marker)
+            form -= inner(conj(self._v), g) * self._ds(marker)
 
         for marker, g in self._p_neumann:
-            form += inner(self._q, g) * self._ds(marker)
+            form -= inner(conj(self._q), g) * self._ds(marker)
 
         for marker, alpha, g_expr in self._robin_data:
-            form += alpha * inner(self._u - g_expr, self._v) * self._ds(marker)
+            form += alpha * inner(self._u - g_expr, conj(self._v)) * self._ds(marker)
 
         return dfem.form(form, dtype=Scalar), dfem.form(
             derivative(form, self._wh), dtype=Scalar
@@ -363,17 +355,17 @@ class StationaryNavierStokesAssembler(BaseAssembler):
             )
             A = assemble_matrix(self._jacobian, bcs=list(self.bcs))
             A.assemble()
-            A_wrapper = iPETScMatrix(A)
-            if not self._p_bcs:
-                # Pin pressure DOF
-                log_rank(
-                    logger,
-                    logging.DEBUG,
-                    "No pressure Dirichlet BCs. Pinning pressure DOF to remove nullspace.",
-                )
-                _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
-                A_wrapper.pin_dof(self._dofs_p[-1])
-            self._mat_cache[key_jac] = A_wrapper
+            Aw = iPETScMatrix(A)
+            # if not self._p_bcs:
+            #     # Pin pressure DOF
+            #     log_rank(
+            #         logger,
+            #         logging.DEBUG,
+            #         "No pressure Dirichlet BCs. Pinning pressure DOF to remove nullspace.",
+            #     )
+            #     _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
+            #     A_wrapper.pin_dof(self._dofs_p[-1])
+            self._mat_cache[key_jac] = Aw
 
         if key_res not in self._vec_cache:
             log_rank(logger, logging.INFO, "No cached vector found. Assembling RHS.")
@@ -405,6 +397,12 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
         if _has_non_homogeneous_neumann(bcs) or _has_non_homogeneous_robin(bcs):
             raise ValueError(
                 "Non-homogeneous natural (flux) boundary conditions are not yet supported."
+            )
+        if bcs.pressure:
+            raise ValueError(
+                "Pressure Dirichlet BCs are not allowed for the linearized eigenproblem assembler. "
+                "They inject identity rows into A/M and produce boundary modes. "
+                "Remove p-Dirichlet here and rely on the constant-pressure nullspace."
             )
 
         super().__init__(spaces, bcs, tags=tags)
@@ -450,8 +448,12 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
             return self._mat_cache[key]
 
         if cache is not None and (cached := cache.load_matrix(key)) is not None:
-            self._mat_cache[key] = iPETScMatrix(cached)
-            return self._mat_cache[key]
+            A = iPETScMatrix(cached)
+            for pmap in (*self._u_maps, *self._p_maps):
+                apply_periodic_constraints(A, pmap)
+            self.attach_pressure_nullspace(A)
+            self._mat_cache[key] = A
+            return A
 
         log_rank(
             logger,
@@ -470,27 +472,25 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
 
         if self._use_sponge:
             alpha = _get_damping_factor(self._spaces)
-            a += -inner(alpha * self._u, self._v) * dx
+            a -= inner(alpha * self._u, conj(self._v)) * dx
 
         for marker, alpha, g_expr in self._robin_data:
             a += alpha * inner(self._u - g_expr, self._v) * self._ds(marker)
 
         A_raw = assemble_matrix(dfem.form(a, dtype=Scalar), bcs=list(self.bcs))
-        A_raw.assemble()
 
         A = iPETScMatrix(A_raw)
-
-        if not self._p_bcs:
-            self.attach_pressure_nullspace(A)
-            log_rank(logger, logging.DEBUG, "Attached pressure nullspace to A.")
+        A.assemble()
 
         for pmap in (*self._u_maps, *self._p_maps):
             apply_periodic_constraints(A, pmap)
 
+        self.attach_pressure_nullspace(A)
+        log_rank(logger, logging.DEBUG, "Attached pressure nullspace to A.")
+
         self._mat_cache[key] = A
         if cache:
             cache.save_matrix(key, A.raw)
-
         return A
 
     def assemble_mass_matrix(
@@ -505,8 +505,12 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
             return self._mat_cache[key]
 
         if cache is not None and (cached := cache.load_matrix(key)) is not None:
-            self._mat_cache[key] = iPETScMatrix(cached)
-            return self._mat_cache[key]
+            M = iPETScMatrix(cached)
+            for pmap in (*self._u_maps, *self._p_maps):
+                apply_periodic_constraints(M, pmap)
+            self.attach_pressure_nullspace(M)
+            self._mat_cache[key] = M
+            return M
 
         log_rank(
             logger,
@@ -518,16 +522,15 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
         a_mass = VariationalForms.mass(self._u, self._v)
 
         M_raw = assemble_matrix(dfem.form(a_mass, dtype=Scalar), bcs=list(self.bcs))
-        M_raw.assemble()
 
         M = iPETScMatrix(M_raw)
-
-        if not self._p_bcs:
-            self.attach_pressure_nullspace(M)
-            log_rank(logger, logging.DEBUG, "Attached pressure nullspace to M.")
+        M.assemble()
 
         for pmap in (*self._u_maps, *self._p_maps):
             apply_periodic_constraints(M, pmap)
+
+        self.attach_pressure_nullspace(M)
+        log_rank(logger, logging.DEBUG, "Attached pressure nullspace to M.")
 
         self._mat_cache[key] = M
         if cache:
@@ -591,7 +594,12 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
 
 
 def _get_damping_factor(
-    spaces: FunctionSpaces, *, frac: float = 0.20, alpha_max: float = -1.4
+    spaces: FunctionSpaces,
+    *,
+    frac_x: float = 0.25,
+    frac_y: float = 0.85,
+    alpha_max: float = -15.0,
+    power: float = 1.5,
 ) -> dfem.Function:
     """Generate the damping factor to form a sponge (damping) term over the last fraction of the domain.
 
@@ -601,33 +609,61 @@ def _get_damping_factor(
     """
     mesh = spaces.mixed.mesh
 
-    # Determine global x-range (gathered on root)
-    x_coords = mesh.geometry.x[:, 0]
-    x_min = MPI.COMM_WORLD.allreduce(x_coords.min(), op=MPI.MIN)
-    x_max = MPI.COMM_WORLD.allreduce(x_coords.max(), op=MPI.MAX)
+    # Global extents
+    xs = mesh.geometry.x[:, 0]
+    ys = mesh.geometry.x[:, 1]
+    x_min = MPI.COMM_WORLD.allreduce(xs.min(), op=MPI.MIN)
+    x_max = MPI.COMM_WORLD.allreduce(xs.max(), op=MPI.MAX)
+    y_min = MPI.COMM_WORLD.allreduce(ys.min(), op=MPI.MIN)
+    y_max = MPI.COMM_WORLD.allreduce(ys.max(), op=MPI.MAX)
 
-    domain_length = x_max - x_min
-    sponge_start = x_min + (1.0 - frac) * domain_length
-    sponge_length = frac * domain_length
+    Lx = x_max - x_min
+    Ly = y_max - y_min
+    if Lx <= 0 or Ly <= 0:
+        raise ValueError("Mesh has non-positive extent in x or y.")
 
-    # DG0 function space
+    # Outlet ramp (only near the right boundary)
+    x_start = x_min + (1.0 - frac_x) * Lx
+    x_len = max(frac_x * Lx, 1e-15)  # avoid divide-by-zero
+    # Lateral ramps (two-sided near top and bottom)
+    y_band = max(frac_y * Ly, 1e-15)
+    y_lo_end = y_min + y_band
+    y_hi_start = y_max - y_band
+
+    # DG0 space and function
     V0 = dfem.functionspace(mesh, ("DG", 0))
     alpha = dfem.Function(V0)
 
-    # Compute cell centroids using DolfinX built-in method
-    centroids = compute_midpoints(
-        mesh,
-        mesh.topology.dim,
-        np.arange(mesh.topology.index_map(mesh.topology.dim).size_local),
-    )
+    # Cell centroids
+    cell_imap = mesh.topology.index_map(mesh.topology.dim)
+    cell_local = np.arange(cell_imap.size_local, dtype=np.int32)
+    centroids = compute_midpoints(mesh, mesh.topology.dim, cell_local)
 
-    # Evaluate ramp at centroids explicitly
-    xi = (centroids[:, 0] - sponge_start) / sponge_length
-    ramp = np.clip(xi, 0.0, 1.0)
-    alpha_array = alpha_max * ramp**2
+    cx = centroids[:, 0]
+    cy = centroids[:, 1]
 
-    # Assign to function
-    alpha.x.array[:] = alpha_array
+    # Outlet ramp rx in [0,1]
+    rx = (cx - x_start) / x_len
+    rx = np.clip(rx, 0.0, 1.0)
+
+    # Lateral ramp ry in [0,1] grows toward both top and bottom bands:
+    # distance into bottom band
+    r_bot = (y_lo_end - cy) / y_band
+    r_bot = np.clip(r_bot, 0.0, 1.0)
+    # distance into top band
+    r_top = (cy - y_hi_start) / y_band
+    r_top = np.clip(r_top, 0.0, 1.0)
+    ry = np.maximum(r_bot, r_top)
+
+    # Shape each ramp
+    if power != 1.0:
+        rx = rx**power
+        ry = ry**power
+
+    # Combine ramps
+    r = 1.0 - (1.0 - rx) * (1.0 - ry)
+
+    alpha.x.array[:] = (alpha_max * r).astype(alpha.x.array.dtype, copy=False)
 
     return alpha
 
