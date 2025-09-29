@@ -6,6 +6,8 @@ Provides a linear solver interface that can be extended for different linear sol
 import logging
 from pathlib import Path
 
+import numpy as np
+
 import dolfinx.fem as dfem
 import matplotlib.pyplot as plt
 import scipy.sparse.linalg
@@ -32,6 +34,57 @@ class LinearSolver:
         self._ksp_cache: dict[str, iKSP] = {}
         self._lu_cache: dict[str, scipy.sparse.linalg.SuperLU] = {}
         self._res_hist: dict[str, list[float]] = {}
+
+    @staticmethod
+    def solve(
+        A: iPETScMatrix,
+        b: iPETScVector,
+        *,
+        ksp_type: KSPType,
+        tol: float = 1e-12,
+        rtol: float = 1e-8,
+        max_it: int = 1_000,
+    ) -> iPETScVector:
+        """Solve the linear system Ax = b using the specified KSP type.
+
+        Note that this function is static and does not have access to the instance variables of the LinearSolver class.
+        It is designed to offer an assembler-free option to solve linear system if the system is generated from a
+        different source.
+        """
+        if ksp_type not in (KSPType.PREONLY, KSPType.GMRES):
+            raise ValueError("KSP type not supported.")
+
+        log_rank(logger, logging.DEBUG, "Configuring iKSP for %s", ksp_type.name)
+        solver = iKSP(A)
+        solver.set_type(ksp_type)
+        solver.set_preconditioner(
+            PreconditionerType.LU
+            if ksp_type is KSPType.PREONLY
+            else PreconditionerType.NONE
+        )
+
+        if ksp_type is not KSPType.PREONLY:
+            # Only set tolerances for iterative method
+            solver.set_tolerances(tol=tol, rtol=rtol, max_it=max_it)
+        else:
+            solver.raw.setGMRESRestart(True)
+
+        solver.set_from_options()
+
+        # Solve and time
+        sol = iPETScVector.from_array(np.zeros((b.size,)))
+        t0 = MPI.Wtime()
+        solver.solve(b, sol)
+        t1 = MPI.Wtime()
+
+        log_global(
+            logger, logging.INFO, "%s solve time: %.3f s", ksp_type.name, t1 - t0
+        )
+
+        # sol.raw.scatter_forward()
+
+        log_global(logger, logging.INFO, f"{ksp_type.name} solve completed.")
+        return sol
 
     def direct_lu_solve(
         self,
