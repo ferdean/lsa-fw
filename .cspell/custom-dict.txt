@@ -1,5 +1,6 @@
 addv
 allclose
+ARPACK
 atleast
 AXPY
 baij
@@ -7,6 +8,7 @@ baseflow
 basix
 bmatrix
 Brezzi
+complexify
 conv
 Crouzeix
 dataclass
@@ -38,6 +40,8 @@ Herrman
 Herrmann
 Intercomm
 Intracomm
+iscomplex
+iscomplexobj
 Isoparametric
 Krylov
 linearization
@@ -49,18 +53,22 @@ matfree
 mathbb
 mathbf
 mathcal
+mcols
 Mesher
 meshio
 meshtags
 mpiaij
 mpirun
+mrows
 mult
 Navier
+ncols
 ndarray
 Nédélec
 Neumann
 newaxis
 NHEP
+nrows
 nullspace
 nullspaces
 petsc
@@ -75,6 +83,8 @@ slepc
 SNES
 Sobolev
 Submatrix
+tocsc
 unisolvence
 visc
+wavemaker
 XDMF
