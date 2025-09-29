@@ -201,7 +201,10 @@ class StokesAssembler(BaseAssembler):
 
         lform = inner(self._f, conj(self._v)) * dx
 
-        # Natural BCs (tests conjugated)
+        # The pressure term seems to have the incorrect sign. This is done deliberately, so that the resulting
+        # block system is symmetric. This symmetry lets us reuse later symmetric solvers and pre-conditioners for
+        # both the Stokes and Navier–Stokes operators.
+
         for marker, g in self._v_neumann:
             lform += inner(g, conj(self._v)) * self._ds(marker)
         for marker, g in self._p_neumann:
@@ -218,9 +221,6 @@ class StokesAssembler(BaseAssembler):
             A = assemble_matrix(self.jacobian, bcs=list(self.bcs))
             A.assemble()
             Aw = iPETScMatrix(A)
-            # if not self._p_bcs:
-            #     _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
-            #     Aw.pin_dof(self._dofs_p[0])
             self._mat_cache[key_jac] = Aw
 
         if key_res not in self._vec_cache:
@@ -356,15 +356,6 @@ class StationaryNavierStokesAssembler(BaseAssembler):
             A = assemble_matrix(self._jacobian, bcs=list(self.bcs))
             A.assemble()
             Aw = iPETScMatrix(A)
-            # if not self._p_bcs:
-            #     # Pin pressure DOF
-            #     log_rank(
-            #         logger,
-            #         logging.DEBUG,
-            #         "No pressure Dirichlet BCs. Pinning pressure DOF to remove nullspace.",
-            #     )
-            #     _, self._dofs_p = self._spaces.mixed.sub(1).collapse()
-            #     A_wrapper.pin_dof(self._dofs_p[-1])
             self._mat_cache[key_jac] = Aw
 
         if key_res not in self._vec_cache:
