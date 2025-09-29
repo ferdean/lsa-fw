@@ -14,6 +14,8 @@ from mpi4py import MPI
 from lib.cache import CacheStore
 from lib.loggingutils import log_global
 
+from lib.gmshutils import gmsh_quiet
+
 from .geometries import GeometryConfig, get_geometry
 from .utils import Format, Geometry, Shape, iCellType
 
@@ -142,13 +144,16 @@ class Mesher:
         key: str | None = None,
     ) -> Self:
         """Generate via one of the prebuilt generators, then wrap in a Mesher."""
+        log_global(logger, logging.INFO, "Started GMSH-based mesher.")
         if cache is not None and key is not None:
             cached = cache.load_mesh(key, comm)
             if cached is not None:
                 mesh, facet, cell = cached
                 return cls.from_mesh(mesh, facet_tags=facet, cell_tags=cell)
 
-        mesh = get_geometry(geometry, config, comm)
+        with gmsh_quiet(logger, verbosity=1, reemit_level=logging.DEBUG):
+            mesh = get_geometry(geometry, config, comm)
+
         obj = cls.from_mesh(mesh)
         if cache is not None and key is not None:
             cache.save_mesh(key, obj.mesh, obj.facet_tags, obj.cell_tags, comm)
@@ -166,7 +171,6 @@ class Mesher:
         If `cache` and `key` are provided, the method will attempt to load the mesh from disk before generating it.
         The newly generated mesh is also written back to the cache.
         """
-
         if cache is not None and key is not None:
             cached = cache.load_mesh(key, comm)
             if cached is not None:
