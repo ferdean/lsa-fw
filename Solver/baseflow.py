@@ -29,12 +29,16 @@ baseflow = solver.solve(
 import logging
 from pathlib import Path
 
+from FEM.utils import Scalar
 import dolfinx.fem as dfem
 from dolfinx.mesh import MeshTags
 from dolfinx import la
 from mpi4py import MPI
 import numpy as np
 from petsc4py import PETSc
+from dolfinx.io import XDMFFile
+
+from ufl import Identity, FacetNormal, as_vector, sym, grad, dot, ds
 
 from FEM.bcs import BoundaryConditions
 from FEM.operators import StationaryNavierStokesAssembler, StokesAssembler
@@ -176,6 +180,34 @@ def compute_recirculation_length(
     return float(max(coords[mask, 0]))
 
 
+def compute_drag(
+    baseflow: dfem.Function,
+    *,
+    re: float,
+    facet_tags: MeshTags,
+    cylinder_marker: int,
+) -> float:
+    """Compute non-dimensional drag Fx over the cylinder boundary."""
+    mesh = baseflow.function_space.mesh
+    gdim = mesh.geometry.dim
+    if gdim not in (2, 3):
+        raise ValueError("Only 2D/3D supported.")
+
+    u, p = baseflow.split()
+
+    n = FacetNormal(mesh)
+    identity = Identity(gdim)
+    sym_grad = sym(grad(u))
+    sigma = -p * identity + (2.0 / re) * sym_grad  # Cauchy stress (nondimensional)
+    traction = dot(sigma, n)
+
+    ex = as_vector([1.0] + [0.0] * (gdim - 1))
+    Fx_form = dot(traction, ex) * ds(subdomain_data=facet_tags)(cylinder_marker)
+
+    Fx = dfem.assemble_scalar(dfem.form(Fx_form, dtype=Scalar))
+    return abs(float(Fx))
+
+
 # HACK: In theory, the dolfinx API should be sufficient to export/import function objects. However, up to now,
 # writing or reading a mixed-function (e.g., a Taylor–Hood mixed P2/P1) directly can lead to low-level crashes
 # or mismatches because PETSc binary views and XDMF I/O expect a single continuous Lagrange field of matching
@@ -187,118 +219,109 @@ def compute_recirculation_length(
 # data. Therefore, export_baseflow and load_baseflow must only be called in serial runs.
 
 
-def export_baseflow(
-    baseflow: dfem.Function, output_folder: Path, *, linear_velocity_ok: bool = False
+def export_function(
+    function: dfem.Function,
+    output_folder: Path,
+    *,
+    linear_velocity_ok: bool = False,
+    name: str = "baseflow",
 ) -> None:
-    """Export baseflow function."""
+    """Export baseflow (u, p) as real numpy arrays + subspace DOF maps, safe across real/complex builds."""
     if MPI.COMM_WORLD.size > 1:
         log_global(
             logger,
             logging.WARNING,
-            "Baseflow export is not supported in parallel (MPI size = %d); please run in serial.",
+            "Function export is not supported in parallel (MPI size = %d); please run in serial.",
             MPI.COMM_WORLD.size,
         )
     output_folder.mkdir(parents=True, exist_ok=True)
-    mesh = baseflow.function_space.mesh
+    mesh = function.function_space.mesh
 
-    if baseflow.function_space.sub(0).ufl_element().degree > 1 and linear_velocity_ok:
-        u_p2, p = baseflow.split()
+    # Split and (optionally) down-interpolate velocity to P1 if your pipeline assumes linear vectors.
+    u_p2, p = function.split()
+    if u_p2.function_space.ufl_element().degree > 1 and linear_velocity_ok:
         linear_spaces = define_spaces(mesh, type=FunctionSpaceType.SIMPLE)
         u = dfem.Function(linear_spaces.velocity)
         u.interpolate(u_p2)
         log_global(
             logger,
             logging.WARNING,
-            "Interpolated P2 velocity to P1 vector space for safe export. Exported baseflow may lose precision.",
+            "Interpolated P2 velocity to P1 for export; expect some precision loss.",
         )
     else:
-        u, p = baseflow.split()
-        log_global(
-            logger,
-            logging.WARNING,
-            "Exporting full mixed function vector. Import back into mixed space may fail or lose fidelity"
-            " due to mixed DOF layout limitations.",
-        )
+        u = u_p2
 
-    for function, function_name in ((u, "velocity"), (p, "pressure")):
-        path = output_folder / f"{function_name}.xdmf"
-        viewer = PETSc.Viewer().createBinary(str(path), mode=PETSc.Viewer.Mode.WRITE)
-        try:
-            function.x.petsc_vec.view(viewer)
-            log_global(
-                logger,
-                logging.INFO,
-                "Baseflow %s properly exported to '%s'",
-                function_name,
-                path,
-            )
-        except Exception as e:
-            log_global(
-                logger,
-                logging.ERROR,
-                "Baseflow %s could not be exported to disk.",
-                function_name,
-            )
-            raise e
-        finally:
-            viewer.destroy()
+    # DOF maps from mixed space to subspaces
+    _, dofs_u = function.function_space.sub(0).collapse()
+    _, dofs_p = function.function_space.sub(1).collapse()
+
+    # Extract real arrays in subspace ordering
+    arr_mixed = np.asarray(function.x.array, dtype=np.float64)
+    u_data = (
+        np.asarray(u.x.array, dtype=np.float64)
+        if u is not u_p2
+        else arr_mixed[dofs_u].copy()
+    )
+    p_data = arr_mixed[dofs_p].copy().astype(np.float64)
+
+    # Persist as NumPy; scalar-type agnostic
+    np.savez(
+        output_folder / f"{name}_npz.npz",
+        u=u_data,
+        p=p_data,
+        dofs_u=dofs_u,
+        dofs_p=dofs_p,
+    )
+
+    with XDMFFile(mesh.comm, str(output_folder / "mesh.xdmf"), "w") as xdmf:
+        xdmf.write_mesh(mesh)
+    log_global(
+        logger, logging.INFO, "Function '%s' exported to '%s'", name, output_folder
+    )
 
 
-def load_baseflow(input_folder: Path, spaces: FunctionSpaces) -> dfem.Function:
-    """Import baseflow function."""
+def load_function(
+    input_folder: Path, spaces: FunctionSpaces, *, name: str = "baseflow"
+) -> dfem.Function:
+    """Load baseflow into a mixed complex space by filling the real part and zeroing imag."""
     if MPI.COMM_WORLD.size > 1:
         log_global(
             logger,
             logging.WARNING,
-            "Baseflow load is not supported in parallel (MPI size = %d); please run in serial.",
+            "Function load is not supported in parallel (MPI size = %d); please run in serial.",
             MPI.COMM_WORLD.size,
         )
-    if not input_folder.exists() or not input_folder.is_dir():
+    if not input_folder.is_dir():
         raise ValueError(f"Input path {input_folder!r} is not a valid folder.")
 
-    log_global(
-        logger,
-        logging.WARNING,
-        "Importing full mixed function vector may cause lose fidelity, as the function spaces may have been "
-        "linearized during the export process. Refer to `export_baseflow` for further details.",
+    function = dfem.Function(spaces.mixed)
+    z = function.x.array
+
+    data = np.load(input_folder / f"{name}_npz.npz", allow_pickle=False)
+    u_data: np.ndarray = data["u"]
+    p_data: np.ndarray = data["p"]
+    dofs_u: np.ndarray = data["dofs_u"]
+    dofs_p: np.ndarray = data["dofs_p"]
+
+    # Write into real part; zero imag if present
+    if np.iscomplexobj(z):
+        zr = z.real
+        zi = z.imag
+        zr[dofs_u] = u_data
+        zr[dofs_p] = p_data
+        zi[dofs_u] = 0.0
+        zi[dofs_p] = 0.0
+        # Ensure PETSc Vec sees updates
+        function.x.petsc_vec.assemblyBegin()
+        function.x.petsc_vec.assemblyEnd()
+    else:
+        z[dofs_u] = u_data
+        z[dofs_p] = p_data
+
+    function.x.petsc_vec.ghostUpdate(
+        addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD
     )
-
-    _, dofs_u = spaces.mixed.sub(0).collapse()
-    _, dofs_p = spaces.mixed.sub(1).collapse()
-
-    baseflow = dfem.Function(spaces.mixed)
-    u = dfem.Function(spaces.mixed)
-    p = dfem.Function(spaces.mixed)
-
-    for function, function_name in ((u, "velocity"), (p, "pressure")):
-        path = input_folder / f"{function_name}.xdmf"
-        viewer = PETSc.Viewer().createBinary(str(path), mode=PETSc.Viewer.Mode.READ)
-        try:
-            function.x.petsc_vec.load(viewer)
-            log_global(
-                logger,
-                logging.INFO,
-                "Baseflow %s properly imported from '%s'",
-                function_name,
-                path,
-            )
-        except Exception as e:
-            log_global(
-                logger,
-                logging.ERROR,
-                "Baseflow %s could not be imported from %s.",
-                function_name,
-                path,
-            )
-            raise e
-        finally:
-            viewer.destroy()
-
-        function.x.petsc_vec.ghostUpdate(
-            addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.FORWARD
-        )
-
-    baseflow.x.array[dofs_u] = u.x.array[dofs_u]
-    baseflow.x.array[dofs_p] = p.x.array[dofs_p]
-
-    return baseflow
+    log_global(
+        logger, logging.INFO, "Function '%s' loaded from '%s'", name, input_folder
+    )
+    return function
