@@ -57,6 +57,8 @@ class EigensolverConfig:
     """Absolute tolerance."""
     max_it: int = 500
     """Maximum number of iterations."""
+    ncv: int = 80
+    """Subspace dimension."""
 
 
 class EigenSolver:
@@ -64,13 +66,15 @@ class EigenSolver:
 
     def __init__(
         self,
-        cfg: EigensolverConfig,
         A: iPETScMatrix,
         M: iPETScMatrix | None = None,
+        cfg: EigensolverConfig | None = None,
         *,
         check_hermitian: bool = True,
     ) -> None:
         """Initialize eigensolver."""
+        self._cfg = cfg or EigensolverConfig()
+
         nrows, ncols = A.shape
         if nrows != ncols:
             raise ValueError(f"Operator A must be square, got shape ({nrows}, {ncols})")
@@ -81,17 +85,18 @@ class EigenSolver:
                 raise ValueError(
                     f"Operator M shape {M.shape} does not match A's shape {A.shape}"
                 )
-        if cfg.problem_type in _HERMITIAN_TYPES and check_hermitian:
+        if self._cfg.problem_type in _HERMITIAN_TYPES and check_hermitian:
             if not A.is_numerically_hermitian():
                 log_global(
                     logger,
                     logging.WARNING,
-                    f"Problem type '{cfg.problem_type.name}' assumes Hermitian A,"
+                    f"Problem type '{self._cfg.problem_type.name}' assumes Hermitian A,"
                     " but A is not (numerically) Hermitian.",
                 )
             if (
                 M is not None
-                and cfg.problem_type in {iEpsProblemType.GHEP, iEpsProblemType.GHIEP}
+                and self._cfg.problem_type
+                in {iEpsProblemType.GHEP, iEpsProblemType.GHIEP}
                 and not M.is_numerically_hermitian()
             ):
 
@@ -102,12 +107,10 @@ class EigenSolver:
                     " but M is not (numerically) Hermitian.",
                 )
 
-        self._cfg = cfg
         self._solver = iEpsSolver(A, M)
-
-        self._solver.set_problem_type(cfg.problem_type)
-        self._solver.set_tolerances(cfg.atol, cfg.max_it)
-        self._solver.set_dimensions(cfg.num_eig)
+        self._solver.set_problem_type(self._cfg.problem_type)
+        self._solver.set_tolerances(self._cfg.atol, self._cfg.max_it)
+        self._solver.set_dimensions(self._cfg.num_eig, self._cfg.ncv)
 
     @property
     def solver(self) -> iEpsSolver:
