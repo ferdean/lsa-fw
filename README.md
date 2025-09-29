@@ -27,7 +27,7 @@ See [doc/ref](doc/ref/) for a collection of reference papers, technical notes, a
 * Import support for externally-generated meshes (XDMF, VTK, GMSH)
 * Mesh adaptation routines based on computed baseflow velocity
 * Configuration-driven boundary tagging (TOML) for reproducible BC assignment
-* *(Planned)* Mesh adaptation via custom fields (vorticity, sensitivity maps, etc.)
+* *(Planned)* Mesh adaptation via custom fields (vorticity, wavemaker, etc.)
 
 **Finite Element Assembly**
 
