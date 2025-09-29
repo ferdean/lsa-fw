@@ -22,6 +22,7 @@ from mpi4py import MPI
 from petsc4py import PETSc
 
 from FEM.operators import BaseAssembler
+from FEM.utils import Scalar
 from lib.loggingutils import log_global, log_rank
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ class NewtonSolver:
     def solve(self, *, max_it: int = 500, tol: float = 1e-8) -> dfem.Function:
         """Solve the nonlinear problem."""
 
-        log_global(logger, logging.DEBUG, "Newton solver started.")
+        log_global(logger, logging.INFO, "Newton solver started.")
         self._residual_history.clear()
 
         def _form_function(_: Any, x: PETSc.Vec, f: PETSc.Vec) -> None:
@@ -86,8 +87,9 @@ class NewtonSolver:
                 sol_vec.array[:] = x_local[:]
             sol_vec.scatter_forward()
 
+            # Zero-out f then assemble residual (complex-safe)
             with f.localForm() as loc:
-                loc.set(0)  # Zero-out
+                loc.set(0)
 
             assemble_vector(f, self._assembler.residual)
 
@@ -97,9 +99,9 @@ class NewtonSolver:
                 [self._assembler.jacobian],
                 [list(self._assembler.bcs)],
                 x0=[sol_vec.petsc_vec],
-                alpha=1.0,
+                alpha=Scalar(1.0),
             )
-            set_bc(f, [*self._assembler.bcs], sol_vec.petsc_vec, 1.0)
+            set_bc(f, [*self._assembler.bcs], sol_vec.petsc_vec, Scalar(1.0))
             f.ghostUpdate(
                 addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
             )
@@ -109,7 +111,9 @@ class NewtonSolver:
             with x.localForm() as x_local:
                 sol_vec.array[:] = x_local[:]
             sol_vec.scatter_forward()
+
             J.zeroEntries()
+            # Assemble into the preallocated matrix; bc handling is complex-safe
             assemble_matrix(J, self._assembler.jacobian, bcs=list(self._assembler.bcs))
             J.assemble()
 
