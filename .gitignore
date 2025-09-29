@@ -5,6 +5,7 @@ cases/
 doc/internal/
 .mypy_cache/
 .pytest_cache/
+.scripts/
 tests.py
 *.h5
 *.xdmf
