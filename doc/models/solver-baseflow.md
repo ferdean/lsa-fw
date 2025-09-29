@@ -44,7 +44,7 @@ $$
 
 $$
 \begin{align*}
-\int_\Omega (\mathbf{u} \cdot \nabla \mathbf{u}) \cdot \mathbf{v}dx + \frac{1}{\text{Re}}\int_\Omega \nabla \mathbf{u} : \nabla \mathbf{v}dx -& \int_\Omega p(\nabla \cdot \mathbf{v})dx + \int_\Omega q(\nabla \cdot \mathbf{u})dx + \int_{\Gamma_R} \alpha (\mathbf{u}\cdot \mathbf{v})ds &= \cdots\\
+\int_\Omega (\mathbf{u} \cdot \nabla \mathbf{u}) \cdot \mathbf{v}dx + \frac{1}{\text{Re}}\int_\Omega \nabla \mathbf{u} : \nabla \mathbf{v}dx +& \int_\Omega p(\nabla \cdot \mathbf{v})dx + \int_\Omega q(\nabla \cdot \mathbf{u})dx + \int_{\Gamma_R} \alpha (\mathbf{u}\cdot \mathbf{v})ds &= \cdots\\
 & \cdots= \int_\Omega \mathbf{f} \cdot \mathbf{v} dx + \int_{\Gamma_N} \mathbf{g}\cdot \mathbf{v}ds + \int_{\Gamma_R} \alpha (\mathbf{g}\cdot \mathbf{v})ds.
 \end{align*}
 $$
