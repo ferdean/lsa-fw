@@ -46,11 +46,12 @@ See [doc/ref](doc/ref/) for a collection of reference papers, technical notes, a
 
 **Adjoint-Based Sensitivity Analysis**
 
-* *(Planned)* First-order (linear) adjoint-based sensitivity maps for eigenvalue response to steady controls
+* First-order (linear) adjoint-based sensitivity maps for eigenvalue response to steady controls
 * *(Planned)* Second-order (quadratic) adjoint-based sensitivity operators, capturing nonlinear effects of finite-amplitude control
-* *(Planned)* Structural sensitivity computation via direct/adjoint mode overlap
+* Structural sensitivity computation via direct/adjoint mode overlap
 * *(Planned)* General parameter sensitivity (Reynolds number, geometry, etc.) and adjoint-based optimization for open-loop/closed-loop flow control
-* *(Planned)* Modular adjoint routines, integrated with PETSc/SLEPc eigensolvers
+* Reynolds sensitivity
+* Modular adjoint routines, integrated with PETSc/SLEPc eigensolvers
 
 **Visualization & Analysis**
 
