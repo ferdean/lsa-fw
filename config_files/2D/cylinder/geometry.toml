@@ -1,8 +1,8 @@
 dim = 2
 cylinder_radius = 0.5
 cylinder_center = [0.0, 0.0]
-x_range = [-20.0, 80.0]
-y_range = [-20.0, 20.0]
-resolution = 1.5
-resolution_around_cylinder = 0.15
+x_range = [-10.0, 60.0]
+y_range = [-10.0, 10.0]
+resolution = 1.25
+resolution_around_cylinder = 0.115
 influence_radius = 40

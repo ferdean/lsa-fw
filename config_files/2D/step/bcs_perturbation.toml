@@ -5,12 +5,6 @@ type = "dirichlet_velocity"
 value = [0.0, 0.0]
 
 [[BC]]
-# Outlet
-marker = 2
-type = "neumann_velocity"
-value = [0.0, 0.0]
-
-[[BC]]
 # Wall
 marker = 3
 type = "dirichlet_velocity"

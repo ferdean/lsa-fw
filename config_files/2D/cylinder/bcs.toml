@@ -5,22 +5,14 @@ type = "dirichlet_velocity"
 value = [1.0, 0.0]
 
 [[BC]]
-# Outlet
-marker = 2
-type = "neumann_velocity"
-value = [0.0, 0.0]
-
-[[BC]]
 # Free-flow
 marker = 3
-type = "neumann_velocity"
-value = [0.0, 0.0]
+type = "symmetry"
 
 [[BC]]
 # Free-flow
 marker = 4
-type = "neumann_velocity"
-value = [0.0, 0.0]
+type = "symmetry"
 
 [[BC]]
 # Wall

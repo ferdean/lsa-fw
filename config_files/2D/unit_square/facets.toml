@@ -6,7 +6,7 @@ when = { axis = "x", equals = 0.0 }
 [[FaceTag]]
 # Right face (x = 1)
 marker = 2
-when = { axis = "x", equals = 3.0 }
+when = { axis = "x", equals = 1.0 }
 
 [[FaceTag]]
 # Bottom face (y = 0)
@@ -16,4 +16,4 @@ when = { axis = "y", equals = 0.0 }
 [[FaceTag]]
 # Top face (y = 1)
 marker = 4
-when = { axis = "y", equals = 2.0 }
+when = { axis = "y", equals = 1.0 }
