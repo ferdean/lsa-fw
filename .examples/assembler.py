@@ -82,8 +82,8 @@ assembler = LinearizedNavierStokesAssembler(
 )
 A, M = assembler.assemble_eigensystem()
 
-A.export(_SAVE_DIR / f"{__example_name__}" / "matrices" / "wo_pressure" / "A.mtx")
-M.export(_SAVE_DIR / f"{__example_name__}" / "matrices" / "wo_pressure" / "M.mtx")
+A.export(_SAVE_DIR / f"{__example_name__}" / "matrices" / "A.mtx")
+M.export(_SAVE_DIR / f"{__example_name__}" / "matrices" / "M.mtx")
 
 log_global(
     logger,
@@ -144,7 +144,7 @@ if __enable_tests__:
 
     # Check that A_vp = - A_pv.T
     temp = A_vp.duplicate(copy=True)
-    temp.axpy(1.0, A_pv.T)
+    temp.axpy(-1.0, A_pv.T)
     assert temp.norm < _TOL
 
     # Check mass is SPD and blocks
@@ -165,3 +165,5 @@ if __enable_tests__:
     assert M_vp.norm < 1e-10
     assert M_pv.norm < 1e-10
     assert M_pp.norm < 1e-10
+
+    log_global(logger, logging.DEBUG, "All tests passed!")

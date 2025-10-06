@@ -142,7 +142,7 @@ class BaseAssembler(ABC):
     def _apply_dirichlet(self, fn: dfem.Function | PETSc.Vec) -> None:
         """Apply Dirichlet BCs to a vector."""
         array = fn.x.array if isinstance(fn, dfem.Function) else fn.array
-        for bc in self.bcs:
+        for bc in self.dirichlet_bcs:
             bc.set(array)
 
         if isinstance(fn, dfem.Function):
@@ -217,14 +217,16 @@ class StokesAssembler(BaseAssembler):
         key_res = f"res_{id(self._residual)}"
 
         if key_jac not in self._mat_cache:
-            A = assemble_matrix(self.jacobian, bcs=list(self.bcs))
+            A = assemble_matrix(self.jacobian, bcs=list(self.dirichlet_bcs))
             A.assemble()
             Aw = iPETScMatrix(A)
             self._mat_cache[key_jac] = Aw
 
         if key_res not in self._vec_cache:
             b = assemble_vector(self.residual)
-            dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [list(self.bcs)])
+            dfem.apply_lifting(
+                b.array, [dfem.form(self._jacobian)], [list(self.dirichlet_bcs)]
+            )
             self._apply_dirichlet(b)
             self._vec_cache[key_res] = iPETScVector(b)
 
@@ -460,7 +462,9 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
             for marker, alpha, g_expr in self._robin_data:
                 a -= alpha * inner(self._u - g_expr, self._v) * self._ds(marker)
 
-            A_raw = assemble_matrix(dfem.form(a, dtype=Scalar), bcs=list(self.bcs))
+            A_raw = assemble_matrix(
+                dfem.form(a, dtype=Scalar), bcs=list(self.dirichlet_bcs)
+            )
             self._mat_cache[key] = iPETScMatrix(A_raw)
 
         return self._mat_cache[key]
@@ -478,7 +482,9 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
 
             a_mass = VariationalForms.mass(self._u, self._v)
 
-            M_raw = assemble_matrix(dfem.form(a_mass, dtype=Scalar), bcs=list(self.bcs))
+            M_raw = assemble_matrix(
+                dfem.form(a_mass, dtype=Scalar), bcs=list(self.dirichlet_bcs)
+            )
             self._mat_cache[key] = iPETScMatrix(M_raw)
 
             return self._mat_cache[key]
@@ -487,6 +493,10 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
         """Assemble both the system operator and mass matrix (A, M)."""
         A = self.assemble_linear_operator()
         M = self.assemble_mass_matrix()
+
+        A.assemble()
+        M.assemble()
+
         log_rank(
             logger,
             logging.INFO,
@@ -494,6 +504,7 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
             len(self._dofs_p),
             len(self._dofs_u),
         )
+
         return A, M
 
     def get_matrix_forms(self) -> tuple[iPETScMatrix, iPETScMatrix]:

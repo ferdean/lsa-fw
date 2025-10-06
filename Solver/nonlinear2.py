@@ -97,11 +97,11 @@ class NewtonSolver:
             apply_lifting(
                 f,
                 [self._assembler.jacobian],
-                [list(self._assembler.bcs)],
+                [list(self._assembler.dirichlet_bcs)],
                 x0=[sol_vec.petsc_vec],
                 alpha=Scalar(1.0),
             )
-            set_bc(f, [*self._assembler.bcs], sol_vec.petsc_vec, Scalar(1.0))
+            set_bc(f, [*self._assembler.dirichlet_bcs], sol_vec.petsc_vec, Scalar(1.0))
             f.ghostUpdate(
                 addv=PETSc.InsertMode.INSERT_VALUES, mode=PETSc.ScatterMode.FORWARD
             )
@@ -114,7 +114,9 @@ class NewtonSolver:
 
             J.zeroEntries()
             # Assemble into the preallocated matrix; bc handling is complex-safe
-            assemble_matrix(J, self._assembler.jacobian, bcs=list(self._assembler.bcs))
+            assemble_matrix(
+                J, self._assembler.jacobian, bcs=list(self._assembler.dirichlet_bcs)
+            )
             J.assemble()
 
         self._snes.setFunction(_form_function, self._b.raw)
