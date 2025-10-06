@@ -14,6 +14,8 @@ from typing import Final
 
 from FEM.plot import plot_mixed_function
 from Meshing.plot import PlotMode
+from Meshing.utils import Geometry
+from config import load_cylinder_flow_config
 import dolfinx.fem as dfem
 
 from FEM.spaces import FunctionSpaceType, define_spaces
@@ -26,7 +28,7 @@ from lib.loggingutils import setup_logging
 __show_plots__ = True
 __example_name__ = "cylinder_flow"
 
-
+_CFG_DIR: Final[Path] = Path("config_files") / "2D" / "cylinder"
 _SAVE_DIR: Final[Path] = Path("cases") / "cylinder"
 _MAT_DIR: Final[Path] = _SAVE_DIR / f"{__example_name__}" / "matrices"
 _TARGET: Final[complex] = -0.05
@@ -52,7 +54,6 @@ M.assemble()
 logger.info("A: shape=%s, nnz=%d, norm=%.3e.", A.shape, A.nonzero_entries, A.norm)
 logger.info("M: shape=%s, nnz=%d, norm=%.3e.", M.shape, M.nonzero_entries, M.norm)
 
-
 # Solve EVP ------
 cfg = EigensolverConfig(num_eig=_NUM_EIG, atol=_ATOL)
 es = EigenSolver(A, M, cfg=cfg, check_hermitian=False)
@@ -70,7 +71,8 @@ out_path.write_text(f"{sigma.real} {sigma.imag}\n", encoding="utf-8")
 logger.info("Wrote sigma to %s", out_path)
 
 if __show_plots__:
-    mesher = Mesher.from_file(_SAVE_DIR / f"{__example_name__}" / "mesh.xdmf")
+    cylinder_cfg = load_cylinder_flow_config(_CFG_DIR / "geometry.toml")
+    mesher = Mesher.from_geometry(Geometry.CYLINDER_FLOW, cylinder_cfg)
     spaces = define_spaces(mesher.mesh, FunctionSpaceType.TAYLOR_HOOD)
 
     eigenvector = es.solver.get_eigenvector(_EIG_INDEX)
