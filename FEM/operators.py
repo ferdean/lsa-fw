@@ -28,7 +28,6 @@ from ufl import (  # type: ignore[import-untyped]
     Form,
     TestFunctions,
     TrialFunctions,
-    conj,
     div,
     dx,
     grad,
@@ -40,11 +39,9 @@ from ufl import (  # type: ignore[import-untyped]
     ExternalOperator,
 )
 from ufl.argument import Argument  # type: ignore[import-untyped]
-
-from lib.cache import CacheStore
 from lib.loggingutils import log_global, log_rank
 
-from .bcs import BoundaryConditions, apply_periodic_constraints
+from .bcs import BoundaryConditions
 from .spaces import FunctionSpaces
 from .utils import (
     iPETScBlockMatrix,
@@ -124,7 +121,7 @@ class BaseAssembler(ABC):
         pass
 
     @property
-    def bcs(self) -> tuple[dfem.DirichletBC, ...]:
+    def dirichlet_bcs(self) -> tuple[dfem.DirichletBC, ...]:
         return (*self._u_bcs, *self._p_bcs)
 
     @property
@@ -143,7 +140,7 @@ class BaseAssembler(ABC):
         self._vec_cache.clear()
 
     def _apply_dirichlet(self, fn: dfem.Function | PETSc.Vec) -> None:
-        """Apply Dirichlet BCs in-place."""
+        """Apply Dirichlet BCs to a vector."""
         array = fn.x.array if isinstance(fn, dfem.Function) else fn.array
         for bc in self.bcs:
             bc.set(array)
@@ -162,11 +159,13 @@ class StokesAssembler(BaseAssembler):
         spaces: FunctionSpaces,
         bcs: BoundaryConditions,
         *,
+        re: float,
         tags: MeshTags | None = None,
         f: dfem.Function | None = None,
     ) -> None:
         """Initialize Stokes assembler."""
         super().__init__(spaces, bcs, tags=tags)
+        self._re = re
 
         zeros = tuple(Scalar(0.0) for _ in range(spaces.velocity.mesh.topology.dim))
         self._f = f or dfem.Constant(spaces.velocity.mesh, zeros)
@@ -194,21 +193,21 @@ class StokesAssembler(BaseAssembler):
 
     def _build_forms(self) -> tuple[dfem.Form, dfem.Form]:
         bform = (
-            inner(grad(self._u), conj(grad(self._v))) * dx
-            + inner(self._p, conj(div(self._v))) * dx
-            + inner(div(self._u), conj(self._q)) * dx
+            1 / self._re * inner(grad(self._u), grad(self._v)) * dx
+            - inner(self._p, div(self._v)) * dx
+            + inner(self._q, div(self._u)) * dx
         )
 
-        lform = inner(self._f, conj(self._v)) * dx
+        lform = inner(self._f, self._v) * dx
 
         # The pressure term seems to have the incorrect sign. This is done deliberately, so that the resulting
         # block system is symmetric. This symmetry lets us reuse later symmetric solvers and pre-conditioners for
-        # both the Stokes and Navier–Stokes operators.
+        # both the Stokes and Navier–Stokes operators (although this property might be unused).
 
         for marker, g in self._v_neumann:
-            lform += inner(g, conj(self._v)) * self._ds(marker)
+            lform += inner(g, self._v) * self._ds(marker)
         for marker, g in self._p_neumann:
-            lform += inner(g, conj(self._q)) * self._ds(marker)
+            lform += inner(g, self._q) * self._ds(marker)
 
         return bform, lform
 
@@ -237,35 +236,38 @@ class VariationalForms:
 
     @staticmethod
     def mass(u: Argument, v: Argument) -> Form:
-        return inner(u, conj(v)) * dx
+        return inner(u, v) * dx
 
     @staticmethod
     def convection(u: Argument, v: Argument, u_base: dfem.Function) -> Form:
-        return inner(dot(u_base, nabla_grad(u)), conj(v)) * dx
+        # We use nabla_grad(u) to get the full Jacobian (du_i/dx_j), so that dot(u_base, nabla_grad(u))
+        # represents the directional derivative (u_base·grad)u
+        return inner(dot(u_base, nabla_grad(u)), v) * dx
 
     @staticmethod
     def shear(u: Argument, v: Argument, u_base: dfem.Function) -> Form:
-        return inner(dot(u, grad(u_base)), conj(v)) * dx
+        return inner(dot(u, grad(u_base)), v) * dx
 
     @staticmethod
     def pressure_gradient(p: Argument, v: Argument) -> Form:
-        return -inner(p, conj(div(v))) * dx
+        return -inner(p, div(v)) * dx
 
     @staticmethod
     def viscous(u: Argument, v: Argument, re: float) -> Form:
-        return (1.0 / re) * inner(grad(u), conj(grad(v))) * dx
+        return (1.0 / re) * inner(grad(u), grad(v)) * dx
 
     @staticmethod
     def divergence(u: Argument, q: Argument) -> Form:
-        return inner(div(u), conj(q)) * dx
+        return -inner(q, div(u)) * dx
 
     @staticmethod
     def forcing(f: dfem.Function, v: Argument) -> Form:
-        return -inner(f, conj(v)) * dx
+        return -inner(f, v) * dx
 
     @staticmethod
     def stiffness(u: Argument, v: Argument) -> Form:
-        return inner(grad(u), conj(grad(v))) * dx
+        # Used only for the membrane benchmark case
+        return inner(grad(u), grad(v)) * dx
 
 
 class StationaryNavierStokesAssembler(BaseAssembler):
@@ -275,16 +277,19 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         self,
         spaces: FunctionSpaces,
         bcs: BoundaryConditions,
-        re: float,
         *,
+        re: float,
         tags: MeshTags | None = None,
         f: dfem.Function | None = None,
         initial_guess: dfem.Function | None = None,
+        use_sponge: bool = False,
     ) -> None:
         """Initialize."""
         super().__init__(spaces, bcs, tags=tags)
 
         self._re = re
+        self._use_sponge = use_sponge
+
         zeros = tuple(Scalar(0.0) for _ in range(spaces.velocity.mesh.topology.dim))
         self._f = f or dfem.Constant(spaces.velocity.mesh, zeros)
 
@@ -327,14 +332,18 @@ class StationaryNavierStokesAssembler(BaseAssembler):
 
         form = convection + diffusion + pressure + divergence + forcing
 
+        if self._use_sponge:
+            alpha = _get_damping_factor(self._spaces)
+            form += inner(alpha * self._u, self._v) * dx
+
         for marker, g in self._v_neumann:
-            form -= inner(conj(self._v), g) * self._ds(marker)
+            form -= inner(g, self._v) * self._ds(marker)
 
         for marker, g in self._p_neumann:
-            form -= inner(conj(self._q), g) * self._ds(marker)
+            form -= inner(g, self._q) * self._ds(marker)
 
         for marker, alpha, g_expr in self._robin_data:
-            form += alpha * inner(self._u - g_expr, conj(self._v)) * self._ds(marker)
+            form -= alpha * inner(self._u - g_expr, self._v) * self._ds(marker)
 
         return dfem.form(form, dtype=Scalar), dfem.form(
             derivative(form, self._wh), dtype=Scalar
@@ -346,24 +355,24 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         """Get the matrix and vector forms for the linearized Navier-Stokes equations."""
         key_jac = key_jac or f"jac_{id(self._jacobian)}"
         key_res = key_res or f"res_{id(self._residual)}"
-
         if key_jac not in self._mat_cache:
             log_rank(
                 logger,
                 logging.INFO,
                 "No cached matrix found. Assembling linearized operator.",
             )
-            A = assemble_matrix(self._jacobian, bcs=list(self.bcs))
+            A = assemble_matrix(self._jacobian, bcs=list(self.dirichlet_bcs))
             A.assemble()
-            Aw = iPETScMatrix(A)
-            self._mat_cache[key_jac] = Aw
+            self._mat_cache[key_jac] = iPETScMatrix(A)  # Save to cache
 
         if key_res not in self._vec_cache:
             log_rank(logger, logging.INFO, "No cached vector found. Assembling RHS.")
             b = assemble_vector(self.residual)
-            dfem.apply_lifting(b.array, [dfem.form(self._jacobian)], [list(self.bcs)])
+            dfem.apply_lifting(
+                b.array, [dfem.form(self._jacobian)], [list(self.dirichlet_bcs)]
+            )
             self._apply_dirichlet(b)
-            self._vec_cache[key_res] = iPETScVector(b)
+            self._vec_cache[key_res] = iPETScVector(b)  # Save to cache
 
         return self._mat_cache[key_jac], self._vec_cache[key_res]
 
@@ -388,12 +397,6 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
         if _has_non_homogeneous_neumann(bcs) or _has_non_homogeneous_robin(bcs):
             raise ValueError(
                 "Non-homogeneous natural (flux) boundary conditions are not yet supported."
-            )
-        if bcs.pressure:
-            raise ValueError(
-                "Pressure Dirichlet BCs are not allowed for the linearized eigenproblem assembler. "
-                "They inject identity rows into A/M and produce boundary modes. "
-                "Remove p-Dirichlet here and rely on the constant-pressure nullspace."
             )
 
         super().__init__(spaces, bcs, tags=tags)
@@ -431,110 +434,59 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
         self,
         *,
         key: str | int | None = None,
-        cache: CacheStore | None = None,
     ) -> iPETScMatrix:
         """Assemble the linearized Navier-Stokes operator A."""
         key = str(key or f"lin_ns_{id(self)}")
-        if key in self._mat_cache:
-            return self._mat_cache[key]
+        if key not in self._mat_cache:
+            log_rank(
+                logger,
+                logging.DEBUG,
+                "Assembling linear operator - (%d DOFs)",
+                self._num_dofs,
+            )
 
-        if cache is not None and (cached := cache.load_matrix(key)) is not None:
-            A = iPETScMatrix(cached)
-            for pmap in (*self._u_maps, *self._p_maps):
-                apply_periodic_constraints(A, pmap)
-            self.attach_pressure_nullspace(A)
-            self._mat_cache[key] = A
-            return A
+            a = (
+                VariationalForms.shear(self._u, self._v, self._base_flow)
+                + VariationalForms.convection(self._u, self._v, self._base_flow)
+                + VariationalForms.viscous(self._u, self._v, self._re)
+                + VariationalForms.pressure_gradient(self._p, self._v)
+                + VariationalForms.divergence(self._u, self._q)
+            )
 
-        log_rank(
-            logger,
-            logging.DEBUG,
-            "Assembling linear operator - (%d DOFs)",
-            self._num_dofs,
-        )
+            if self._use_sponge:
+                alpha = _get_damping_factor(self._spaces)
+                a += inner(alpha * self._u, self._v) * dx
 
-        a = (
-            VariationalForms.shear(self._u, self._v, self._base_flow)
-            + VariationalForms.convection(self._u, self._v, self._base_flow)
-            + VariationalForms.viscous(self._u, self._v, self._re)
-            + VariationalForms.pressure_gradient(self._p, self._v)
-            + VariationalForms.divergence(self._u, self._q)
-        )
+            for marker, alpha, g_expr in self._robin_data:
+                a -= alpha * inner(self._u - g_expr, self._v) * self._ds(marker)
 
-        if self._use_sponge:
-            alpha = _get_damping_factor(self._spaces)
-            a -= inner(alpha * self._u, conj(self._v)) * dx
+            A_raw = assemble_matrix(dfem.form(a, dtype=Scalar), bcs=list(self.bcs))
+            self._mat_cache[key] = iPETScMatrix(A_raw)
 
-        for marker, alpha, g_expr in self._robin_data:
-            a += alpha * inner(self._u - g_expr, self._v) * self._ds(marker)
+        return self._mat_cache[key]
 
-        A_raw = assemble_matrix(dfem.form(a, dtype=Scalar), bcs=list(self.bcs))
-
-        A = iPETScMatrix(A_raw)
-        A.assemble()
-
-        for pmap in (*self._u_maps, *self._p_maps):
-            apply_periodic_constraints(A, pmap)
-
-        self.attach_pressure_nullspace(A)
-        log_rank(logger, logging.DEBUG, "Attached pressure nullspace to A.")
-
-        self._mat_cache[key] = A
-        if cache:
-            cache.save_matrix(key, A.raw)
-        return A
-
-    def assemble_mass_matrix(
-        self,
-        *,
-        key: str | int | None = None,
-        cache: CacheStore | None = None,
-    ) -> iPETScMatrix:
+    def assemble_mass_matrix(self, *, key: str | int | None = None) -> iPETScMatrix:
         """Assemble the mass matrix M."""
         key = str(key or f"mass_ns_{id(self)}")
-        if key in self._mat_cache:
+        if key not in self._mat_cache:
+            log_rank(
+                logger,
+                logging.DEBUG,
+                "Assembling mass matrix - (%d DOFs)",
+                self._num_dofs,
+            )
+
+            a_mass = VariationalForms.mass(self._u, self._v)
+
+            M_raw = assemble_matrix(dfem.form(a_mass, dtype=Scalar), bcs=list(self.bcs))
+            self._mat_cache[key] = iPETScMatrix(M_raw)
+
             return self._mat_cache[key]
 
-        if cache is not None and (cached := cache.load_matrix(key)) is not None:
-            M = iPETScMatrix(cached)
-            for pmap in (*self._u_maps, *self._p_maps):
-                apply_periodic_constraints(M, pmap)
-            self.attach_pressure_nullspace(M)
-            self._mat_cache[key] = M
-            return M
-
-        log_rank(
-            logger,
-            logging.DEBUG,
-            "Assembling mass matrix - (%d DOFs)",
-            self._num_dofs,
-        )
-
-        a_mass = VariationalForms.mass(self._u, self._v)
-
-        M_raw = assemble_matrix(dfem.form(a_mass, dtype=Scalar), bcs=list(self.bcs))
-
-        M = iPETScMatrix(M_raw)
-        M.assemble()
-
-        for pmap in (*self._u_maps, *self._p_maps):
-            apply_periodic_constraints(M, pmap)
-
-        self.attach_pressure_nullspace(M)
-        log_rank(logger, logging.DEBUG, "Attached pressure nullspace to M.")
-
-        self._mat_cache[key] = M
-        if cache:
-            cache.save_matrix(key, M.raw)
-
-        return M
-
-    def assemble_eigensystem(
-        self, *, cache: CacheStore | None = None
-    ) -> tuple[iPETScMatrix, iPETScMatrix]:
+    def assemble_eigensystem(self) -> tuple[iPETScMatrix, iPETScMatrix]:
         """Assemble both the system operator and mass matrix (A, M)."""
-        A = self.assemble_linear_operator(cache=cache)
-        M = self.assemble_mass_matrix(cache=cache)
+        A = self.assemble_linear_operator()
+        M = self.assemble_mass_matrix()
         log_rank(
             logger,
             logging.INFO,
@@ -554,7 +506,10 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
             arr = np.zeros(self._num_dofs, dtype=Scalar)
             arr[self._dofs_p] = 1.0
             vec = iPETScVector.from_array(arr, comm=mat.comm)
-            vec.scale(1 / vec.norm)
+            nrm = vec.norm
+            if nrm == 0:
+                raise RuntimeError("Pressure DOF mask produced zero vector.")
+            vec.scale(1.0 / nrm)
             self._nullspace = iPETScNullSpace.from_vectors([vec])
         self._nullspace.attach_to(mat)
 
@@ -577,7 +532,7 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
         )
 
     def test_nullspace(self, matrix: iPETScMatrix) -> None:
-        """Assert correctness of nullspace (debug only)."""
+        """Assert correctness of nullspace (debug purposes only)."""
         if self._nullspace is None:
             raise RuntimeError("Nullspace not initialized.")
         is_ns, residual = self._nullspace.test_matrix(matrix)
@@ -587,10 +542,10 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
 def _get_damping_factor(
     spaces: FunctionSpaces,
     *,
-    frac_x: float = 0.25,
-    frac_y: float = 0.85,
-    alpha_max: float = -15.0,
-    power: float = 1.5,
+    frac_x: float = 0.33,
+    frac_y: float = 0.0,
+    alpha_max: float = 2.0,
+    power: float = 2.0,
 ) -> dfem.Function:
     """Generate the damping factor to form a sponge (damping) term over the last fraction of the domain.
 
@@ -655,7 +610,6 @@ def _get_damping_factor(
     r = 1.0 - (1.0 - rx) * (1.0 - ry)
 
     alpha.x.array[:] = (alpha_max * r).astype(alpha.x.array.dtype, copy=False)
-
     return alpha
 
 

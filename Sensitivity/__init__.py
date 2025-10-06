@@ -213,7 +213,7 @@ class EigenSensitivitySolver:
             atol=self._tol_direct,
             max_it=self._max_it,
         )
-        es = EigenSolver(cfg, A=A, M=M, check_hermitian=False)
+        es = EigenSolver(A, M, cfg, check_hermitian=False)
 
         if target is not None:
             es.solver.set_st_type(iSTType.SINVERT)

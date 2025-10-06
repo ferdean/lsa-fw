@@ -88,9 +88,7 @@ def define_velocity_bcs(
     for cfg in configs:
         marker = cfg.marker
         facets = tags.find(marker)
-        if (  # TODO: check this in main code
-            cfg.type == BoundaryConditionType.DIRICHLET_VELOCITY.value
-        ):
+        if cfg.type == BoundaryConditionType.DIRICHLET_VELOCITY.value:
             fn = dfem.Function(V)
             interp = (
                 cfg.value if callable(cfg.value) else _wrap_constant_vector(cfg.value)
@@ -171,6 +169,7 @@ def _run_case(nxy: tuple[int, int]) -> tuple[list[float], list[float]]:
     # Note: we are seeing spurious lambda \approx 1 modes because applying homogeneous Dirichlet BCs replaces
     # boundary‐dof rows/cols with identity, which analytically gives 1·x = lambda·1·x -> lambda=1 for each pinned dof.
     # These are not physical membrane modes and are thus dropped
+
     filtered = [(ev, vec) for ev, vec in numerical if abs(ev.real - 1.0) > cfg.atol]
 
     numerical_vals = np.array(
@@ -237,8 +236,6 @@ def run_convergence_analysis(resolutions: list[tuple[int, int]] | None = None) -
         hs.append(1 / max(nxy))
         rel_errors.append(rel_err)
 
-    # Keep original lists as lists; create arrays for vectorized math to avoid
-    # reassigning a different type to list-typed variables (mypy clean).
     hs_arr = np.array(hs, dtype=float)
     rel_errors_arr = np.array(rel_errors, dtype=float)
 

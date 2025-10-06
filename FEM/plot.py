@@ -265,6 +265,7 @@ def _plot_mixed_function_matplotlib(
     domain: tuple[tuple[float, float], tuple[float, float]] | None = None,
     fig_size: tuple[float, float] = _DEFAULT_FIGSIZE,
     streamline_density: float = 1.0,
+    p_lims: tuple[float, float] = (-0.5, 0.5),
 ) -> None:
     mesh = mixed_function.function_space.mesh
     if mesh.geometry.dim != 2:
@@ -343,7 +344,9 @@ def _plot_mixed_function_matplotlib(
             logger, logging.WARNING, "Skipping streamlines (scipy.interpolate failed)."
         )
 
-    tpc_p = ax1.tripcolor(tri, p_vals, shading="gouraud", cmap="coolwarm")
+    tpc_p = ax1.tripcolor(
+        tri, p_vals, shading="gouraud", cmap="coolwarm", vmin=p_lims[0], vmax=p_lims[1]
+    )
     ax1.set_xlabel(r"$x$ (-)")
     ax1.set_ylabel(r"$y$ (-)")
     ax1.set_xlim(xmin, xmax)

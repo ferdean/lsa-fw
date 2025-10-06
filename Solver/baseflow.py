@@ -67,14 +67,18 @@ class BaseFlowSolver:
         self,
         spaces: FunctionSpaces,
         *,
+        re: float,
         bcs: BoundaryConditions | None = None,
         tags: MeshTags | None = None,
+        use_sponge: bool = True,
     ) -> None:
         """Initialize."""
         self._spaces = spaces
+        self._re = re
         self._bcs = bcs
         self._initial_guess: dfem.Function | None = None
         self._tags = tags
+        self._use_sponge = use_sponge
 
     def _solve_stokes_flow(self) -> dfem.Function:
         """Assemble and solve the stokes flow, to be used as initial guess for the stationary NS flow."""
@@ -83,13 +87,12 @@ class BaseFlowSolver:
             logging.INFO,
             "Assembling and solving Stokes flow, to be used as Newton's initial guess.",
         )
-        stokes_assembler = StokesAssembler(self._spaces, bcs=self._bcs)
+        stokes_assembler = StokesAssembler(self._spaces, re=self._re, bcs=self._bcs)
         stokes_solver = LinearSolver(stokes_assembler)
         return stokes_solver.gmres_solve(show_plot=False)
 
     def solve(
         self,
-        re: float,
         *,
         ramp: bool = False,
         steps: int = 3,
@@ -117,9 +120,9 @@ class BaseFlowSolver:
             self._initial_guess.x.scatter_forward()
 
         if ramp and steps > 1:
-            re_ramp = _linspace(1.0, re, steps)
+            re_ramp = _linspace(1.0, self._re, steps)
         else:
-            re_ramp = [re]
+            re_ramp = [self._re]
 
         sol = self._initial_guess
         for re in re_ramp:
@@ -127,7 +130,12 @@ class BaseFlowSolver:
                 logger, logging.INFO, "Solving stationary Navier-Stokes at Re=%.2f", re
             )
             ns_assembler = StationaryNavierStokesAssembler(
-                self._spaces, re=re, bcs=self._bcs, initial_guess=sol, tags=self._tags
+                self._spaces,
+                re=re,
+                bcs=self._bcs,
+                initial_guess=sol,
+                tags=self._tags,
+                use_sponge=self._use_sponge,
             )
             newton = NewtonSolver(ns_assembler, damping=damping_factor)
 
@@ -206,17 +214,6 @@ def compute_drag(
 
     Fx = dfem.assemble_scalar(dfem.form(Fx_form, dtype=Scalar))
     return abs(float(Fx))
-
-
-# HACK: In theory, the dolfinx API should be sufficient to export/import function objects. However, up to now,
-# writing or reading a mixed-function (e.g., a Taylor–Hood mixed P2/P1) directly can lead to low-level crashes
-# or mismatches because PETSc binary views and XDMF I/O expect a single continuous Lagrange field of matching
-# polynomial degree. Mixed spaces must be split into their subcomponents (velocity and pressure), and even
-# then the degree of the output must match the mesh degree to avoid I/O failures. As a workaround, we optionally
-# interpolate the P2 velocity to a P1 vector space for safe export. Importing back into the original mixed
-# space may still fail or lose fidelity if the exported data does not exactly match the mixed DOF layout.
-# In parallel runs, the interleaved DOF layout of mixed spaces will either crash the writer/reader or silently corrupt
-# data. Therefore, export_baseflow and load_baseflow must only be called in serial runs.
 
 
 def export_function(

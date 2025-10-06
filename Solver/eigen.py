@@ -11,7 +11,7 @@ Example usage (Shift and invert with pre-conditioning):
         atol=1e-8,
         max_it=500
     )
-    es = EigenSolver(cfg, A, M)
+    es = EigenSolver(A, M, cfg)
 
     # Target interior eigenvalues near sigma=0.5
     es.solver.set_st_type(iSTType.SINVERT)
@@ -49,11 +49,11 @@ _HERMITIAN_TYPES: set[iEpsProblemType] = {
 class EigensolverConfig:
     """Eigensolver configuration."""
 
-    num_eig: int = 25
+    num_eig: int = 5
     """Number of computed eigenpairs."""
     problem_type: iEpsProblemType = iEpsProblemType.GNHEP
     """Problem type."""
-    atol: float = 1e-8
+    atol: float = 1e-6
     """Absolute tolerance."""
     max_it: int = 500
     """Maximum number of iterations."""

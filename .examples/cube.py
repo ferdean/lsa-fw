@@ -1,6 +1,9 @@
 #!/dolfinx-env/bin/python3
 
-"""Solve the baseflow of the canonical unit cube problem (instrumented for performance determination)."""
+"""Solve the baseflow of the canonical unit cube problem (instrumented for performance determination).
+
+Refer to ./tests/performance for further details.
+"""
 
 from __future__ import annotations
 

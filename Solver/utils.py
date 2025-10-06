@@ -243,7 +243,7 @@ class iEpsSolver:
 
     def set_target(self, sigma: float | complex) -> None:
         """Set spectral transformation shift (target)."""
-        self._eps.setTarget(Scalar(sigma.real))
+        self._eps.setTarget(Scalar(sigma))
 
     def set_interval(self, a: float, b: float) -> None:
         """Compute eigenvalues in real interval [a, b]."""
