@@ -5,16 +5,6 @@ type = "dirichlet_velocity"
 value = [0.0, 0.0]
 
 [[BC]]
-# Free-flow
-marker = 3
-type = "symmetry"
-
-[[BC]]
-# Free-flow
-marker = 4
-type = "symmetry"
-
-[[BC]]
 # Wall
 marker = 5
 type = "dirichlet_velocity"

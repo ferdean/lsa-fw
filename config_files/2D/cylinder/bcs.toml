@@ -6,13 +6,21 @@ value = [1.0, 0.0]
 
 [[BC]]
 # Free-flow
-marker = 3
-type = "symmetry"
+marker = 2
+type = "neumann_velocity"
+value = [0.0, 0.0]
 
 [[BC]]
 # Free-flow
+marker = 3
+type = "neumann_velocity"
+value = [0.0, 0.0]
+
+[[BC]]
+# Outlet
 marker = 4
-type = "symmetry"
+type = "dirichlet_pressure"
+value = 0.0
 
 [[BC]]
 # Wall
