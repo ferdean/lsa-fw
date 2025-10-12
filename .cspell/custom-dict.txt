@@ -44,6 +44,7 @@ iscomplex
 iscomplexobj
 Isoparametric
 Krylov
+Lamé
 linearization
 linearizing
 Lipschitz
@@ -75,6 +76,7 @@ petsc
 PGNHEP
 posedness
 Preconditioner
+pyvista
 Raviart
 REGGE
 sbaij
