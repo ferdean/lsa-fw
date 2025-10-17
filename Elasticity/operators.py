@@ -9,9 +9,10 @@ formulation. It uses the definition of infinitesimal strain and Hooke's law in i
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import ufl
+from Elasticity.bcs import BoundaryConditions
 import dolfinx.fem as dfem
 from dolfinx.fem.petsc import assemble_matrix
 from dolfinx.mesh import MeshTags
@@ -65,15 +66,6 @@ class ElasticityVariationalForms:
 
 
 @dataclass(frozen=True)
-class BoundaryConditions:
-    """Generic boundary conditions collector."""
-
-    dirichlet: list[dfem.DirichletBC] = field(default_factory=list)
-    neumann: list[tuple[int, dfem.Function]] = field(default_factory=list)
-    robin: list[tuple[int, dfem.Constant, dfem.Function]] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
 class MaterialProperties:
     """Define a collector for the material properties. Refer to the literature for the derivation of the values."""
 
@@ -124,7 +116,7 @@ class ElasticityEigenAssembler:
     ) -> None:
         """Initialize."""
         self._space = space
-        self._bcs = bcs or BoundaryConditions()
+        self._bcs = self._extract_bcs(bcs.dirichlet)
         self._material_properties = MaterialProperties.from_basic_properties(
             space.mesh, young_modulus, poisson_ratio, density
         )
@@ -149,8 +141,8 @@ class ElasticityEigenAssembler:
         log_rank(logger, logging.INFO, "Initialized elasticity EVP assembler.")
 
         # Add natural BCs (typically zero for EVP, but supported)
-        if self._bcs.neumann:
-            for marker, t in self._bcs.neumann:
+        if bcs.neumann is not None:
+            for marker, t in bcs.neumann:
                 log_rank(
                     logger,
                     logging.WARN,
@@ -159,6 +151,10 @@ class ElasticityEigenAssembler:
                 self._stiffness_form -= ElasticityVariationalForms.traction(
                     self._v, t=t, ds=self._ds(marker)
                 )
+
+    @staticmethod
+    def _extract_bcs(bcs: BoundaryConditions | None) -> list[dfem.DirichletBC]:
+        return [bc for (_, bc) in bcs]
 
     def assemble_stiffness(self, *, key: str | int | None = None) -> iPETScMatrix:
         """Assemble and return the stiffness matrix."""
@@ -172,7 +168,7 @@ class ElasticityEigenAssembler:
 
             stiffness = assemble_matrix(
                 dfem.form(self._stiffness_form, dtype=Scalar),
-                bcs=list(self._bcs.dirichlet),
+                bcs=list(self._bcs),
             )
             stiffness.assemble()
             self._mat_cache[key] = iPETScMatrix(stiffness)
@@ -197,7 +193,7 @@ class ElasticityEigenAssembler:
             )
 
             mass = assemble_matrix(
-                dfem.form(self._mass_form, dtype=Scalar), bcs=self._bcs.dirichlet
+                dfem.form(self._mass_form, dtype=Scalar), bcs=list(self._bcs)
             )
             mass.assemble()
             self._mat_cache[key] = iPETScMatrix(mass)

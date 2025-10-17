@@ -7,6 +7,7 @@ from typing import Final
 from matplotlib import pyplot as plt
 
 # from matplotlib.tri import Triangulation
+from matplotlib.tri import Triangulation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 from matplotlib.colors import Normalize
@@ -103,8 +104,13 @@ def plot_displacement(
     pl.show()
 
 
-# Matplotlib/LaTeX defaults (vector-friendly)
-_PLOT_RC: Final[dict] = {
+# Quiet some noisy libs
+for log in ("matplotlib", "PIL.PngImagePlugin"):
+    logging.getLogger(log).setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
+
+# Minimal, consistent rc
+_RC: Final[dict] = {
     "text.usetex": True,
     "font.family": "sans-serif",
     "font.sans-serif": ["LM Sans 10"],
@@ -117,117 +123,67 @@ _PLOT_RC: Final[dict] = {
     "savefig.bbox": "tight",
 }
 
-_DEF_3D_RC = {
-    "text.usetex": True,
-    "font.family": "sans-serif",
-    "font.sans-serif": ["LM Sans 10"],
-    "axes.titlesize": 10,
-    "axes.labelsize": 9,
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
-    "savefig.bbox": "tight",
-}
-
-
-def _beautify_3d_axes(ax) -> None:
-    # Light fine gridlines
-    for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
-        axis._axinfo["grid"].update(
-            {
-                "linewidth": 0.4,
-                "linestyle": "-",
-                "color": (0, 0, 0, 0.12),  # light gray w/ alpha
-            }
-        )
-        axis._axinfo["tick"].update({"inward_factor": 0.015, "outward_factor": 0.0})
-    ax.grid(True)
-
-    # Transparent panes, faint edges
-    for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
-        pane.set_facecolor((1, 1, 1, 0.0))
-        pane.set_edgecolor((0, 0, 0, 0.25))
-
-
-def _set_equal_3d(ax, Xdef: np.ndarray) -> None:
-    xmin, ymin, zmin = Xdef.min(axis=0)[:3]
-    xmax, ymax, zmax = Xdef.max(axis=0)[:3]
-    ranges = np.array([xmax - xmin, ymax - ymin, zmax - zmin], float)
-    span = float(ranges.max())
-    mid = np.array([(xmax + xmin) / 2, (ymax + ymin) / 2, (zmax + zmin) / 2], float)
-    ax.set_xlim(mid[0] - span / 2, mid[0] + span / 2)
-    ax.set_ylim(mid[1] - span / 2, mid[1] + span / 2)
-    ax.set_zlim(mid[2] - span / 2, mid[2] + span / 2)
-
-
-@dataclass(frozen=True)
-class SaveDisplacementConfig:
-    """Static (publication-quality) displacement plot."""
-
-    scale: float = 0.05
-    title: str | None = None
-    fig_size: tuple[float, float] = (4.5, 3.0)
-    cmap: str = "viridis"
-    show_mesh: bool = True
-    mesh_edge_width: float = 0.3
-    mesh_edge_color: str = "0.7"
-    show_colorbar: bool = True
-    colorbar_label: str = r"$\|\tilde{\mathbf{u}}\|$"
-    part: str = "abs"
-    dpi_png: int = 330  # used only if saving PNG
-    require_2d: bool = False
-
-
-def _as_part(a: np.ndarray, part: str) -> np.ndarray:
-    if part == "real":
-        return a.real if np.iscomplexobj(a) else np.asarray(a, dtype=np.float64)
-    if part == "imag":
-        if not np.iscomplexobj(a):
-            return np.zeros_like(a, dtype=np.float64)
-        return a.imag
-    # "abs"
-    return np.abs(a) if np.iscomplexobj(a) else np.asarray(a, dtype=np.float64)
-
-
-def _tri_from_vtk(cells: np.ndarray, cell_types: np.ndarray) -> np.ndarray:
-    """Extract linear triangle connectivity (VTK cell type 5) from VTK arrays."""
-    TRI = 5  # VTK_TRIANGLE
-    tri_indices = np.where(cell_types == TRI)[0]
-    triangles = []
-    i = 0
-    cell_id = 0
-    while i < len(cells):
-        n = int(cells[i])
-        if cell_id in tri_indices:
-            c = cells[i + 1 : i + 1 + n]
-            if len(c) == 3:
-                triangles.append(c)
-        i += n + 1
-        cell_id += 1
-    if not triangles:
-        raise RuntimeError(
-            "No linear triangle cells found. Provide/convert to P1 mesh."
-        )
-    return np.array(triangles, dtype=int)
-
 
 def _ensure_linear_vector_space(u: dfem.Function) -> dfem.Function:
-    """If u is higher-order, interpolate to linear vector Lagrange on the same mesh."""
     V = u.function_space
     el = V.ufl_element()
-    # Heuristic: use interpolation for degree > 1; otherwise return as-is
-    if getattr(el, "degree", 1) > 1:
-        mesh = V.mesh
-        # build linear vector Lagrange space
-        linear = dfem.FunctionSpace(mesh, ("Lagrange", 1, (mesh.geometry.dim,)))
-        u_lin = dfem.Function(linear)
-        u_lin.interpolate(u)
-        return u_lin
-    return u
+    deg = getattr(el, "degree", 1)
+    if deg <= 1:
+        return u
+    mesh = V.mesh
+    gdim = mesh.geometry.dim
+    V1 = dfem.FunctionSpace(mesh, ("Lagrange", 1, (gdim,)))
+    out = dfem.Function(V1)
+    out.interpolate(u)
+    return out
+
+
+def _gather_vtk(comm, cells, ctypes, coords, node_vals):
+    """Gather VTK arrays and nodal values to rank 0 and flatten indexing."""
+    Lc = comm.gather(cells, root=0)
+    Lt = comm.gather(ctypes, root=0)
+    Lx = comm.gather(coords, root=0)
+    Lv = comm.gather(node_vals, root=0)
+    if comm.rank != 0:
+        return None
+
+    offsets = np.cumsum([0] + [len(a) for a in Lx[:-1]])
+    flat_cells = []
+    for off, blk in zip(offsets, Lc):
+        i = 0
+        while i < len(blk):
+            n = int(blk[i])
+            flat_cells.append(np.r_[n, np.asarray(blk[i + 1 : i + 1 + n]) + off])
+            i += n + 1
+    cells_all = np.concatenate(flat_cells).astype(int)
+    ctypes_all = np.hstack(Lt).astype(int)
+    X = np.vstack(Lx)
+    U = np.vstack(Lv)
+    return cells_all, ctypes_all, X, U
+
+
+def _tri_from_vtk(cells_flat: np.ndarray, ctypes: np.ndarray) -> np.ndarray:
+    """Triangles from VTK cell stream (VTK_TRIANGLE=5)."""
+    VTK_TRIANGLE = 5
+    tri_ids = np.where(ctypes == VTK_TRIANGLE)[0]
+    tris = []
+    i = 0
+    k = 0
+    while i < len(cells_flat):
+        n = int(cells_flat[i])
+        if k in tri_ids:
+            c = cells_flat[i + 1 : i + 1 + n]
+            if len(c) == 3:
+                tris.append(c)
+        i += n + 1
+        k += 1
+    if not tris:
+        raise RuntimeError("No linear triangles (VTK_TRIANGLE=5) found.")
+    return np.asarray(tris, dtype=int)
 
 
 def _vtk_cells_iter(cells_flat: np.ndarray) -> list[np.ndarray]:
-    """Split VTK flat connectivity into a list of per-cell index arrays."""
-    out: list[np.ndarray] = []
+    out = []
     i = 0
     while i < len(cells_flat):
         n = int(cells_flat[i])
@@ -237,28 +193,22 @@ def _vtk_cells_iter(cells_flat: np.ndarray) -> list[np.ndarray]:
 
 
 def _boundary_triangles_3d(cells_flat: np.ndarray, ctypes: np.ndarray) -> np.ndarray:
-    """
-    Extract boundary triangles for 3D meshes with tetrahedra or hexahedra
-    (corner nodes only; quadratic variants downcast to corners).
-    Returns (NT, 3) with vertex indices.
-    """
+    """Boundary faces as triangles for tets/hexes (quadratic downcast by corners)."""
     VTK_TETRA = 10
     VTK_HEXAHEDRON = 12
     VTK_QUADRATIC_TETRA = 24
     VTK_QUADRATIC_HEXAHEDRON = 25
-    VTK_TRIQUADRATIC_HEXAHEDRON = 29  # also handled by corners
+    VTK_TRIQUADRATIC_HEXAHEDRON = 29
 
-    face_count: dict[tuple[int, int, int], tuple[int, tuple[int, int, int]]] = {}
-    # value = (count, oriented_face)
+    face_count: dict[tuple[int, int, int], int] = {}
+    face_keep: dict[tuple[int, int, int], tuple[int, int, int]] = {}
 
     cells = _vtk_cells_iter(cells_flat)
     if len(cells) != len(ctypes):
         raise RuntimeError("cells/ctypes length mismatch.")
 
-    for nodes, ctype in zip(cells, ctypes.astype(int)):
-        if ctype in (VTK_TETRA, VTK_QUADRATIC_TETRA):
-            if len(nodes) < 4:
-                raise RuntimeError("Tetra cell with < 4 nodes.")
+    for nodes, ct in zip(cells, ctypes):
+        if ct in (VTK_TETRA, VTK_QUADRATIC_TETRA):
             v = nodes[:4]
             faces = [
                 (v[0], v[1], v[2]),
@@ -266,15 +216,12 @@ def _boundary_triangles_3d(cells_flat: np.ndarray, ctypes: np.ndarray) -> np.nda
                 (v[0], v[2], v[3]),
                 (v[1], v[2], v[3]),
             ]
-        elif ctype in (
+        elif ct in (
             VTK_HEXAHEDRON,
             VTK_QUADRATIC_HEXAHEDRON,
             VTK_TRIQUADRATIC_HEXAHEDRON,
         ):
-            if len(nodes) < 8:
-                raise RuntimeError("Hexahedron cell with < 8 nodes.")
             v = nodes[:8]
-            # 6 quad faces (VTK hex corner ordering)
             quads = [
                 (v[0], v[1], v[2], v[3]),
                 (v[4], v[5], v[6], v[7]),
@@ -285,128 +232,144 @@ def _boundary_triangles_3d(cells_flat: np.ndarray, ctypes: np.ndarray) -> np.nda
             ]
             faces = []
             for a, b, c, d in quads:
-                # split into two tris keeping local orientation
                 faces.append((a, b, c))
                 faces.append((a, c, d))
         else:
-            raise RuntimeError(
-                f"Unsupported 3D VTK cell type {ctype}. "
-                "Supported: tetra/hex (including quadratic variants)."
-            )
+            raise RuntimeError(f"Unsupported 3D VTK cell type {ct}.")
 
         for f in faces:
             key = tuple(sorted(f))
-            cnt, _ = face_count.get(key, (0, f))
-            face_count[key] = (cnt + 1, f)
+            face_count[key] = face_count.get(key, 0) + 1
+            face_keep.setdefault(key, f)
 
-    # Boundary faces are those seen exactly once
-    tris = [oriented for (cnt, oriented) in face_count.values() if cnt == 1]
+    tris = [face_keep[k] for k, cnt in face_count.items() if cnt == 1]
     if not tris:
         raise RuntimeError("No boundary faces found.")
     return np.asarray(tris, dtype=int)
+
+
+def _axes3d_style(ax):
+    # transparent panes + faint edges + light grid
+    for pane in (ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane):
+        pane.set_alpha(0.0)
+        pane.set_edgecolor((0, 0, 0, 0.25))
+    for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
+        axis._axinfo["grid"].update(
+            {"linewidth": 0.4, "linestyle": "-", "color": (0, 0, 0, 0.12)}
+        )
+        axis._axinfo["tick"].update({"inward_factor": 0.015, "outward_factor": 0.0})
+    ax.grid(True)
+
+
+def _part(a: np.ndarray, mode: str) -> np.ndarray:
+    if mode == "real":
+        return a.real if np.iscomplexobj(a) else a
+    if mode == "imag":
+        return a.imag if np.iscomplexobj(a) else np.zeros_like(a)
+    if mode == "abs":
+        return np.abs(a) if np.iscomplexobj(a) else a
+    raise ValueError("mode must be 'abs', 'real', or 'imag'.")
+
+
+# ---------- public API ----------
 
 
 def save_displacement(
     u: dfem.Function,
     out_path: Path,
     *,
-    cfg: SaveDisplacementConfig | None = None,
+    scale: float = 0.05,
+    cmap: str = "viridis",
+    part: str = "abs",
+    show_mesh: bool = True,
+    title: str | None = None,
+    fig_size: tuple[float, float] | None = None,  # None -> auto per dim
+    dpi_png: int = 330,
+    elev: float = 18.0,
+    azim: float = -50.0,
 ) -> None:
-    """Save a publication-quality static plot of a displacement field."""
-    cfg = cfg or SaveDisplacementConfig()
+    """
+    Save a static plot of a displacement field.
+    - 2D: filled trisurf (Triangulation) + optional wireframe
+    - 3D: boundary shaded Poly3DCollection + optional undeformed wireframe
 
-    V = u.function_space
+    Vector outputs (.pdf/.svg) recommended; .png supported via dpi_png.
+    """
+    # Linearize if needed (node-wise mapping)
+    u_lin = _ensure_linear_vector_space(u)
+    V = u_lin.function_space
     mesh = V.mesh
     gdim = mesh.geometry.dim
     comm = mesh.comm
 
-    if cfg.require_2d and gdim != 2:
-        raise ValueError(
-            "Only 2D domains are supported by save_displacement (set require_2d=False to override)."
-        )
+    # VTK topology + coordinates
+    cells, ctypes, coords = vtk_mesh(V)
 
-    # Interpolate to linear if needed (ensures node-based mapping for plotting)
-    u_lin = _ensure_linear_vector_space(u)
-
-    # VTK mesh and coordinates (node ordering matches geometry dofs for P1)
-    cells, cell_types, coords = vtk_mesh(u_lin.function_space)
-
-    # Extract vector dof values at nodes
-    u_vals = u_lin.x.array
-    if u_vals.size % gdim != 0:
+    # nodal vector values
+    vals = u_lin.x.array
+    if vals.size % gdim != 0:
         raise RuntimeError("Unexpected DOF layout for vector function.")
-    u_vec = u_vals.reshape((-1, gdim))
-    # pick requested component part
-    if cfg.part in ("real", "imag"):
-        u_vec = _as_part(u_vec, cfg.part)
-    elif cfg.part == "abs":
-        # keep vector direction for deformation, magnitude for coloring
-        pass
-    else:
-        raise ValueError("cfg.part must be one of: 'real', 'imag', 'abs'")
+    U = vals.reshape((-1, gdim))
+    Up = _part(U, part)
 
-    # MPI-safe gather to rank 0
-    cells_L = comm.gather(cells, root=0)
-    ctype_L = comm.gather(cell_types, root=0)
-    coords_L = comm.gather(coords, root=0)
-    uvec_L = comm.gather(u_vec, root=0)
+    # Gather to rank 0
+    gathered = _gather_vtk(comm, cells, ctypes, coords, Up)
+    if gathered is None:
+        return
+    cells_all, ctypes_all, X, U = gathered
 
-    if comm.rank != 0:
+    # Deformation & magnitudes
+    if gdim == 2:
+        Xdef = np.c_[
+            X[:, 0] + scale * U[:, 0], X[:, 1] + scale * U[:, 1], np.zeros(len(X))
+        ]
+        Umag = np.linalg.norm(U, axis=1)
+        tris = _tri_from_vtk(cells_all, ctypes_all)
+        tri2d = Triangulation(Xdef[:, 0], Xdef[:, 1], triangles=tris)
+        fig_w, fig_h = fig_size if fig_size else (4.8, 3.6)
+        with plt.rc_context(_RC):
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            col = ax.tripcolor(
+                tri2d, facecolors=Umag[tris].mean(axis=1), shading="flat", cmap=cmap
+            )
+            if show_mesh:
+                ax.triplot(tri2d, lw=0.25, color=(0, 0, 0, 0.25))
+            ax.set_aspect("equal", adjustable="box")
+            ax.set_xlabel(r"$x$")
+            ax.set_ylabel(r"$y$")
+            if title:
+                ax.set_title(title, pad=6)
+            cbar = fig.colorbar(col, ax=ax, fraction=0.046, pad=0.04)
+            cbar.set_label(r"$\|\tilde{\mathbf{u}}\|$")
+            _tight_save(fig, out_path, dpi_png)
+            plt.close(fig)
         return
 
-    # Flatten across ranks
-    offsets = np.cumsum([0] + [len(p) for p in coords_L[:-1]])
-    all_cells = []
-    for off, blk in zip(offsets, cells_L):
-        i = 0
-        while i < len(blk):
-            n = int(blk[i])
-            all_cells.append(np.array(blk[i + 1 : i + 1 + n]) + off)
-            i += n + 1
-    cells_all = np.concatenate(
-        [
-            np.array([len(c)], dtype=int).repeat(1).tolist() + c.tolist()
-            for c in all_cells
-        ]
-    )
-    ctypes_all = np.hstack(ctype_L)
-    X = np.vstack(coords_L)
-    U = np.vstack(uvec_L)
+    # --- 3D branch ---
+    Xdef = X.copy()
+    Xdef[:, :3] = Xdef[:, :3] + scale * U
+    Umag = np.linalg.norm(U, axis=1)
+    tri_conn = _boundary_triangles_3d(cells_all, ctypes_all)
+    tris_xyz_def = [Xdef[idx][:, :3] for idx in tri_conn]
+    face_vals = Umag[tri_conn].mean(axis=1)
 
-    if gdim == 3:
-        # Deformed coordinates and scalar field
-        X_def = X.copy()
-        X_def[:, :3] = X_def[:, :3] + cfg.scale * U
-        u_mag = np.linalg.norm(U, axis=1)
-
-        # Boundary triangulation
-        tri_conn = _boundary_triangles_3d(cells_all, ctypes_all)
-
-        # Build triangle vertex lists for Poly3DCollection
-        tris_xyz = [X_def[idx][:, :3] for idx in tri_conn]
-        # Face scalar = mean of vertex magnitudes
-        face_vals = np.mean(u_mag[tri_conn], axis=1)
-
-    with plt.rc_context(
-        {**_PLOT_RC, "savefig.bbox": "standard"}
-    ):  # disable tight for this fig
-        fig = plt.figure(figsize=(max(cfg.fig_size[0], 5.2), max(cfg.fig_size[1], 4.2)))
-        # reserve space on the right for colorbar
-        fig.subplots_adjust(right=0.86)  # 0.86 ≈ leave ~14% for cbar
+    fig_w, fig_h = fig_size if fig_size else (5.6, 4.2)
+    with plt.rc_context({**_RC, "savefig.bbox": "standard"}):
+        fig = plt.figure(figsize=(fig_w, fig_h))
+        fig.subplots_adjust(right=0.86)  # space for colorbar
         ax = fig.add_subplot(111, projection="3d")
 
-        # Colormap and normalization
         norm = Normalize(vmin=float(face_vals.min()), vmax=float(face_vals.max()))
-        cmap = cm.get_cmap(cfg.cmap)
-        colors = cmap(norm(face_vals))
+        mappable = cm.ScalarMappable(norm=norm, cmap=cmap)
+        colors = mappable.to_rgba(face_vals)
 
         surf = Poly3DCollection(
-            tris_xyz, facecolors=colors, edgecolor="none", linewidths=0.0
+            tris_xyz_def, facecolors=colors, edgecolor="none", linewidths=0.0
         )
         surf.set_antialiased(True)
         ax.add_collection3d(surf)
 
-        if cfg.show_mesh:
+        if show_mesh:
             tris_xyz_undeformed = [X[idx][:, :3] for idx in tri_conn]
             wire = Line3DCollection(
                 [np.vstack([t, t[0]]) for t in tris_xyz_undeformed],
@@ -418,32 +381,44 @@ def save_displacement(
         ax.set_xlabel(r"$x$")
         ax.set_ylabel(r"$y$")
         ax.set_zlabel(r"$z$")
-        if cfg.title:
-            ax.set_title(cfg.title, pad=6)
+        if title:
+            ax.set_title(title, pad=6)
+        _axes3d_style(ax)
 
-        _beautify_3d_axes(ax)
+        # equal aspect + small padding
+        mins = Xdef[:, :3].min(axis=0)
+        maxs = Xdef[:, :3].max(axis=0)
+        span = float(np.max(maxs - mins))
+        pad = 0.03 * span
+        mid = 0.5 * (mins + maxs)
+        ax.set_xlim(mid[0] - span / 2 - pad, mid[0] + span / 2 + pad)
+        ax.set_ylim(mid[1] - span / 2 - pad, mid[1] + span / 2 + pad)
+        ax.set_zlim(mid[2] - span / 2 - pad, mid[2] + span / 2 + pad)
 
-        # ---- equal aspect with a small padding to avoid left cut ----
-        xmin, ymin, zmin = X_def.min(axis=0)[:3]
-        xmax, ymax, zmax = X_def.max(axis=0)[:3]
-        span = float(np.max([xmax - xmin, ymax - ymin, zmax - zmin]))
-        pad = 0.03 * span  # 3% pad on each side prevents cropping
-        cx, cy, cz = (xmax + xmin) / 2, (ymax + ymin) / 2, (zmax + zmin) / 2
-        ax.set_xlim(cx - span / 2 - pad, cx + span / 2 + pad)
-        ax.set_ylim(cy - span / 2 - pad, cy + span / 2 + pad)
-        ax.set_zlim(cz - span / 2 - pad, cz + span / 2 + pad)
+        ax.view_init(elev=elev, azim=azim)
 
-        # ---- place colorbar in its own axes outside the 3D plot ----
-        norm = Normalize(vmin=float(face_vals.min()), vmax=float(face_vals.max()))
-        mappable = cm.ScalarMappable(norm=norm, cmap=cmap)
-        mappable.set_array(face_vals)
+        # colorbar on the right
+        cax = fig.add_axes([0.88, 0.15, 0.03, 0.7])
+        cb = plt.colorbar(mappable, cax=cax)
+        cb.set_label(r"$\|\tilde{\mathbf{u}}\|$")
 
-        # cleaner view
-        ax.view_init(elev=18, azim=-50)
-
-        # save
-        ext = out_path.suffix.lower().lstrip(".")
-        dpi = cfg.dpi_png if ext == "png" else None
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(out_path, dpi=dpi)
+        _tight_save(fig, out_path, dpi_png)
         plt.close(fig)
+
+
+def _tight_save(fig: plt.Figure, out_path: Path, dpi_png: int):
+    ext = out_path.suffix.lower()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if ext == ".png":
+        fig.savefig(out_path, dpi=dpi_png)
+    elif ext in {".pdf", ".svg"}:
+        fig.savefig(
+            out_path,
+            transparent=True,
+            bbox_inches="tight",
+            pad_inches=0.02,
+            dpi=300,
+            metadata={"Creator": "LSA-FW displacement saver"},
+        )
+    else:
+        raise ValueError("Use one of: .pdf, .svg, .png")

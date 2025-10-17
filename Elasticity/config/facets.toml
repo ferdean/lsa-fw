@@ -1,0 +1,26 @@
+# Facets for thin plate vibrations
+
+[[FaceTag]]
+# Inlet
+marker = 1
+when = { axis = "x", equals = 0.0 }
+
+[[FaceTag]]
+# Outlet
+marker = 2
+when = { axis = "x", equals = 10.0 }
+
+[[FaceTag]]
+# Bottom
+marker = 3
+when = { axis = "y", equals = 0.0 }
+
+[[FaceTag]]
+# Top
+marker = 4
+when = { axis = "y", equals = 10.0 }
+
+[[FaceTag]]
+# Fallback for unmatched surfaces
+marker = 5
+otherwise = true

@@ -41,6 +41,10 @@ class BoundaryConditionType(StrEnum):
     SYMMETRY = auto()
     """Symmetric BC (no penetration, free-slip)."""
 
+    # Elasticity ---
+    DIRICHLET_DISPLACEMENT = auto()
+    """Strong Dirichlet BC for displacement."""
+
     @classmethod
     def from_string(cls, value: str) -> BoundaryConditionType:
         """Get boundary condition type from a string."""
