@@ -30,37 +30,43 @@ $$
 
 ## Governing Equations
 
-We consider small-strain, undamped, isotropic linear elasticity on a domain $\Omega \subset \mathbb{R}^d$ with boundary $\partial\Omega = \Gamma_D \cup \Gamma_N$ (disjoint, up to measure zero). The balance of linear momentum reads
+We consider small-strain, undamped, isotropic linear elasticity on a domain $\Omega \subset \mathbb{R}^d$ with boundary $\partial\Omega = \Gamma_D \cup \Gamma_N$ (disjoint, up to measure zero).
+The balance of linear momentum reads
+
 $$
 \rho\ddot{\mathbf{u}} = \nabla\cdot\boldsymbol{\sigma} + \mathbf{f} \quad \text{in }\Omega,
 $$
+
 with Dirichlet and Neumann boundary conditions
+
 $$
 \mathbf{u} = \bar{\mathbf{u}} \ \text{on }\Gamma_D, 
 \qquad 
 \boldsymbol{\sigma}\mathbf{n} = \bar{\mathbf{t}} \ \text{on }\Gamma_N.
 $$
+
 Here $\rho$ is the mass density, $\mathbf{f}$ is the body force density, and $\boldsymbol{\sigma}$ is the Cauchy stress tensor.
 
 Under Hooke's law for small strains,
+
 $$
-\boldsymbol{\sigma} = 2\mu\,\varepsilon(\mathbf{u}) + \lambda\,\mathrm{tr}\big(\varepsilon(\mathbf{u})\big)\,\mathbf{I},
+\boldsymbol{\sigma} = 2\mu\varepsilon(\mathbf{u}) + \lambda\mathrm{tr}\big(\varepsilon(\mathbf{u})\big)\mathbf{I},
 \qquad 
 \varepsilon(\mathbf{u}) := \tfrac{1}{2}\big(\nabla \mathbf{u} + \nabla \mathbf{u}^{T}\big),
 $$
+
 with Lamé parameters $\lambda,\mu$ (equivalently $E,\nu$). Using $\mathrm{tr}(\varepsilon(\mathbf{u})) = \nabla\cdot\mathbf{u}$, the strong form becomes
+
 $$
-\rho\ddot{\mathbf{u}} = \nabla\cdot\Big(2\mu\,\varepsilon(\mathbf{u}) + \lambda\,(\nabla\cdot\mathbf{u})\,\mathbf{I}\Big) + \mathbf{f} \quad \text{in }\Omega.
+\rho\ddot{\mathbf{u}} = \nabla\cdot\Big(2\mu\varepsilon(\mathbf{u}) + \lambda(\nabla\cdot\mathbf{u})\mathbf{I}\Big) + \mathbf{f} \quad \text{in }\Omega.
 $$
 
 **Free vibration (eigenproblem).** For unforced, homogeneous boundary conditions and harmonic motion $\mathbf{u}(\mathbf{x},t)=\hat{\mathbf{u}}(\mathbf{x})e^{\mathrm{i}\omega t}$,
+
 $$
--\omega^{2}\rho\,\hat{\mathbf{u}} = \nabla\cdot\Big(2\mu\,\varepsilon(\hat{\mathbf{u}}) + \lambda\,(\nabla\cdot\hat{\mathbf{u}})\,\mathbf{I}\Big) \quad \text{in }\Omega,
+-\omega^{2}\rho\hat{\mathbf{u}} = \nabla\cdot\Big(2\mu\varepsilon(\hat{\mathbf{u}}) + \lambda(\nabla\cdot\hat{\mathbf{u}})\mathbf{I}\Big) \quad \text{in }\Omega.
 $$
-which discretizes to the generalized EVP
-$$
-\mathbf{K}\hat{\mathbf{u}} = \omega^{2}\mathbf{M}\hat{\mathbf{u}}.
-$$
+
 Material stability (strong ellipticity) requires $\mu>0$ and $\lambda + \tfrac{2}{d}\mu > 0$ (equivalently bulk modulus $\kappa=\lambda+\tfrac{2}{3}\mu>0$ in 3D).
 Proof is left as a *to do*.
 
@@ -69,31 +75,19 @@ Proof is left as a *to do*.
 Let
 
 $$
-\mathcal{V} := \big\{\mathbf{v}\in[H^1(\Omega)]^d : \mathbf{v}=\mathbf{0} \ \text{on }\Gamma_D\big\}.
+\mathcal{V} = \lbrace\mathbf{v}\in[H^1(\Omega)]^d : \mathbf{v}=\mathbf{0} \ \text{on }\Gamma_D\rbrace.
 $$
 
 Multiplying the strong form by a test function $\mathbf{v}\in\mathcal{V}$ and integrate over $\Omega$:
 
 $$
-\int_{\Omega} \rho\ddot{\mathbf{u}}\cdot \mathbf{v}\,\mathrm{d}\Omega
-=
-\int_{\Omega} \nabla\cdot\boldsymbol{\sigma}\cdot \mathbf{v}\,\mathrm{d}\Omega
-+
-\int_{\Omega} \mathbf{f}\cdot \mathbf{v}\,\mathrm{d}\Omega.
+\int_{\Omega} \rho\ddot{\mathbf{u}}\cdot \mathbf{v}\mathrm{d}\Omega = \int_{\Omega} \nabla\cdot\boldsymbol{\sigma}\cdot \mathbf{v}\mathrm{d}\Omega + \int_{\Omega} \mathbf{f}\cdot \mathbf{v}\mathrm{d}\Omega.
 $$
 
 Using integration by parts and the symmetry of $\boldsymbol{\sigma}$ (so $\boldsymbol{\sigma}:\omega(\mathbf{v})=0$ with $\omega(\mathbf{v})$ the skew part),
 
 $$
-\int_{\Omega} \nabla\cdot\boldsymbol{\sigma}\cdot \mathbf{v}\,\mathrm{d}\Omega
-=
-\int_{\Gamma_N} (\boldsymbol{\sigma}\mathbf{n})\cdot \mathbf{v}\,\mathrm{d}\Gamma
--
-\int_{\Omega} \boldsymbol{\sigma}:\nabla \mathbf{v}\,\mathrm{d}\Omega
-=
-\int_{\Gamma_N} \bar{\mathbf{t}}\cdot \mathbf{v}\,\mathrm{d}\Gamma
--
-\int_{\Omega} \boldsymbol{\sigma}:\varepsilon(\mathbf{v})\,\mathrm{d}\Omega.
+\int_{\Omega} \nabla\cdot\boldsymbol{\sigma}\cdot \mathbf{v}\mathrm{d}\Omega = \int_{\Gamma_N} (\boldsymbol{\sigma}\mathbf{n})\cdot \mathbf{v}\mathrm{d}\Gamma - \int_{\Omega} \boldsymbol{\sigma}:\nabla  \mathbf{v}\mathrm{d}\Omega = \int_{\Gamma_N} \bar{\mathbf{t}}\cdot \mathbf{v}\mathrm{d}\Gamma - \int_{\Omega} \boldsymbol{\sigma}:\varepsilon(\mathbf{v})\mathrm{d}\Omega.
 $$
 
 Substituting Hooke's law yields the standard bilinear and linear forms:
@@ -101,13 +95,10 @@ Substituting Hooke's law yields the standard bilinear and linear forms:
 $$
 \boxed{
 \begin{aligned}
-\text{Find }\mathbf{u}(t)\in \mathcal{V}\text{ such that }\forall\,\mathbf{v}\in\mathcal{V}:\quad
-&\int_{\Omega} \rho\ddot{\mathbf{u}}\cdot \mathbf{v}\,\mathrm{d}\Omega
-+
-\underbrace{\int_{\Omega} \big(2\mu\,\varepsilon(\mathbf{u}):\varepsilon(\mathbf{v}) + \lambda\,(\nabla\cdot\mathbf{u})(\nabla\cdot\mathbf{v})\big)\,\mathrm{d}\Omega}_{a(\mathbf{u},\mathbf{v})}
-\\[4pt]
-&=
-\underbrace{\int_{\Omega} \mathbf{f}\cdot \mathbf{v}\,\mathrm{d}\Omega + \int_{\Gamma_N} \bar{\mathbf{t}}\cdot \mathbf{v}\,\mathrm{d}\Gamma}_{\ell(\mathbf{v})}.
+\text{Find }\mathbf{u}(t)\in \mathcal{V}\text{ such that }\forall\mathbf{v}\in\mathcal{V}:\quad
+&\int_{\Omega} \rho\ddot{\mathbf{u}}\cdot \mathbf{v}\mathrm{d}\Omega +
+\underbrace{\int_{\Omega} \big(2\mu\varepsilon(\mathbf{u}):\varepsilon(\mathbf{v}) + \lambda(\nabla\cdot\mathbf{u})(\nabla\cdot\mathbf{v})\big)\mathrm{d}\Omega}_ {a(\mathbf{u},\mathbf{v})}
+&= \underbrace{\int_{\Omega} \mathbf{f}\cdot \mathbf{v}\mathrm{d}\Omega + \int_{\Gamma_N} \bar{\mathbf{t}}\cdot \mathbf{v}\mathrm{d}\Gamma}_{\ell(\mathbf{v})}.
 \end{aligned}
 }
 $$
@@ -117,13 +108,14 @@ For free vibrations with homogeneous data ($\mathbf{f}=\mathbf{0}$, $\bar{\mathb
 $$
 \text{Find }(\omega^2,\hat{\mathbf{u}})\text{ with }\hat{\mathbf{u}}\in\mathcal{V}\setminus\{\mathbf{0}\}\text{ such that }
 \quad
-a(\hat{\mathbf{u}},\mathbf{v}) = \omega^{2}\,\underbrace{\int_{\Omega}\rho\,\hat{\mathbf{u}}\cdot \mathbf{v}\,\mathrm{d}\Omega}_{m(\hat{\mathbf{u}},\mathbf{v})}
-\quad \forall\,\mathbf{v}\in\mathcal{V}.
+a(\hat{\mathbf{u}},\mathbf{v}) = \omega^{2}\underbrace{\int_{\Omega}\rho\hat{\mathbf{u}}\cdot \mathbf{v}\mathrm{d}\Omega}_{m(\hat{\mathbf{u}},\mathbf{v})}
+\quad \forall\mathbf{v}\in\mathcal{V}.
 $$
 
 After discretization, this becomes the generalized eigenvalue problem
+
 $$
-\mathbf{K}\mathbf{v} = \lambda\, \mathbf{M}\mathbf{v},
+\mathbf{K}\mathbf{v} = \lambda \mathbf{M}\mathbf{v},
 \qquad
 \lambda = \omega^2.
 $$
@@ -131,11 +123,13 @@ $$
 ## Modal mass-normalization
 
 Discrete eigenvectors are defined up to a complex scale. For comparability across modes and meshes, each eigenvector is mass-normalized:
+
 $$
 \tilde{\mathbf{v}} = \frac{\mathbf{v}}{\sqrt{\mathbf{v}^H \mathbf{M} \mathbf{v}}},
 \qquad
 \tilde{\mathbf{v}}^H \mathbf{M} \tilde{\mathbf{v}} = 1.
 $$
+
 This fixes the modal amplitude so that the kinetic energy at unit angular velocity equals one half.
 It also makes modal participation factors and Rayleigh quotients directly interpretable.
 
@@ -161,7 +155,7 @@ $$
 If a small imaginary part is present due to numerical artifacts or optional damping models, it is convenient to write
 
 $$
-\lambda = \omega_n^2 + i\, \eta_r\, \omega_n^2,
+\lambda = \omega_n^2 + i \eta_r \omega_n^2,
 $$
 
 so that $\eta_r$ acts as a modal loss factor.
