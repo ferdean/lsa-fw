@@ -6,14 +6,14 @@ from pathlib import Path
 from typing import Final
 
 import numpy as np
-from dolfinx import fem as dfem
 
 from Elasticity.bcs import AxisNormalBc, define_bcs
 from Elasticity.operators import ElasticityEigenAssembler
 from Elasticity.plot import (
+    DisplacementPlotConfig,
     plot_displacement,
-    save_displacement,
-)  # save_displacement supports xy_view/elev/azim
+    # save_displacement,
+)
 from Elasticity.spaces import define_space
 from Elasticity.utils import process_modes
 from Meshing.core import Mesher
@@ -52,7 +52,7 @@ mesher = Mesher(
 mesh = mesher.generate()
 mesher.mark_boundary_facets(facet_cfg)
 
-function_space = define_space(mesh)
+function_space = define_space(mesh, degree=1)
 bcs = define_bcs(
     mesher,
     function_space,
@@ -100,6 +100,7 @@ for rank, (i_c, i_e) in enumerate(zip(ix_c, ix_e), 1):
         abs_err[rank - 1],
         100.0 * rel_err[rank - 1],
     )
+
 logger.info(
     "Summary: MAE=%.3f Hz | MRE=%.3f%% | Max |rel_err|=%.3f%%",
     float(np.mean(np.abs(abs_err))),
@@ -107,30 +108,6 @@ logger.info(
     float(100.0 * np.max(np.abs(rel_err))),
 )
 
-fig_dir = Path(__file__).parent / "figs"
-fig_dir.mkdir(parents=True, exist_ok=True)
 
-for idx, md in enumerate(modes, 1):
-    logger.info(
-        "#%02d  f=%.3f Hz | ω=%.3e rad/s | mass_norm=%s | ω²(RQ)=%.3e",
-        idx,
-        md.fn,
-        md.wn,
-        "OK" if md.mass_chk else "FAIL",
-        md.rq_omega2,
-    )
-
-    # Save static figure (matplotlib). Use xy_view for higher modes for clarity.
-    azi = -90 if md.fn >= 180.0 else -50
-    ele = 90 if md.fn >= 180.0 else 18
-    save_displacement(
-        md.function,
-        fig_dir / f"eig_{idx:02d}.png",
-        scale=500.0,
-        cmap="viridis",
-        part="abs",
-        show_mesh=False,
-        title=f"f = {md.fn:.2f} Hz",
-        elev=ele,
-        azim=azi,
-    )
+for md in modes:
+    plot_displacement(md.function, cfg=DisplacementPlotConfig(scale=5e2))
