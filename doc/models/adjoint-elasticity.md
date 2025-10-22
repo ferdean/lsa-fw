@@ -41,19 +41,13 @@ $$
 which rearranges as
 
 $$
-(\partial_\mu \mathbf{K})\mathbf{v}
-- (\partial_\mu \lambda)\mathbf{M}\mathbf{v}
-- \lambda(\partial_\mu \mathbf{M})\mathbf{v}
-+ [\mathbf{K} - \lambda\mathbf{M}](\partial_\mu \mathbf{v}) = \mathbf{0}.
+(\partial_\mu \mathbf{K})\mathbf{v} - (\partial_\mu \lambda)\mathbf{M}\mathbf{v} - \lambda(\partial_\mu \mathbf{M})\mathbf{v} + [\mathbf{K} - \lambda\mathbf{M}](\partial_\mu \mathbf{v}) = \mathbf{0}.
 $$
 
 Projecting onto the adjoint mode by multiplying from the left with $\mathbf{a}^T$ gives
 
 $$
-\mathbf{a}^T (\partial_\mu \mathbf{K})\mathbf{v}
-- (\partial_\mu \lambda)\mathbf{a}^T \mathbf{M}\mathbf{v}
-- \lambda\mathbf{a}^T (\partial_\mu \mathbf{M})\mathbf{v}
-+ \mathbf{a}^T [\mathbf{K} - \lambda\mathbf{M}](\partial_\mu \mathbf{v}) = \mathbf{0}.
+\mathbf{a}^T (\partial_\mu \mathbf{K})\mathbf{v} - (\partial_\mu \lambda)\mathbf{a}^T \mathbf{M}\mathbf{v} - \lambda\mathbf{a}^T (\partial_\mu \mathbf{M})\mathbf{v} + \mathbf{a}^T [\mathbf{K} - \lambda\mathbf{M}](\partial_\mu \mathbf{v}) = \mathbf{0}.
 $$
 
 Since $\mathbf{a}^T[\mathbf{K} - \lambda\mathbf{M}] = \mathbf{0}^T$ by definition of the adjoint problem and $\mathbf{a}^T \mathbf{M}\mathbf{v} = 1$ by normalization, the sensitivity of $\lambda$ with respect to $\mu$ follows as
@@ -75,9 +69,11 @@ $$
 **Lemma.**
 Let $\mathbf{K}, \mathbf{M} \in \mathbb{R}^{n\times n}$ with $\mathbf{K} = \mathbf{K}^T$, $\mathbf{M} = \mathbf{M}^T$, and $\mathbf{x}^T \mathbf{M}\mathbf{x} > 0$ for all $\mathbf{x} \neq \mathbf{0}$.  
 Then every right eigenpair $(\lambda, \mathbf{v})$ of
+
 $$
 \mathbf{K}\mathbf{v} = \lambda\mathbf{M}\mathbf{v}
 $$
+
 has a real eigenvalue $\lambda$, and the left eigenvector $\mathbf{a}$ can be chosen equal to $\mathbf{v}$.
 
 **Proof (Reality of the eigenvalues).**
@@ -124,7 +120,7 @@ and for an isotropic, linear solid,
 
 $$
 \sigma(\mathbf{u}) = \mathbb{C} : \varepsilon(\mathbf{u})
-= 2\mu\varepsilon(\mathbf{u}) + \lambda\operatorname{tr}(\varepsilon(\mathbf{u}))\mathbf{I},
+= 2\mu\varepsilon(\mathbf{u}) + \lambda\text{tr}(\varepsilon(\mathbf{u}))\mathbf{I},
 $$
 
 with Lamé parameters $\mu > 0$, $\lambda \ge 0$, and density $\rho(x) > 0$.
@@ -150,12 +146,12 @@ For all $\mathbf{u},\mathbf{v} \in V$, $a(\mathbf{u},\mathbf{v}) = a(\mathbf{v},
 Using the constitutive law,
 
 $$
-a(\mathbf{u},\mathbf{v}) = \int_\Omega \left[2\mu\varepsilon(\mathbf{u}):\varepsilon(\mathbf{v}) + \lambda\operatorname{tr}(\varepsilon(\mathbf{u}))\operatorname{tr}(\varepsilon(\mathbf{v}))\right]\partial x.
+a(\mathbf{u},\mathbf{v}) = \int_\Omega \left[2\mu\varepsilon(\mathbf{u}):\varepsilon(\mathbf{v}) + \lambda\text{tr}(\varepsilon(\mathbf{u}))\text{tr}(\varepsilon(\mathbf{v}))\right]\partial x.
 $$
 
 Since $\varepsilon(\mathbf{u})$ and $\varepsilon(\mathbf{v})$ are symmetric tensors,
 $\varepsilon(\mathbf{u}):\varepsilon(\mathbf{v}) = \varepsilon(\mathbf{v}):\varepsilon(\mathbf{u})$ and
-$\operatorname{tr}(\varepsilon(\mathbf{u}))\operatorname{tr}(\varepsilon(\mathbf{v})) = \operatorname{tr}(\varepsilon(\mathbf{v}))\operatorname{tr}(\varepsilon(\mathbf{u}))$.
+$\text{tr}(\varepsilon(\mathbf{u}))\text{tr}(\varepsilon(\mathbf{v})) = \text{tr}(\varepsilon(\mathbf{v}))\text{tr}(\varepsilon(\mathbf{u}))$.
 
 Hence $a(\mathbf{u},\mathbf{v}) = a(\mathbf{v},\mathbf{u}) \quad \square$.  
 
@@ -237,18 +233,17 @@ $$
 
 - The derivative is **negative**: increasing density lowers the eigenfrequency.
 - The numerator $\int |\mathbf{v}|^2$ measures the kinetic energy distribution, while the denominator $\int \rho |\mathbf{v}|^2$ corresponds to the modal mass.
-- If the mode is **mass-normalized**, i.e.
+- If the mode is **mass-normalized**, i.e.,
 
-  $$
-  \mathbf{v}^T \mathbf{M}\mathbf{v} = \int_\Omega \rho |\mathbf{v}|^2\partial\Omega = 1,
-  $$
+$$
+\mathbf{v}^T \mathbf{M}\mathbf{v} = \int_\Omega \rho |\mathbf{v}|^2\partial\Omega = 1,
+$$
 
   the formula reduces to
 
-  $$
-  \frac{\partial \lambda}{\partial \rho}
-  = -\lambda \int_\Omega |\mathbf{v}|^2\partial\Omega.
-  $$
+$$
+\frac{\partial \lambda}{\partial \rho} = -\lambda \int_\Omega |\mathbf{v}|^2\partial\Omega.
+$$
 
 This analytical result can be used to validate symbolic solvers.
 
