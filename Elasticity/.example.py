@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Final
 
 import numpy as np
+import dolfinx.fem as dfem
 
 from Elasticity.bcs import AxisNormalBc, define_bcs
 from Elasticity.operators import ElasticityEigenAssembler
@@ -15,8 +16,14 @@ from Elasticity.plot import (
     # save_displacement,
 )
 from Elasticity.spaces import define_space
-from Elasticity.utils import process_modes
+from Elasticity.utils import (
+    compute_density_sensitivity_analytical,
+    compute_density_sensitivity_fd,
+    process_modes,
+    process_sensitivity,
+)
 from Meshing.core import Mesher
+from Meshing.plot import plot_mesh
 from Meshing.utils import Shape, iCellType
 from Solver.eigen import EigenSolver, EigensolverConfig
 from Solver.utils import PreconditionerType, iEpsProblemType, iSTType
@@ -38,6 +45,8 @@ _EXPECTED_FREQS: Final[tuple[float, ...]] = (
     206.190,
 )
 
+__show_plots__ = False
+
 logger = logging.getLogger(__name__)
 setup_logging(verbose=True)
 
@@ -51,6 +60,9 @@ mesher = Mesher(
 )
 mesh = mesher.generate()
 mesher.mark_boundary_facets(facet_cfg)
+
+if __show_plots__:
+    plot_mesh(mesher.mesh, tags=mesher.facet_tags)
 
 function_space = define_space(mesh, degree=1)
 bcs = define_bcs(
@@ -108,6 +120,39 @@ logger.info(
     float(100.0 * np.max(np.abs(rel_err))),
 )
 
+if __show_plots__:
+    for md in modes:
+        plot_displacement(md.function, cfg=DisplacementPlotConfig(scale=5e2))
 
-for md in modes:
-    plot_displacement(md.function, cfg=DisplacementPlotConfig(scale=5e2))
+# Sensitivity (first mode's to density) ---
+eigenfunction = modes[0].function
+eigenvalue = modes[0].wn * modes[0].wn
+param = assembler.material_properties.rho
+dparam = dfem.Constant(  # Uniform density assumed
+    eigenfunction.function_space.mesh, 1.0
+)
+
+sensitivity = assembler.compute_sensitivity(eigenfunction, eigenvalue, param, dparam)
+fn_sensitivity = process_sensitivity(sensitivity, modes[0].fn)
+
+anal_sensitivity = compute_density_sensitivity_analytical(eigenfunction, eigenvalue)
+anal_fn_sensitivity = process_sensitivity(anal_sensitivity, modes[0].fn)
+
+fd_sensitivity = compute_density_sensitivity_fd(assembler, step=10)
+fd_fn_sensitivity = process_sensitivity(fd_sensitivity, modes[0].fn)
+
+logger.info(
+    "Computed sensitivity of the first natural frequency to density: %.6f (%.3f%%)",
+    fn_sensitivity,
+    fn_sensitivity / modes[0].fn * 100,
+)
+logger.info(
+    "Analytical sensitivity of the first natural frequency to density: %.6f (%.3f%%)",
+    anal_fn_sensitivity,
+    anal_fn_sensitivity / modes[0].fn * 100,
+)
+logger.info(
+    "Finite-differences sensitivity of the first natural frequency to density: %.6f (%.3f%%)",
+    fd_fn_sensitivity,
+    fd_fn_sensitivity / modes[0].fn * 100,
+)

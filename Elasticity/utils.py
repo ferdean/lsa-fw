@@ -2,7 +2,11 @@ from dataclasses import dataclass
 import math
 from typing import Iterable
 import numpy as np
+import ufl
+from Elasticity.operators import ElasticityEigenAssembler
 from FEM.utils import iComplexPETScVector, iPETScMatrix, iPETScVector
+from Solver.eigen import EigenSolver, EigensolverConfig
+from Solver.utils import PreconditionerType, iEpsProblemType, iSTType
 import dolfinx.fem as dfem
 
 
@@ -114,3 +118,66 @@ def process_modes(
     # Sort by frequency
     out.sort(key=lambda m: m.fn)
     return out
+
+
+def process_sensitivity(sensitivity: float, natural_frequency: float) -> float:
+    """Process eigenvalue sensitivity to obtain natural frequency sensitivity, in Hertz."""
+    return sensitivity / (8 * math.pi**2 * natural_frequency)
+
+
+def compute_density_sensitivity_analytical(
+    eigenfunction: dfem.Function, eigenvalue: float
+) -> float:
+    """Analytical eigenvalue sensitivity for a uniform perturbation in density."""
+    mesh = eigenfunction.function_space.mesh
+    l2_vv = dfem.assemble_scalar(
+        dfem.form(ufl.inner(eigenfunction, eigenfunction) * ufl.dx(domain=mesh))
+    )
+    return float(-eigenvalue * l2_vv)
+
+
+def _solve_first_mode_with_mass(
+    assembler: ElasticityEigenAssembler,
+    M: iPETScMatrix,
+    K: iPETScMatrix,
+    *,
+    cfg: EigensolverConfig | None = None,
+) -> Eigenmode:
+    es = EigenSolver(K, M, cfg or EigensolverConfig(num_eig=25))
+    sol = es.solver
+    sol.set_problem_type(iEpsProblemType.GHEP)
+    sol.set_target(0.0)
+    sol.set_st_type(iSTType.SINVERT)
+    sol.set_st_pc_type(PreconditionerType.CHOLESKY)
+    sol.set_dimensions(number_eigenpairs=24)
+    pairs = es.solve()
+    modes = process_modes(pairs, K, M, assembler.function_space, skip_below_hz=2e-1)
+    return modes[0]
+
+
+def compute_density_sensitivity_fd(
+    assembler: ElasticityEigenAssembler,
+    *,
+    step: float = 10.0,
+    cfg: EigensolverConfig | None = None,
+) -> float:
+    """Finite differences -based eigenvalue sensitivity for a uniform perturbation in density."""
+    rho = assembler.material_properties.rho
+    origin_rho = rho.x.array.copy()
+
+    K = assembler.assemble_stiffness()
+
+    # rho + h
+    rho.x.array[:] = origin_rho + step
+    M_p = assembler.assemble_mass(key=f"m_fd_plus_{id(origin_rho)}")
+    eigenmode_p = _solve_first_mode_with_mass(assembler, M_p, K, cfg=cfg)
+
+    # rho - h
+    rho.x.array[:] = origin_rho - step
+    M_m = assembler.assemble_mass(key=f"m_fd_minus_{id(origin_rho)}")
+    eigenmode_m = _solve_first_mode_with_mass(assembler, M_m, K, cfg=cfg)
+
+    # Restore rho
+    rho.x.array[:] = origin_rho
+
+    return (eigenmode_p.value - eigenmode_m.value) / (2.0 * step)

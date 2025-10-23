@@ -6,14 +6,10 @@ from typing import Final
 
 from matplotlib import pyplot as plt
 
-# from matplotlib.tri import Triangulation
 from matplotlib.tri import Triangulation
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection, Line3DCollection
 from matplotlib.colors import Normalize
 import matplotlib.cm as cm
-from matplotlib import rcParams
-from matplotlib.ticker import MaxNLocator
 
 from dolfinx.plot import vtk_mesh
 from dolfinx import fem as dfem

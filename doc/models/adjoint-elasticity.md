@@ -57,7 +57,7 @@ $$
 = \mathbf{a}^T \left(\partial_\mu \mathbf{K} - \lambda\partial_\mu \mathbf{M}\right)\mathbf{v}.
 $$
 
-Additionally, as the eigenproblem matrices are symmtric, one can set $\mathbf{a} = \mathbf{v}$, so the formula further simplifies:
+Additionally, as the eigenproblem matrices are symmetric, one can set $\mathbf{a} = \mathbf{v}$, so the formula further simplifies:
 
 $$
 \partial_\mu \lambda
@@ -128,8 +128,8 @@ with Lamé parameters $\mu > 0$, $\lambda \ge 0$, and density $\rho(x) > 0$.
 Define the bilinear forms
 
 $$
-a(\mathbf{u},\mathbf{v}) := \int_\Omega \sigma(\mathbf{u}):\varepsilon(\mathbf{v})\partial x, \qquad
-m(\mathbf{u},\mathbf{v}) := \int_\Omega \rho \mathbf{u} \cdot \mathbf{v}\partial x.
+a(\mathbf{u},\mathbf{v}) := \int_\Omega \sigma(\mathbf{u}):\varepsilon(\mathbf{v})\mathrm{d}x, \qquad
+m(\mathbf{u},\mathbf{v}) := \int_\Omega \rho \mathbf{u} \cdot \mathbf{v}\mathrm{d}x.
 $$
 
 With a conforming FE space $V_h \subset V$ and nodal basis $\{\phi_i\}$,
@@ -146,7 +146,7 @@ For all $\mathbf{u},\mathbf{v} \in V$, $a(\mathbf{u},\mathbf{v}) = a(\mathbf{v},
 Using the constitutive law,
 
 $$
-a(\mathbf{u},\mathbf{v}) = \int_\Omega \left[2\mu\varepsilon(\mathbf{u}):\varepsilon(\mathbf{v}) + \lambda\text{tr}(\varepsilon(\mathbf{u}))\text{tr}(\varepsilon(\mathbf{v}))\right]\partial x.
+a(\mathbf{u},\mathbf{v}) = \int_\Omega \left[2\mu\varepsilon(\mathbf{u}):\varepsilon(\mathbf{v}) + \lambda\text{tr}(\varepsilon(\mathbf{u}))\text{tr}(\varepsilon(\mathbf{v}))\right]\mathrm{d} x.
 $$
 
 Since $\varepsilon(\mathbf{u})$ and $\varepsilon(\mathbf{v})$ are symmetric tensors,
@@ -163,8 +163,8 @@ For all $u,v \in V$, $m(\mathbf{u},\mathbf{v}) = m(\mathbf{v},\mathbf{u})$.
 The scalar product is commutative and $\rho$ is scalar:
 
 $$
-m(\mathbf{u},\mathbf{v}) = \int_\Omega \rho \mathbf{u}\cdot \mathbf{v}\partial x
-= \int_\Omega \rho \mathbf{v}\cdot \mathbf{u}\partial x
+m(\mathbf{u},\mathbf{v}) = \int_\Omega \rho \mathbf{u}\cdot \mathbf{v}\mathrm{d}x
+= \int_\Omega \rho \mathbf{v}\cdot \mathbf{u}\mathrm{d}x
 = m(\mathbf{v},\mathbf{u}) \quad \square
 $$
 
@@ -206,25 +206,25 @@ $$
 For a consistent-mass formulation,
 
 $$
-\mathbf{M}(\rho) = \int_\Omega \rho(\mathbf{x}){\bf N}^T{\bf N}\partial\Omega,
+\mathbf{M}(\rho) = \int_\Omega \rho(\mathbf{x}){\bf N}^T{\bf N}\mathrm{d}\Omega,
 $$
 
 hence its derivative is
 
 $$
-\partial_\rho \mathbf{M} = \int_\Omega {\bf N}^T{\bf N}\partial\Omega.
+\partial_\rho \mathbf{M} = \int_\Omega {\bf N}^T{\bf N}\mathrm{d}\Omega.
 $$
 
 At the continuous level, this corresponds to
 
 $$
-\mathbf{a}^T (\partial_\rho \mathbf{M}) \mathbf{v} = \int_\Omega \mathbf{a}\cdot \mathbf{v}\partial\Omega.
+\mathbf{a}^T (\partial_\rho \mathbf{M}) \mathbf{v} = \int_\Omega \mathbf{a}\cdot \mathbf{v}\mathrm{d}\Omega.
 $$
 
 Because the eigenproblem is Hermitian ($\mathbf{a} = \mathbf{v}$ for symmetric $\mathbf{K}$ and $\mathbf{M}$), the expression simplifies to
 
 $$
-\frac{\partial \lambda}{\partial \rho} = -\lambda\frac{\int_\Omega |\mathbf{v}|^2\partial\Omega} {\int_\Omega \rho|\mathbf{v}|^2\partial\Omega}. \quad \square
+\frac{\partial \lambda}{\partial \rho} = -\lambda\frac{\int_\Omega |\mathbf{v}|^2\mathrm{d}\Omega} {\int_\Omega \rho|\mathbf{v}|^2\mathrm{d}\Omega}. \quad \square
 $$
 
 
@@ -235,17 +235,151 @@ $$
 - The numerator $\int |\mathbf{v}|^2$ measures the kinetic energy distribution, while the denominator $\int \rho |\mathbf{v}|^2$ corresponds to the modal mass.
 - If the mode is **mass-normalized**, i.e.,
 
-$$
-\mathbf{v}^T \mathbf{M}\mathbf{v} = \int_\Omega \rho |\mathbf{v}|^2\partial\Omega = 1,
-$$
+  $$
+  \mathbf{v}^T \mathbf{M}\mathbf{v} = \int_\Omega \rho |\mathbf{v}|^2\mathrm{d}\Omega = 1,
+  $$
 
   the formula reduces to
 
 $$
-\frac{\partial \lambda}{\partial \rho} = -\lambda \int_\Omega |\mathbf{v}|^2\partial\Omega.
+\frac{\partial \lambda}{\partial \rho} = -\lambda \int_\Omega |\mathbf{v}|^2\mathrm{d}\Omega.
 $$
 
 This analytical result can be used to validate symbolic solvers.
+
+## Implementation Detail
+
+### Scalar Integration
+
+The main implementation design decision has been to keep using the assembler's UFL forms in `ElasticityAssembler`, but assembling scalars instead of full derivative matrices.
+
+As it has already been proven earlier in this document, 
+
+$$
+\partial_\mu \lambda
+= \mathbf{v}^T \left(\partial_\mu \mathbf{K}  - \lambda\partial_\mu \mathbf{M}\right)\mathbf{v}.
+$$
+
+The matrices $\mathbf{K}$ and $\mathbf{M}$ originate from continuous bilinear forms, 
+
+$$
+a(\mathbf{u}, \mathbf{v}) = \int_\Omega \mathcal{A}(\mathbf{x}, \mu; \mathbf{u}, \mathbf{v}) \mathrm{d}x,
+$$
+
+$$
+m(\mathbf{u}, \mathbf{v}) = \int_\Omega \mathcal{M}(\mathbf{x}, \mu; \mathbf{u}, \mathbf{v}) \mathrm{d}x,
+$$
+
+where $\mathcal{A}$, $\mathcal{M}$ are the integrands depending on the material model and on $\mu$.
+
+Differentiating with respect to $\mu$ yields 
+
+$$
+\partial_\mu a(\mathbf{u}, \mathbf{v}) = \int_\Omega \partial_\mu \mathcal{A}(\mathbf{x}, \mu; \mathbf{u}, \mathbf{v}) \mathrm{d}x,
+$$
+
+$$
+\partial_\mu m(\mathbf{u}, \mathbf{v}) = \int_\Omega \partial_\mu \mathcal{M}(\mathbf{x}, \mu; \mathbf{u}, \mathbf{v}) \mathrm{d}x.
+$$
+
+At the discrete level, and focusing on just one of the matrices, 
+
+$$
+\left( \partial_\mu K_{ij}\right) = \partial_\mu a(\phi_j, \phi_i),
+$$
+
+so
+
+$$
+\mathbf{v}^T (\partial_\mu \mathbf{K}) \mathbf{v} = \sum_{i, j} v_i v_j \partial_\mu a(\phi_j, \phi_i) = \partial_\mu a(\mathbf{v}_h, \mathbf{v}_h),
+$$
+
+where $\mathbf{v}_h = \sum_j v_j \phi_j$ is the finite-element representation of the eigenmode.
+
+Thus, the contraction $\mathbf{v}^T (\partial_\mu \mathbf{K}) \mathbf{v}$ is exactly equal to evaluating the derivative form $\partial_\mu a(\mathbf{v}_h, \mathbf{v}_h)$ - a **scalar integral**.
+
+As a consequence, the adjoint formula only involves two scalar contractions, we never need the full matrices $\partial_\mu \mathbf{K}$ and $\partial_\mu \mathbf{M}$.
+
+Because each contraction equals the corresponding bilinear form evaluated at $(\mathbf{v}_h, \mathbf{v}_h)$, we can compute it directly as a scalar finite-element integral, which is exactly what `assemble_scalar(form(...))` does in `FEniCSx`.
+
+### Natural Frequency Sensitivity
+
+Applying similar steps as the ones for the postprocessing of the eigenvalues, one can obtain the sensitivity of the natural frequencies as a function of the sensitivity of the eigenvalues.
+
+Given that the angular natural frequency is defined as $\omega = \sqrt{\lambda}$ and, in Hertz, $f = \omega / (2\pi)$, 
+
+$$
+\frac{\partial f}{\partial \mu} = \frac{1}{8 \pi^2 f}\frac{\partial \lambda}{\partial \mu}.
+$$
+
+Sometimes, one can also be interested in relative (fractional) sensitivity, 
+
+$$
+\frac{1}{f} \frac{\partial f}{\partial \mu} = \frac{1}{2\lambda} \frac{\partial \lambda}{\partial \mu}.
+$$
+
+### Detail
+
+The sensitivity evaluation is fully implemented at the variational level, directly within the finite-element framework.
+All material parameters (e.g., $E$, $\nu$, $\rho$) are represented as *UFL coefficients* — typically cellwise constant DG-0 functions — so that symbolic differentiation with respect to any such function becomes possible.
+
+#### Generic formulation
+
+The adjoint-based formula is evaluated by assembling two scalar integrals.
+
+Instead of explicitly forming the derivative matrices $\partial_\mu\mathbf{K}$ and $\partial_\mu\mathbf{M}$, the same result is obtained by differentiating the *variational forms* symbolically and testing them with the converged eigenmode $\mathbf{v}_h$:
+
+$$
+\frac{\partial\lambda}{\partial\mu} = a'(\mathbf{v}_h\mathbf{v}_h) - \lambda m'(\mathbf{v}_h,\mathbf{v}_h),
+$$
+
+where $a'$ and $m'$ denote the derivatives of the bilinear forms $a(u,v)$ and $m(u,v)$ with respect to $\mu$.
+
+In practice, this becomes:
+
+```python
+dk = ufl.derivative(k_vv, param, dparam)
+dm = ufl.derivative(m_vv, param, dparam)
+val_k = assemble_scalar(form(dk))
+val_m = assemble_scalar(form(dm))
+```
+
+and the sensitivity is returned as $\partial_\mu\lambda = \text{val}_k - \lambda\cdot\text{val}_m$.
+
+This formulation is fully general: any parameter appearing in the material laws, source terms, or boundary data can be chosen as `param`, making the approach directly extensible to anisotropic or heterogeneous problems.
+
+#### Validation
+
+To ensure correctness, the implementation is verified on the density sensitivity of the first elastic mode of a steel plate.
+This case provides two independent references:
+
+1. **Analytical specialization** (derived earlier),
+   
+$$
+\frac{\partial\lambda}{\partial\rho} = -\lambda \frac{\int_\Omega |\mathbf{v}|^2\mathrm{d}\Omega} {\int_\Omega \rho|\mathbf{v}|^2\mathrm{d}\Omega},
+$$
+
+   which for mass-normalized modes simplifies to $-\lambda\int_\Omega|\mathbf{v}|^2\mathrm{d}\Omega.$
+
+2. **Finite-difference approximation** obtained by re-assembling $\mathbf{M}$ for perturbed densities $\rho\pm h$ and recomputing the first eigenpair:
+
+$$
+\frac{\partial\lambda}{\partial\rho} \approx \frac{\lambda(\rho+h) - \lambda(\rho-h)}{2h}.
+$$
+
+#### Results
+
+For the first mode of the benchmark plate $E=200\;\mathrm{GPa}$, $\nu=0.3$, $\rho=8000\;\mathrm{kg/m^3}$,
+the computed sensitivities perfectly coincide across all methods:
+
+| Method                           | $ \partial f / \partial \rho $ [Hz / (kg m⁻³)] | Rel. change |
+| :------------------------------- | :--------------------------------------------: | :---------: |
+| Adjoint / variational derivative |                    −0.002805                   |   −0.006 %  |
+| Analytical formula               |                    −0.002805                   |   −0.006 %  |
+| Finite differences               |                    −0.002804                   |   −0.006 %  |
+
+The full agreement demonstrates both the correctness of the symbolic differentiation approach and its numerical stability.
+Because the implementation operates at the variational level, it immediately generalizes to sensitivities with respect to *any spatially distributed parameter*, not only uniform density.
 
 ## References
 
