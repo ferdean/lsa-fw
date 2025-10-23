@@ -235,9 +235,9 @@ $$
 - The numerator $\int |\mathbf{v}|^2$ measures the kinetic energy distribution, while the denominator $\int \rho |\mathbf{v}|^2$ corresponds to the modal mass.
 - If the mode is **mass-normalized**, i.e.,
 
-  $$
-  \mathbf{v}^T \mathbf{M}\mathbf{v} = \int_\Omega \rho |\mathbf{v}|^2\mathrm{d}\Omega = 1,
-  $$
+$$
+\mathbf{v}^T \mathbf{M}\mathbf{v} = \int_\Omega \rho |\mathbf{v}|^2\mathrm{d}\Omega = 1,
+$$
 
   the formula reduces to
 
@@ -372,7 +372,7 @@ $$
 For the first mode of the benchmark plate $E=200\;\mathrm{GPa}$, $\nu=0.3$, $\rho=8000\;\mathrm{kg/m^3}$,
 the computed sensitivities perfectly coincide across all methods:
 
-| Method                           | $ \partial f / \partial \rho $ [Hz / (kg m⁻³)] | Rel. change |
+| Method                           | Sensitivity [Hz / (kg m⁻³)]                    | Rel. change |
 | :------------------------------- | :--------------------------------------------: | :---------: |
 | Adjoint / variational derivative |                    −0.002805                   |   −0.006 %  |
 | Analytical formula               |                    −0.002805                   |   −0.006 %  |
