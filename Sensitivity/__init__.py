@@ -27,7 +27,7 @@ from FEM.operators import (
     StationaryNavierStokesAssembler,
 )
 from FEM.spaces import FunctionSpaces
-from FEM.utils import iComplexPETScVector, iPETScMatrix, iPETScVector, Scalar
+from FEM.utils import iPETScMatrix, iPETScVector, Scalar
 from Solver.eigen import EigenSolver, EigensolverConfig
 from Solver.linear import LinearSolver
 from Solver.utils import (
@@ -80,7 +80,6 @@ class EigenSensitivitySolver:
         tol_baseflow: float = 1e-6,
         max_it: int = 500,
         max_modes: int = 5,
-        bc_energy_tol: float = 0.98,
     ) -> None:
         """Initialize the sensitivity solver for a given baseflow and Reynolds number."""
         self._spaces = spaces
@@ -96,13 +95,13 @@ class EigenSensitivitySolver:
         self._tol_baseflow = tol_baseflow
         self._max_it = max_it
         self._max_modes = max_modes
-        self._bc_energy_tol = bc_energy_tol
+        # self._bc_energy_tol = bc_energy_tol
 
-        # Keep assembler only for BC bookkeeping (Dirichlet DOFs) and potential future reuse.
+        # Keep assembler only for BC book-keeping (Dirichlet DOFs) and potential future reuse
         self._lin_assembler = LinearizedNavierStokesAssembler(
             baseflow, spaces, re, bcs=bcs, tags=tags
         )
-        self._ns_assembler: StationaryNavierStokesAssembler | None = None
+        self._bf_assembler: StationaryNavierStokesAssembler | None = None
         self._sigma: complex | None = None  # Selected eigenvalue (direct)
         self._v_func: dfem.Function | None = None  # Direct eigenfunction (mixed space)
         self._a_func: dfem.Function | None = None  # Adjoint eigenfunction (mixed space)
@@ -111,21 +110,9 @@ class EigenSensitivitySolver:
         log_global(
             logger,
             logging.INFO,
-            "Initialized eigenvalue sensitivity solver for Re=%.2f",
+            "Initialized eigenvalue sensitivity solver for Re = %.2f",
             re,
         )
-
-    @staticmethod
-    def _fraction_energy_on_indices(
-        x: PETSc.Vec | np.ndarray, idx: np.ndarray
-    ) -> float:
-        if idx.size == 0:
-            return 0.0
-        arr = x.getArray(readonly=True) if isinstance(x, PETSc.Vec) else np.asarray(x)
-        total = float(np.vdot(arr, arr).real)
-        if total == 0.0:
-            return 0.0
-        return float(np.vdot(arr[idx], arr[idx]).real) / total
 
     @staticmethod
     def _project_to(
@@ -159,32 +146,6 @@ class EigenSensitivitySolver:
         u_fun.x.array[:] = x.getArray(readonly=True)
         u_fun.x.scatter_forward()
         return u_fun
-
-    def _collect_dirichlet_dofs(self) -> np.ndarray:
-        dofs: list[int] = []
-        for bc in self._lin_assembler.bcs:
-            if (idx := bc.dof_indices()) is None:
-                continue
-            # Flatten nested structures (bc indices may be list/tuple of arrays)
-            if isinstance(idx, (list, tuple)):
-                for part in idx:
-                    arr = np.asarray(part, dtype=np.int64).ravel()
-                    if arr.size:
-                        dofs.extend(int(i) for i in arr)
-            else:
-                arr = np.asarray(idx, dtype=np.int64).ravel()
-                if arr.size:
-                    dofs.extend(int(i) for i in arr)
-        # Include any internally pinned pressure DOF(s) (from steady NS assembler)
-        if (pinned := self._lin_assembler._dofs_p) is not None:
-            arr = np.asarray(pinned, dtype=np.int64).ravel()
-            if arr.size:
-                dofs.extend(int(i) for i in arr)
-        return (
-            np.unique(np.array(dofs, dtype=np.int64))
-            if dofs
-            else np.empty((0,), dtype=np.int64)
-        )
 
     def _ensure_matrices(self) -> tuple[iPETScMatrix, iPETScMatrix]:
         if self._A is None or self._M is None:
@@ -235,34 +196,11 @@ class EigenSensitivitySolver:
         if not (pairs := es.solve()):
             raise RuntimeError("No eigenpairs returned by the eigensolver.")
 
-        # Filter out spurious eigenpairs caused by strong Dirichlet BCs
-        constrained = self._collect_dirichlet_dofs()
-        filtered: list[tuple[complex, iComplexPETScVector]] = []
-        for lam, vec in pairs:
-            # Build a complex view for energy localization check
-            if vec.imag is None:
-                v_view: PETSc.Vec | np.ndarray = vec.real.raw
-            else:
-                r = vec.real.raw.getArray()
-                im = vec.imag.raw.getArray()
-                v_view = r.astype(complex, copy=False) + 1j * im
-            if (
-                self._fraction_energy_on_indices(v_view, constrained)
-                >= self._bc_energy_tol
-            ):
-                continue
-            filtered.append((lam, vec))
-        if not filtered:
-            raise RuntimeError(
-                "All computed eigenpairs were filtered as spurious (Dirichlet identity modes). "
-                "Consider assembling reduced operators on free DOFs or relax 'bc_energy_tol'."
-            )
-
         # Select the eigenpair: nearest to target if specified, otherwise largest real part
         if target is not None:
-            sigma, eigvec = min(filtered, key=lambda p: abs(p[0] - target))
+            sigma, eigvec = min(pairs, key=lambda p: abs(p[0] - target))
         else:
-            sigma, eigvec = max(filtered, key=lambda p: p[0].real)
+            sigma, eigvec = max(pairs, key=lambda p: p[0].real)
         self._sigma = sigma
 
         # Convert eigenvector to a dolfinx Function
@@ -273,10 +211,11 @@ class EigenSensitivitySolver:
             r = eigvec.real.raw.getArray(readonly=True)
             im = eigvec.imag.raw.getArray(readonly=True)
             v_values = r.astype(complex, copy=False) + 1j * im
+
         v_func.x.array[:] = v_values
         v_func.x.scatter_forward()
         self._v_func = v_func
-        num_spurious = len(pairs) - len(filtered)
+
         log_global(
             logger,
             logging.INFO,
@@ -285,14 +224,7 @@ class EigenSensitivitySolver:
             "+" if sigma.imag >= 0 else "-",
             abs(sigma.imag),
         )
-        if num_spurious > 0:
-            log_global(
-                logger,
-                logging.DEBUG,
-                "Filtered %d spurious mode(s) with bc_energy_tol=%.2f.",
-                num_spurious,
-                self._bc_energy_tol,
-            )
+
         return sigma, v_func
 
     def solve_adjoint_mode(
@@ -315,14 +247,13 @@ class EigenSensitivitySolver:
         A_H = _hermitian(A)
         M_H = _hermitian(M)
 
-        constrained = self._collect_dirichlet_dofs()
         cfg = EigensolverConfig(
             num_eig=self._max_modes,
             problem_type=iEpsProblemType.GNHEP,
             atol=self._tol_adjoint,
             max_it=self._max_it,
         )
-        es_adj = EigenSolver(cfg, A=A_H, M=M_H, check_hermitian=False)
+        es_adj = EigenSolver(A_H, M_H, cfg, check_hermitian=False)
 
         # Shift-invert around sigma* to converge to the corresponding left eigenvector.
         es_adj.solver.set_st_type(iSTType.SINVERT)
@@ -340,33 +271,11 @@ class EigenSensitivitySolver:
             self._tol_adjoint,
         )
 
-        pairs = es_adj.solve()
-        if not pairs:
+        if not (pairs := es_adj.solve()):
             raise RuntimeError("No eigenpairs returned by the adjoint eigensolver.")
 
-        # Filter spurious adjoint eigenpairs (Dirichlet modes)
-        filtered: list[tuple[complex, iComplexPETScVector]] = []
-        for lam, avec in pairs:
-            if avec.imag is None:
-                a_view: PETSc.Vec | np.ndarray = avec.real.raw
-            else:
-                r = avec.real.raw.getArray()
-                im = avec.imag.raw.getArray()
-                a_view = r.astype(complex, copy=False) + 1j * im
-            if (
-                self._fraction_energy_on_indices(a_view, constrained)
-                >= self._bc_energy_tol
-            ):
-                continue
-            filtered.append((lam, avec))
-        if not filtered:
-            raise RuntimeError(
-                "All adjoint eigenpairs were filtered as spurious (Dirichlet identity modes). "
-                "Consider assembling reduced operators on free DOFs or relax 'bc_energy_tol'."
-            )
-
         target_star = sigma.conjugate()
-        sigma_adj, a_vec = min(filtered, key=lambda p: abs(p[0] - target_star))
+        sigma_adj, a_vec = min(pairs, key=lambda p: abs(p[0] - target_star))
 
         # Normalize the adjoint eigenvector such that a^H B v = 1
         v_petsc = PETSc.Vec().createWithArray(v_func.x.array, comm=MPI.COMM_WORLD)
@@ -389,7 +298,7 @@ class EigenSensitivitySolver:
         a_func.x.scatter_forward()
         self._a_func = a_func
 
-        num_spurious = len(pairs) - len(filtered)
+        # num_spurious = len(pairs) - len(filtered)
         log_global(
             logger,
             logging.INFO,
@@ -398,24 +307,17 @@ class EigenSensitivitySolver:
             "+" if sigma_adj.imag >= 0 else "-",
             abs(sigma_adj.imag),
         )
-        if num_spurious > 0:
-            log_global(
-                logger,
-                logging.INFO,
-                "Filtered %d spurious adjoint mode(s) with bc_energy_tol=%.2f.",
-                num_spurious,
-                self._bc_energy_tol,
-            )
+
         return a_func
 
     def compute_baseflow_sensitivity(self, tol: float | None = None) -> dfem.Function:
         """Solve for the baseflow sensitivity w.r.t. Re (implicit part of eigen-sensitivity)."""
         tol_lin = tol if tol is not None else self._tol_baseflow
-        if self._ns_assembler is None:
-            self._ns_assembler = StationaryNavierStokesAssembler(
+        if self._bf_assembler is None:
+            self._bf_assembler = StationaryNavierStokesAssembler(
                 self._spaces, re=self._re, bcs=self._bcs, initial_guess=self._baseflow
             )
-        jacobian_matrix, _ = self._ns_assembler.get_matrix_forms()
+        jacobian_matrix, _ = self._bf_assembler.get_matrix_forms()
 
         u_base = self._baseflow.sub(0)
         v_test, _ = TestFunctions(self._spaces.mixed)
@@ -424,10 +326,10 @@ class EigenSensitivitySolver:
         )
         rhs_vec = fem_petsc.assemble_vector(rhs_form)
         fem_petsc.apply_lifting(
-            rhs_vec, [self._ns_assembler.jacobian], [list(self._ns_assembler.bcs)]
+            rhs_vec, [self._bf_assembler.jacobian], [list(self._bf_assembler.bcs)]
         )
-        fem_petsc.set_bc(rhs_vec, list(self._ns_assembler.bcs))
-        pinned = getattr(self._ns_assembler, "_dofs_p", None)
+        fem_petsc.set_bc(rhs_vec, list(self._bf_assembler.bcs))
+        pinned = getattr(self._bf_assembler, "_dofs_p", None)
         if pinned is not None:
             for didx in np.asarray(pinned, dtype=np.int64).ravel():
                 rhs_vec.setValue(int(didx), 0.0)
@@ -504,7 +406,6 @@ class EigenSensitivitySolver:
         *,
         v_func: dfem.Function | None = None,
         a_func: dfem.Function | None = None,
-        degree: int = 1,
     ) -> dfem.Function:
         """Compute the structural-sensitivity 'wavemaker' field Sw(x).
 

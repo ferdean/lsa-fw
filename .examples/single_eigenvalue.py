@@ -1,4 +1,14 @@
-"""Cylinder flow: solve EVP on pre-assembled (A, M) and write sigma + eigenvector/eigenfunction."""
+"""Cylinder flow: solve EVP on pre-assembled (A, M) and write sigma.
+
+This script loads matrices previously assembled by the main EVP assembly script, solves for the eigenpair closest to a
+given shift-invert target, and writes the dominant eigenvalue to disk.
+
+Note:
+- The matrices are not included in the repo to keep it lightweight. Adjust MAT_DIR to point to the folder containing
+`A.mtx` and `M.mtx`.
+- This script is just a single-eig version of `eigenvalues.py`, with additional post-process actions (like enhanced
+export and plotting).
+"""
 
 from __future__ import annotations
 
@@ -21,7 +31,7 @@ from Solver.utils import PreconditionerType, iSTType
 from config import load_cylinder_flow_config
 from lib.loggingutils import setup_logging
 
-__show_plots__ = True  # plotting optional
+__show_plots__ = True
 
 _CFG_DIR: Final[Path] = Path("config_files") / "2D" / "cylinder"
 _SAVE_DIR: Final[Path] = Path("cases") / "cylinder"
@@ -36,6 +46,7 @@ _OUT_DIR: Final[Path] = _SAVE_DIR / f"reynolds_{_REYNOLDS:.1f}" / "eigs"
 
 logger = logging.getLogger(__name__)
 setup_logging(verbose=True)
+
 _OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Build mesh/spaces (needed to export eigenfunction)
