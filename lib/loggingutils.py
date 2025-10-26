@@ -36,7 +36,7 @@ def _write_header(file_path: Path) -> None:
         f"# Session start: {now}",
         f"# Python: {pyver}",
         f"# Host: {hostname}",
-        f"# MPI ranks: {size}\n",
+        f"# MPI ranks: {size}",
         "",
     ]
     file_path.write_text("\n".join(header_lines))

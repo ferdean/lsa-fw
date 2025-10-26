@@ -345,7 +345,12 @@ def _plot_mixed_function_matplotlib(
         )
 
     tpc_p = ax1.tripcolor(
-        tri, p_vals, shading="gouraud", cmap="coolwarm", vmin=p_lims[0], vmax=p_lims[1]
+        tri,
+        p_vals,
+        shading="gouraud",
+        cmap="coolwarm",
+        # vmin=p_lims[0],
+        # vmax=p_lims[1],
     )
     ax1.set_xlabel(r"$x$ (-)")
     ax1.set_ylabel(r"$y$ (-)")

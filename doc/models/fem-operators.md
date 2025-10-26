@@ -191,7 +191,6 @@ LinearizedNavierStokesAssembler(
     *,
     bcs: BoundaryConditions | None = None,
     tags: MeshTags | None = None,
-    use_sponge: bool = False
 )
 ```
 
@@ -200,7 +199,6 @@ LinearizedNavierStokesAssembler(
 * `re`: Reynolds number
 * `bcs`: Optional boundary conditions (Dirichlet, periodic, Robin, Neumann)
 * `tags`: Optional facet tags
-* `use_sponge`: Optional flag indicating if an additional sponge term is added at the outlet 
 
 #### Methods
 

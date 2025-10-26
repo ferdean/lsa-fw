@@ -123,9 +123,7 @@ def _run_for_length(L: int, cfg_dir: Path) -> None:
     bcs_perturbation = define_bcs(mesher, spaces, bcs_pert_cfg)
 
     # Baseflow ---
-    bf_solver = BaseFlowSolver(
-        spaces, bcs=bcs, re=_RE, tags=mesher.facet_tags, use_sponge=False
-    )
+    bf_solver = BaseFlowSolver(spaces, bcs=bcs, re=_RE, tags=mesher.facet_tags)
     baseflow = bf_solver.solve(ramp=True, steps=2, show_plot=False, plot_scale=0.0)
     export_function(baseflow, save_dir / "baseflow")
 

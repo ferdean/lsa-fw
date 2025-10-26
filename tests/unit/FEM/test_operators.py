@@ -413,14 +413,12 @@ class TestLinearizedAssembler:
             spaces=test_spaces,
             re=1.0,
             bcs=test_bcs,
-            use_sponge=False,
         )
         asm1 = LinearizedNavierStokesAssembler(
             base_flow=zero_base_flow,
             spaces=test_spaces,
             re=1.0,
             bcs=test_bcs,
-            use_sponge=True,
         )
         A0 = asm0.assemble_linear_operator()
         A1 = asm1.assemble_linear_operator()

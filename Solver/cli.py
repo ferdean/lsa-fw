@@ -146,7 +146,6 @@ def _run_assemble(args: argparse.Namespace) -> None:
         args.re,
         bcs=bcs_perturb,
         tags=mesher.facet_tags,
-        use_sponge=args.use_sponge,
     )
     A, M = assembler.assemble_eigensystem(cache=cache)
 

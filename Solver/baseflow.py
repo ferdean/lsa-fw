@@ -70,7 +70,6 @@ class BaseFlowSolver:
         re: float,
         bcs: BoundaryConditions | None = None,
         tags: MeshTags | None = None,
-        use_sponge: bool = True,
     ) -> None:
         """Initialize."""
         self._spaces = spaces
@@ -78,7 +77,6 @@ class BaseFlowSolver:
         self._bcs = bcs
         self._initial_guess: dfem.Function | None = None
         self._tags = tags
-        self._use_sponge = use_sponge
 
     def _solve_stokes_flow(self) -> dfem.Function:
         """Assemble and solve the stokes flow, to be used as initial guess for the stationary NS flow."""
@@ -135,7 +133,6 @@ class BaseFlowSolver:
                 bcs=self._bcs,
                 initial_guess=sol,
                 tags=self._tags,
-                use_sponge=self._use_sponge,
             )
             newton = NewtonSolver(ns_assembler, damping=damping_factor)
 
