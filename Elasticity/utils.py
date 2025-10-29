@@ -35,10 +35,10 @@ def _clean_eigenvalue(eigenvalue: complex) -> complex:
 
 
 def _get_freq_from_eigenvalue(eigenvalue: complex) -> tuple[float, float, float]:
-    eval = _clean_eigenvalue(eigenvalue)
-    wn = math.sqrt(max(eval.real, 0.0))
+    cleaned_value = _clean_eigenvalue(eigenvalue)
+    wn = math.sqrt(max(cleaned_value.real, 0.0))
     fn = wn / (2.0 * math.pi)
-    eta_r = (eval.imag / (wn**2)) if wn > 0 else 0.0
+    eta_r = (cleaned_value.imag / (wn**2)) if wn > 0 else 0.0
     return wn, fn, eta_r
 
 
@@ -49,7 +49,7 @@ class Eigenmode:
     value: complex
     """Raw eigenvalue."""
     function: dfem.Function
-    """Raw eigenvector, as a dolfinx function"""
+    """Raw eigenvector as a dolfinx function."""
     wn: float
     """Natural frequency, in rad/s."""
     fn: float
@@ -59,7 +59,7 @@ class Eigenmode:
     rq_omega2: float
     """Rayleigh quotient (wn^2)."""
     mass_chk: bool
-    """Flag indicating validity of the eigenvalue after mass-normalization (v^H M v = 1)."""
+    """Whether the eigenvalue remains valid after mass-normalization (v^H M v = 1)."""
 
 
 def process_modes(
@@ -69,7 +69,7 @@ def process_modes(
     function_space: dfem.FunctionSpace,
     *,
     skip_below_hz: float = 0.1,
-):
+) -> list[Eigenmode]:
     """Post-process eigen-modes.
 
     The post-process step includes:
@@ -78,9 +78,9 @@ def process_modes(
       - Sorting by (ascending) frequency
       - Eliminate spurious modes
     """
-    out: list[Eigenmode] = []
-    for eigval, eigvec in eigenpairs:
-        eigvec_real = eigvec.real.as_array()
+    modes: list[Eigenmode] = []
+    for eigenvalue, eigenvector in eigenpairs:
+        eigvec_real = eigenvector.real.as_array()
         v = _vec_from_array_like(stiffness, eigvec_real)
 
         # Mass-normalize (alpha = 1/sqrt(v^H M v))
@@ -99,13 +99,13 @@ def process_modes(
         u = dfem.Function(function_space)
         u.x.array[:] = v.as_array().real
 
-        wn, fn, eta_r = _get_freq_from_eigenvalue(eigval)
+        wn, fn, eta_r = _get_freq_from_eigenvalue(eigenvalue)
         if fn < skip_below_hz:
             continue
 
-        out.append(
+        modes.append(
             Eigenmode(
-                value=eigval,
+                value=eigenvalue,
                 function=u,
                 wn=wn,
                 fn=fn,
@@ -116,8 +116,8 @@ def process_modes(
         )
 
     # Sort by frequency
-    out.sort(key=lambda m: m.fn)
-    return out
+    modes.sort(key=lambda mode: mode.fn)
+    return modes
 
 
 def process_sensitivity(sensitivity: float, natural_frequency: float) -> float:

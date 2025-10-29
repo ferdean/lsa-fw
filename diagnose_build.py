@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Diagnose environment PETSc/SLEPc/DOLFINx builds"""
+"""Diagnose the local PETSc/SLEPc/DOLFINx build environment."""
+
+from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import petsc4py
@@ -11,8 +14,8 @@ from slepc4py import SLEPc
 import mpi4py
 import dolfinx
 
-__cfg = petsc4py.get_config()
-__petsc_arch = _petsc4py_lib.getPathArchPETSc()[1]
+PETSC_CONFIG = petsc4py.get_config()
+PETSC_ARCH = _petsc4py_lib.getPathArchPETSc()[1]
 
 print(
     " [>] petsc4py:",
@@ -38,11 +41,12 @@ except ImportError:
     print(" [!] ufl: not installed")
 
 print("\n [>] ENV vars:")
-print("     [>] PETSc prefix:", __cfg.get("PETSC_DIR", "(not set)"))
-print("     [>] PETSc arch:", __petsc_arch, "\n")
+print("     [>] PETSc prefix:", PETSC_CONFIG.get("PETSC_DIR", "(not set)"))
+print("     [>] PETSc arch:", PETSC_ARCH, "\n")
 
+test_path = Path("/tmp/test_latex.pdf")
+fig: plt.Figure | None = None
 try:
-    test_path = "/tmp/test_latex.pdf"
     plt.rcParams.update({"text.usetex": True})
     fig, ax = plt.subplots()
     ax.plot([0, 1], [0, 1])
@@ -52,4 +56,7 @@ try:
 except Exception:
     print(" [!] LaTeX test plot failed. No LaTeX support in matplotlib is available.")
 finally:
-    os.remove(test_path)
+    if fig is not None:
+        plt.close(fig)
+    if test_path.exists():
+        os.remove(test_path)
