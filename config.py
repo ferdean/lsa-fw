@@ -36,38 +36,65 @@ class BoundaryConditionsConfig:
 def load_bc_config(path: Path) -> Sequence[BoundaryConditionsConfig]:
     """Load configured boundary conditions.
 
-    The file must contain an array of tables called `[[BC]]`, with each entry specifying:
-    - `marker`: Mesh tag for boundary facets.
-    - `type`: Type of boundary condition (e.g. "dirichlet_velocity", "neumann").
-    - `value`: Scalar or vector value to impose.
-    - `robin_alpha`: Robin coefficient (required if `type` is "robin").
+    The file must contain an array of tables called ``[[BC]]``.
+    Each entry should specify:
 
-    Example:
-        [[BC]]
-        marker = 1
-        type = "dirichlet_velocity"
-        value = [0.0, 0.0]
+    - ``marker``: Mesh tag for boundary facets.
+    - ``type``: Boundary condition type (e.g. ``"dirichlet_velocity"``, ``"neumann"``).
+    - ``value``: Scalar or vector value to impose.
+    - ``robin_alpha``: Robin coefficient (required when ``type`` is ``"robin"``).
 
-        [[BC]]
-        marker = 2
-        type = "dirichlet_pressure"
-        value = 1.5
+    Boundary condition types are matched case-insensitively and leading/trailing
+    whitespace is ignored.
+
+    Example
+    -------
+    ````toml
+    [[BC]]
+    marker = 1
+    type = "dirichlet_velocity"
+    value = [0.0, 0.0]
+
+    [[BC]]
+    marker = 2
+    type = "dirichlet_pressure"
+    value = 1.5
+    ````
     """
     cfg = read_toml(path)
-    bcs: Sequence[BoundaryConditionsConfig] = []
-    for bc in cfg.get("BC"):
-        raw_value = bc.get("value", 0.0)
-        # for periodic we expect two ints
-        if bc.get("type").lower().strip() == "periodic":
+    bc_entries = cfg.get("BC", [])
+    if not isinstance(bc_entries, list):
+        raise TypeError("Boundary condition configuration must be a list of tables.")
+
+    bcs: list[BoundaryConditionsConfig] = []
+    for raw_bc in bc_entries:
+        if not isinstance(raw_bc, dict):
+            raise TypeError("Each boundary condition entry must be a table (dictionary).")
+
+        marker = raw_bc.get("marker")
+        if marker is None:
+            raise KeyError("Boundary condition entry is missing required 'marker'.")
+        try:
+            marker_int = int(marker)
+        except (TypeError, ValueError) as exc:
+            raise TypeError("Boundary condition marker must be an integer value.") from exc
+
+        raw_type = raw_bc.get("type", "")
+        bc_type = str(raw_type).strip()
+        normalized_type = bc_type.lower()
+        if not bc_type:
+            raise KeyError("Boundary condition entry is missing required 'type'.")
+
+        raw_value = raw_bc.get("value", 0.0)
+        if normalized_type == "periodic":
             if (
                 isinstance(raw_value, list)
                 and len(raw_value) == 2
                 and all(isinstance(v, int) for v in raw_value)
             ):
-                value = (raw_value[0], raw_value[1])
+                value: float | tuple[float, ...] | tuple[int, int] = (raw_value[0], raw_value[1])
             else:
-                raise TypeError("Periodic BC value must be two integer markers.")
-
+                raise TypeError("Periodic BC value must contain exactly two integer markers.")
         elif isinstance(raw_value, list):
             value = tuple(float(v) for v in raw_value)
         elif isinstance(raw_value, (int, float)):
@@ -75,12 +102,17 @@ def load_bc_config(path: Path) -> Sequence[BoundaryConditionsConfig]:
         else:
             raise TypeError(f"Unsupported value type: {type(raw_value)}")
 
+        robin_alpha = raw_bc.get("robin_alpha")
+        if normalized_type == "robin" and robin_alpha is None:
+            raise KeyError("Robin boundary conditions require 'robin_alpha' to be set.")
+        robin_alpha_value = float(robin_alpha) if robin_alpha is not None else None
+
         bcs.append(
             BoundaryConditionsConfig(
-                marker=bc.get("marker"),
-                type=bc.get("type"),
+                marker=marker_int,
+                type=bc_type,
                 value=value,
-                robin_alpha=bc.get("robin_alpha"),
+                robin_alpha=robin_alpha_value,
             )
         )
     return bcs
