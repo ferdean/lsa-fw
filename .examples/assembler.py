@@ -37,10 +37,11 @@ _SAVE_DIR: Final[Path] = Path("cases") / "cylinder"
 _CFG_DIR: Final[Path] = Path("config_files") / "2D" / "cylinder"
 _SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
-_REYNOLDS: Final[tuple[int, ...]] = tuple(range(40, 91, 5))
+# _REYNOLDS: Final[tuple[int, ...]] = tuple(range(41, 51, 1))
+_REYNOLDS: Final[tuple[int, ...]] = (60,)
 
 # Load config files (once)
-cylinder_cfg = load_cylinder_flow_config(_CFG_DIR / "geometry.toml")
+cylinder_cfg = load_cylinder_flow_config(_CFG_DIR / "geometry_fine.toml")
 facet_cfg = load_facet_config(_CFG_DIR / "facets.toml")
 bcs_cfg = load_bc_config(_CFG_DIR / "bcs.toml")
 bcs_pert_cfg = load_bc_config(_CFG_DIR / "bcs_perturbation.toml")
@@ -62,7 +63,7 @@ bcs_perturbation = define_bcs(mesher, spaces, bcs_pert_cfg)
 # Loop over Reynolds numbers
 for re in _REYNOLDS:
     # Per-case directory structure
-    case_dir = _SAVE_DIR / f"reynolds_{re:.1f}"
+    case_dir = _SAVE_DIR / f"reynolds_{re:.1f}_plots"
     (case_dir / "matrices").mkdir(parents=True, exist_ok=True)
     (case_dir / "logs").mkdir(parents=True, exist_ok=True)
 

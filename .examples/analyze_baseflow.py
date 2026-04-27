@@ -60,9 +60,9 @@ with results_path.open("w", newline="") as f:
     writer = csv.writer(f)
     writer.writerow(["re", "recirculation_length", "drag_x"])
 
-    for re in range(2, 64, 2):
-        bf_solver = BaseFlowSolver(spaces, bcs=bcs, tags=mesher.facet_tags)
-        baseflow = bf_solver.solve(re=re, ramp=True, show_plot=False, steps=2)
+    for re in range(2, 90, 2):
+        bf_solver = BaseFlowSolver(spaces, re=re, bcs=bcs, tags=mesher.facet_tags)
+        baseflow = bf_solver.solve(ramp=True, show_plot=False, steps=2)
 
         try:
             recirculation_length = compute_recirculation_length(baseflow)

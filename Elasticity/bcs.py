@@ -47,7 +47,8 @@ def _as_value_fn(
     vec = np.atleast_1d(val).astype(float)
     if vec.size == 1 and size > 1:
         vec = np.repeat(vec, size)
-    assert vec.size == size, f"value size {vec.size} != {size}"
+    if vec.size != size:
+        raise ValueError(f"value size {vec.size} != {size}")
 
     def _fn(x: np.ndarray) -> np.ndarray:
         return np.tile(vec[:, None], (1, x.shape[1]))
@@ -109,7 +110,7 @@ def define_bcs(
     *,
     component: Iterable[ComponentDirichlet] = (),
     axis_normal: Iterable[AxisNormalBc] = (),
-):
+) -> BoundaryConditions:
     if mesher.facet_tags is None:
         raise ValueError("Mesh boundaries are not properly tagged.")
     mesh, tags = mesher.mesh, mesher.facet_tags

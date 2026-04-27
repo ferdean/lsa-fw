@@ -234,7 +234,7 @@ class ArpackEigenSolver:
         )
 
         elapsed = time.time() - t0
-        log_global(logger, logging.INFO, f"Solve completed in {elapsed:.2f} s.")
+        log_global(logger, logging.INFO, "Solve completed in %.2f s.", elapsed)
 
         lam = self._mu_to_lambda(mu, self._cfg.sigma)
         idx = _sort_indices(lam, self._cfg.which_sort.to_arpack())

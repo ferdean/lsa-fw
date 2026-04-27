@@ -109,7 +109,7 @@ class KSPType(StrEnum):
     CHEBYSHEV = auto()
     """Chebyshev semi-iterative method."""
     PREONLY = auto()
-    """Use only pre-conditioner (used for direct solvers, like LU or Cholebsky)."""
+    """Use only pre-conditioner (used for direct solvers, like LU or Cholesky)."""
     QCG = auto()
     """Quasi-minimal residual CG."""
     CGS = auto()
@@ -154,8 +154,8 @@ class iEpsWhich(Enum):
 
     ALL = SLEPc.EPS.Which.ALL
     LARGEST_MAGNITUDE = SLEPc.EPS.Which.LARGEST_MAGNITUDE
-    SMALLEST_MAGNITUDE = SLEPc.EPS.Which.LARGEST_REAL
-    LARGEST_REAL = SLEPc.EPS.Which.LARGEST_REAL
+    SMALLEST_MAGNITUDE = SLEPc.EPS.Which.SMALLEST_MAGNITUDE
+    LARGEST_REAL = SLEPc.EPS.Which.LARGEST_REAL  # Most unstable
     SMALLEST_REAL = SLEPc.EPS.Which.SMALLEST_REAL
     LARGEST_IMAGINARY = SLEPc.EPS.Which.LARGEST_IMAGINARY
     SMALLEST_IMAGINARY = SLEPc.EPS.Which.SMALLEST_IMAGINARY

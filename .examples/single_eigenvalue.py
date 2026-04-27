@@ -26,12 +26,13 @@ from Meshing.plot import PlotMode
 from Meshing.utils import Geometry
 from Solver.baseflow import export_function
 from Solver.eigen import EigenSolver, EigensolverConfig
-from Solver.utils import PreconditionerType, iSTType
+from Solver.utils import PreconditionerType, iEpsWhich, iSTType
 
 from config import load_cylinder_flow_config
 from lib.loggingutils import setup_logging
 
-__show_plots__ = True
+__show_plots__ = False
+__export__ = False
 
 _CFG_DIR: Final[Path] = Path("config_files") / "2D" / "cylinder"
 _SAVE_DIR: Final[Path] = Path("cases") / "cylinder"
@@ -39,15 +40,23 @@ _NUM_EIG: Final[int] = 5
 _EIG_INDEX: Final[int] = 0
 _ATOL: Final[float] = 1e-3
 
-_REYNOLDS: Final[float] = 60.0
-_TARGET: Final[complex] = 0.05 + 0.74j
+_REYNOLDS: Final[float] = 47.0
+_TARGET: Final[complex] = 0.7316769290210628j
 
-_OUT_DIR: Final[Path] = _SAVE_DIR / f"reynolds_{_REYNOLDS:.1f}" / "eigs"
+_OUT_DIR: Final[Path] = _SAVE_DIR / f"reynolds_{_REYNOLDS:.1f}" / "adjoint_mode"
 
 logger = logging.getLogger(__name__)
 setup_logging(verbose=True)
 
 _OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _hermitian(A: iPETScMatrix) -> iPETScMatrix:
+    raw = A.raw.copy()
+    raw.transpose()
+    raw.conjugate()
+    return iPETScMatrix(raw)
+
 
 # Build mesh/spaces (needed to export eigenfunction)
 cylinder_cfg = load_cylinder_flow_config(_CFG_DIR / "geometry.toml")
@@ -80,15 +89,13 @@ es = EigenSolver(A, M, cfg=cfg, check_hermitian=False)
 es.solver.set_st_type(iSTType.SINVERT)
 es.solver.set_target(_TARGET)
 es.solver.set_st_pc_type(PreconditionerType.LU)
+es.solver.set_which_eigenpairs(iEpsWhich.TARGET_REAL)
 
 es.solver.solve()
 
-# Post-process (eigval)
-sigma = es.solver.get_eigenvalue(_EIG_INDEX)
-
-out_sigma = _OUT_DIR / f"sigma_eig{_EIG_INDEX}.txt"
-out_sigma.write_text(f"{sigma.real} {sigma.imag}\n", encoding="utf-8")
-logger.info("Wrote sigma to '%s'", out_sigma)
+epais = es.solver.get_all_eigenpairs_up_to(es.solver.get_num_converged())
+evals, _ = zip(*epais)
+print(evals)
 
 # Post-process (eigvec)
 # Note for self: the iPETScComplexVector wrapper, when used in a complex PETSc build, works exactly equal to
@@ -97,33 +104,30 @@ logger.info("Wrote sigma to '%s'", out_sigma)
 # >>> imag_vec = complex_vec.real.as_array().imag
 # This class made sense in real PETSc builds, as it is a nice work-around when one cannot work with complex numbers,
 # but its use must be reassessed for complex builds.
-eigvec = es.solver.get_eigenvector(_EIG_INDEX)
 
-eigfun_real = dfem.Function(spaces.mixed)
-eigfun_real.x.array[:] = eigvec.real.as_array().real
+# Optionally: export eigenvectors and eigenvalues
+if __export__:
+    sigma = es.solver.get_eigenvalue(_EIG_INDEX)
+    out_sigma = _OUT_DIR / f"sigma_eig_trans_{_EIG_INDEX}.txt"
+    out_sigma.write_text(f"{sigma.real} {sigma.imag}\n", encoding="utf-8")
 
-eigfun_imag = dfem.Function(spaces.mixed)
-eigfun_imag.x.array[:] = eigvec.real.as_array().imag
+    logger.info("Wrote sigma to '%s'", out_sigma)
 
-export_function(eigfun_real, _OUT_DIR, name="eigfun_real")
-export_function(eigfun_imag, _OUT_DIR, name="eigfun_imag")
+    eigvec = es.solver.get_eigenvector(_EIG_INDEX)
+    adjoint_mode = dfem.Function(spaces.mixed)
+    adjoint_mode.x.array[:] = eigvec.real.as_array().real
+    export_function(adjoint_mode, _OUT_DIR, name="adjoint_mode")
 
-logger.info("Exported eigenfunctions (real/imag) to XDMF in '%s'", case_dir)
+    logger.info("Exported eigenfunctions (real/imag) to XDMF in '%s'", case_dir)
 
 # Optionally: static plots (real part)
 if __show_plots__:
     for ext in ("pdf", "png"):
         plot_mixed_function(
-            eigfun_real,
+            adjoint_mode,
             PlotMode.STATIC,
-            output_path=_OUT_DIR / f"eig_real.{ext}",
-            domain=((-5, 0), (20, 5)),
+            output_path=_OUT_DIR / f"adjoint_mode.{ext}",
+            domain=((-3, 0), (15, 3)),
             streamline_density=0.0,
-        )
-        plot_mixed_function(
-            eigfun_imag,
-            PlotMode.STATIC,
-            output_path=_OUT_DIR / f"eig_imag.{ext}",
-            domain=((-5, 0), (20, 5)),
-            streamline_density=0.0,
+            normalize=True,
         )

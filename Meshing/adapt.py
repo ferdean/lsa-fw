@@ -26,8 +26,6 @@ from .utils import iCellType
 
 logger = logging.getLogger(__name__)
 
-warnings.simplefilter("ignore")
-
 
 def _extract_mesh_data(
     mesher: Mesher,
@@ -143,11 +141,13 @@ def _export_to_msh(coords: np.ndarray, cell_block: tuple[str, np.ndarray]) -> st
     with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
         msh_file = tmp.name
 
-    meshio.write(
-        msh_file,
-        meshio.Mesh(points=coords, cells={cell_block[0]: cell_block[1]}),
-        file_format="gmsh22",
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        meshio.write(
+            msh_file,
+            meshio.Mesh(points=coords, cells={cell_block[0]: cell_block[1]}),
+            file_format="gmsh22",
+        )
 
     return msh_file
 
@@ -233,7 +233,9 @@ def adapt_mesh(
     log_global(
         logger,
         logging.INFO,
-        f"Extracted initial mesh data (gdim={gdim}, cells={len(cell_vertices)}).",
+        "Extracted initial mesh data (gdim=%d, cells=%d).",
+        gdim,
+        len(cell_vertices),
     )
 
     velocity_norm = _project_velocity_magnitude(mesh, baseflow, cell_type)
@@ -243,7 +245,9 @@ def adapt_mesh(
     log_global(
         logger,
         logging.INFO,
-        f"Scaled and clamped sizes to [{min_size}, {max_size}].",
+        "Scaled and clamped sizes to [%g, %g].",
+        min_size,
+        max_size,
     )
 
     pos_file = Path("background_size.pos")
@@ -253,9 +257,7 @@ def adapt_mesh(
         # Catch any export warnings and re-direct them to the main logger
         msh_file = _export_to_msh(coords, cell_block)
 
-    log_global(
-        logger, logging.DEBUG, f"Exported mesh to temporary *.gmsh file {msh_file}."
-    )
+    log_global(logger, logging.DEBUG, "Exported mesh to temporary *.msh file %s.", msh_file)
 
     log_global(logger, logging.INFO, "Running re-meshing.")
     new_mesh = _run_gmsh_remesh(msh_file, pos_file, gdim, mesh.comm)

@@ -33,7 +33,7 @@ class BoundaryConditionsConfig:
     """Robin coefficient."""
 
 
-def load_bc_config(path: Path) -> Sequence[BoundaryConditionsConfig]:
+def load_bc_config(path: Path) -> list[BoundaryConditionsConfig]:
     """Load configured boundary conditions.
 
     The file must contain an array of tables called `[[BC]]`, with each entry specifying:
@@ -54,8 +54,8 @@ def load_bc_config(path: Path) -> Sequence[BoundaryConditionsConfig]:
         value = 1.5
     """
     cfg = read_toml(path)
-    bcs: Sequence[BoundaryConditionsConfig] = []
-    for bc in cfg.get("BC"):
+    bcs: list[BoundaryConditionsConfig] = []
+    for bc in cfg.get("BC", []):
         raw_value = bc.get("value", 0.0)
         # for periodic we expect two ints
         if bc.get("type").lower().strip() == "periodic":
@@ -107,7 +107,7 @@ class CylinderFlowGeometryConfig:
     influence_radius: float
     """Radius around the cylinder to apply local refinement."""
     z_range: tuple[float, float] | None = None
-    """Optional y-range of the domain relative to the global frame."""
+    """Optional z-range of the domain relative to the global frame."""
 
 
 def load_cylinder_flow_config(path: Path) -> CylinderFlowGeometryConfig:

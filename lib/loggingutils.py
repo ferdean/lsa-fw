@@ -1,9 +1,9 @@
 """Utilities for logging."""
 
 import contextlib
+import io
 import logging
 import platform
-import io
 import sys
 from datetime import datetime
 from pathlib import Path

@@ -53,7 +53,7 @@ setup_logging(verbose=True)
 
 
 if __show_plots__:
-    cylinder_cfg = load_cylinder_flow_config(_CFG_DIR / "geometry.toml")
+    cylinder_cfg = load_cylinder_flow_config(_CFG_DIR / "geometry_fine.toml")
     mesher = Mesher.from_geometry(Geometry.CYLINDER_FLOW, cylinder_cfg)
     spaces = define_spaces(mesher.mesh, FunctionSpaceType.TAYLOR_HOOD)
 

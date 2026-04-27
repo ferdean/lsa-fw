@@ -1,3 +1,5 @@
+"""LSA-FW Elasticity post-processing utilities."""
+
 from dataclasses import dataclass
 import math
 from typing import Iterable
@@ -35,10 +37,10 @@ def _clean_eigenvalue(eigenvalue: complex) -> complex:
 
 
 def _get_freq_from_eigenvalue(eigenvalue: complex) -> tuple[float, float, float]:
-    eval = _clean_eigenvalue(eigenvalue)
-    wn = math.sqrt(max(eval.real, 0.0))
+    lam = _clean_eigenvalue(eigenvalue)
+    wn = math.sqrt(max(lam.real, 0.0))
     fn = wn / (2.0 * math.pi)
-    eta_r = (eval.imag / (wn**2)) if wn > 0 else 0.0
+    eta_r = (lam.imag / (wn**2)) if wn > 0 else 0.0
     return wn, fn, eta_r
 
 
@@ -69,7 +71,7 @@ def process_modes(
     function_space: dfem.FunctionSpace,
     *,
     skip_below_hz: float = 0.1,
-):
+) -> list[Eigenmode]:
     """Post-process eigen-modes.
 
     The post-process step includes:

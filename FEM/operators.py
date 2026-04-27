@@ -248,7 +248,7 @@ class VariationalForms:
         #   https://jsdokken.com/dolfinx-tutorial/chapter2/navierstokes.html for further details
         #   - With this implementation, the same method can be used for convection and shear (just swap `u`
         #   and `u_base`)
-        return -inner(dot(u_base, nabla_grad(u)), v) * dx
+        return inner(dot(u_base, nabla_grad(u)), v) * dx
 
     @staticmethod
     def pressure_gradient(p: Argument, v: Argument) -> Form:
@@ -256,7 +256,7 @@ class VariationalForms:
 
     @staticmethod
     def viscous(u: Argument, v: Argument, re: float) -> Form:
-        return -(1.0 / re) * inner(grad(u), grad(v)) * dx
+        return (1.0 / re) * inner(grad(u), grad(v)) * dx
 
     @staticmethod
     def viscous_outlet(
@@ -342,7 +342,7 @@ class StationaryNavierStokesAssembler(BaseAssembler):
         divergence = VariationalForms.divergence(self._u, self._q)
         forcing = VariationalForms.forcing(self._f, self._v)
 
-        form = convection + diffusion + pressure + divergence + forcing
+        form = -convection - diffusion + pressure + divergence + forcing
 
         if self._outlet_markers:
             form += VariationalForms.viscous_outlet(
@@ -459,13 +459,13 @@ class LinearizedNavierStokesAssembler(BaseAssembler):
             )
 
             a = (
-                VariationalForms.convection_shear(  # Shear
+                -VariationalForms.convection_shear(  # Shear
                     self._base_flow, self._v, self._u
                 )
-                + VariationalForms.convection_shear(  # Convection
+                - VariationalForms.convection_shear(  # Convection
                     self._u, self._v, self._base_flow
                 )
-                + VariationalForms.viscous(self._u, self._v, self._re)
+                - VariationalForms.viscous(self._u, self._v, self._re)
                 + VariationalForms.pressure_gradient(self._p, self._v)
                 + VariationalForms.divergence(self._u, self._q)
             )

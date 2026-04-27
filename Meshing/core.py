@@ -289,7 +289,7 @@ class Mesher:
             self._facet_tags = meshtags(self.mesh, facet_dim, facets, markers)
             self._facet_tags.name = "facet_tags"
         except Exception as e:
-            raise RuntimeError(f"Failed to evaluate marker function: {e}")
+            raise RuntimeError(f"Failed to evaluate marker function: {e}") from e
 
     def _create_box(self, comm: MPI.Intracomm) -> dmesh.Mesh:
         if self._gdim == 2:

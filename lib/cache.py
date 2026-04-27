@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
-from typing import Tuple
 
 import dolfinx.fem as dfem
 import dolfinx.io as dio
@@ -33,7 +32,7 @@ class CacheStore:
 
     def load_mesh(
         self, key: str, comm: MPI.Intracomm = MPI.COMM_WORLD
-    ) -> Tuple[dmesh.Mesh, dmesh.MeshTags | None, dmesh.MeshTags | None] | None:
+    ) -> tuple[dmesh.Mesh, dmesh.MeshTags | None, dmesh.MeshTags | None] | None:
         path = self._path(key, "xdmf")
         if not path.exists():
             return None

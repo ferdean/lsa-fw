@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum, auto
-from typing import Callable, Sequence, Any, Tuple, cast
+from typing import Any, Callable, Sequence, cast
 
 import dolfinx.fem as dfem
 import dolfinx.mesh as dmesh
@@ -159,7 +159,7 @@ def define_bcs(
                     raise TypeError(
                         "PERIODIC.value must be a tuple[int, int] of (from_marker, to_marker)"
                     )
-                from_marker_raw, to_marker_raw = cast(Tuple[Any, Any], cfg.value)
+                from_marker_raw, to_marker_raw = cast(tuple[Any, Any], cfg.value)
                 if not isinstance(from_marker_raw, (int, np.integer)) or not isinstance(
                     to_marker_raw, (int, np.integer)
                 ):
@@ -221,7 +221,7 @@ def compute_periodic_dof_pairs(
     facets_from = facets[markers == from_marker]
     facets_to = facets[markers == to_marker]
 
-    # Find all DOFs on each facets
+    # Find all DOFs on each facet
     from_dofs = dfem.locate_dofs_topological(function_space, facet_dim, facets_from)
     to_dofs = dfem.locate_dofs_topological(function_space, facet_dim, facets_to)
     if from_dofs.size == 0 or to_dofs.size == 0:

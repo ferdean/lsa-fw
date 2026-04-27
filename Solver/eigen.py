@@ -103,7 +103,7 @@ class EigenSolver:
                 log_global(
                     logger,
                     logging.WARNING,
-                    f"Problem type '{cfg.problem_type.name}' assumes Hermitian M,"
+                    f"Problem type '{self._cfg.problem_type.name}' assumes Hermitian M,"
                     " but M is not (numerically) Hermitian.",
                 )
 
@@ -127,9 +127,11 @@ class EigenSolver:
         log_global(
             logger,
             logging.INFO,
-            f"Started eigenvalue solve: type={self._cfg.problem_type.name}, "
-            f"nev={self._cfg.num_eig}, "
-            f"tol={self._cfg.atol}, max_it={self._cfg.max_it}",
+            "Started eigenvalue solve: type=%s, nev=%d, tol=%g, max_it=%d",
+            self._cfg.problem_type.name,
+            self._cfg.num_eig,
+            self._cfg.atol,
+            self._cfg.max_it,
         )
 
         t0 = time.time()
@@ -143,13 +145,16 @@ class EigenSolver:
         except Exception:
             its = None
 
+        suffix = f"; iterations={its}" if its is not None else ""
         log_global(
             logger,
             logging.INFO,
-            f"Solve completed in {elapsed:.2f} s; converged {nconv} eigenpairs"
-            + (f"; iterations={its}" if its is not None else ""),
+            "Solve completed in %.2f s; converged %d eigenpairs%s",
+            elapsed,
+            nconv,
+            suffix,
         )
 
         pairs = list(self._solver.get_all_eigenpairs_up_to(self._cfg.num_eig))
-        log_global(logger, logging.INFO, f"Retrieved {len(pairs)} eigenpairs")
+        log_global(logger, logging.INFO, "Retrieved %d eigenpairs", len(pairs))
         return pairs

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import assert_never, Final
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator, ScalarFormatter
 import numpy as np
 import pyvista
 from dolfinx.plot import vtk_mesh
@@ -46,7 +47,8 @@ plt.rcParams.update(
 _DEFAULT_FIGSIZE: Final[tuple[float, float]] = (6, 3)
 
 
-def _as_real(a: np.ndarray, *, part: str = "real") -> np.ndarray:
+def as_real(a: np.ndarray, *, part: str = "real") -> np.ndarray:
+    """Represent array as real array."""
     if np.iscomplexobj(a):
         return a.real if part == "real" else a.imag
     return np.asarray(a, dtype=np.float64)
@@ -137,7 +139,8 @@ def plot_mixed_function(
     fig_size: tuple[float, float] = _DEFAULT_FIGSIZE,
     scale: float = 1.0,
     streamline_density: float = 1.0,
-    cmap: str = "coolwarm",
+    cmap: str = "binary",
+    normalize: bool = True,
 ) -> None:
     """Plot a function defined in a mixed velocity-pressure space."""
     match mode:
@@ -154,6 +157,7 @@ def plot_mixed_function(
                 domain=domain,
                 fig_size=fig_size,
                 streamline_density=streamline_density,
+                normalize=normalize,
             )
         case _:
             assert_never(mode)
@@ -259,13 +263,21 @@ def _plot_mixed_function_pyvista(
     plotter_p.show()
 
 
+def _normalize_to_unit_abs(a: np.ndarray) -> np.ndarray:
+    a = np.asarray(a)
+    m = np.max(np.abs(a))
+    if m == 0 or not np.isfinite(m):
+        return np.zeros_like(a)
+    return np.clip(a / m, -1.0, 1.0)
+
+
 def _plot_mixed_function_matplotlib(
     mixed_function: dfem.Function,
     output_path: Path,
     domain: tuple[tuple[float, float], tuple[float, float]] | None = None,
     fig_size: tuple[float, float] = _DEFAULT_FIGSIZE,
-    streamline_density: float = 1.0,
-    p_lims: tuple[float, float] = (-0.5, 0.5),
+    streamline_density: float | int = 0,
+    normalize: bool = True,
 ) -> None:
     mesh = mixed_function.function_space.mesh
     if mesh.geometry.dim != 2:
@@ -288,7 +300,6 @@ def _plot_mixed_function_matplotlib(
     cells, cell_types, coords = vtk_mesh(u.function_space)
     tri_indices = np.where(cell_types == 5)[0]
     triangle_cells = []
-
     i = 0
     tri_id = 0
     while i < len(cells):
@@ -297,16 +308,20 @@ def _plot_mixed_function_matplotlib(
             triangle_cells.append(cells[i + 1 : i + 1 + n])
         i += n + 1
         tri_id += 1
-
     if not triangle_cells:
         raise RuntimeError("No linear triangle cells found.")
 
     triangles = np.array(triangle_cells)
     xy = coords[:, :2]
     tri = Triangulation(xy[:, 0], xy[:, 1], triangles)
-    u_vals = _as_real(u.x.array.reshape((-1, 2)))
-    # u_mag = np.linalg.norm(u_vals, axis=1)
-    p_vals = _as_real(p.x.array)
+
+    u_vals = as_real(u.x.array.reshape((-1, 2)))
+    ux_vals = u_vals[:, 0]  # Only x-component is visualized
+    p_vals = as_real(p.x.array)
+
+    if normalize:
+        ux_vals = _normalize_to_unit_abs(ux_vals)
+        p_vals = _normalize_to_unit_abs(p_vals)
 
     if domain:
         (xmin, ymin), (xmax, ymax) = domain
@@ -317,41 +332,42 @@ def _plot_mixed_function_matplotlib(
     fig, axs = plt.subplots(
         2, 1, figsize=fig_size, constrained_layout=True, sharex=True
     )
-
     ax0, ax1 = axs
-    tpc_u = ax0.tripcolor(tri, u_vals[:, 0], shading="gouraud", cmap="viridis")
+
+    tpc_u = ax0.tricontourf(tri, ux_vals, levels=32, cmap="binary")
     ax0.set_ylabel(r"$y$ (-)")
     ax0.set_xlim(xmin, xmax)
     ax0.set_ylim(ymin, ymax)
 
-    try:
-        nx, ny = 300, 300
-        gx, gy = np.meshgrid(np.linspace(xmin, xmax, nx), np.linspace(ymin, ymax, ny))
-        ug = griddata(xy, u_vals[:, 0], (gx, gy), method="linear")
-        vg = griddata(xy, u_vals[:, 1], (gx, gy), method="linear")
+    if streamline_density > 0:
+        try:
+            nx, ny = 300, 300
+            gx, gy = np.meshgrid(
+                np.linspace(xmin, xmax, nx), np.linspace(ymin, ymax, ny)
+            )
+            ug = griddata(xy, u_vals[:, 0], (gx, gy), method="linear")
+            vg = griddata(xy, u_vals[:, 1], (gx, gy), method="linear")
+            mask = np.isnan(ug) | np.isnan(vg) | (np.hypot(ug, vg) < 1e-10)
+            ug = np.ma.array(ug, mask=mask)
+            vg = np.ma.array(vg, mask=mask)
+            ax0.streamplot(
+                gx,
+                gy,
+                ug,
+                vg,
+                color="lightgray",
+                density=streamline_density,
+                linewidth=0.5,
+            )
+        except Exception:
+            log_global(
+                logger,
+                logging.WARNING,
+                "Skipping streamlines (scipy.interpolate failed).",
+            )
 
-        # Mask invalid or out-of-domain areas
-        mask = np.isnan(ug) | np.isnan(vg) | (np.hypot(ug, vg) < 1e-10)
-        ug = np.ma.array(ug, mask=mask)
-        vg = np.ma.array(vg, mask=mask)
-
-        ax0.streamplot(
-            gx, gy, ug, vg, color="lightgray", density=streamline_density, linewidth=0.5
-        )
-
-    except Exception:
-        log_global(
-            logger, logging.WARNING, "Skipping streamlines (scipy.interpolate failed)."
-        )
-
-    tpc_p = ax1.tripcolor(
-        tri,
-        p_vals,
-        shading="gouraud",
-        cmap="coolwarm",
-        # vmin=p_lims[0],
-        # vmax=p_lims[1],
-    )
+    tpc_p = ax1.tricontourf(tri, p_vals, levels=32, cmap="binary")
+    ax1.tricontour(tri, p_vals, levels=8, colors="k", linewidths=0.3)
     ax1.set_xlabel(r"$x$ (-)")
     ax1.set_ylabel(r"$y$ (-)")
     ax1.set_xlim(xmin, xmax)
@@ -360,14 +376,21 @@ def _plot_mixed_function_matplotlib(
     for ax, tpc, label in zip(
         axs,
         [tpc_u, tpc_p],
-        [r"$\mathbf{\tilde{u}}_{x}$", r"$\tilde{p}$ (-)"],
+        [r"$\mathbf{\tilde{u}}_{x}$", r"$\tilde{p}$"],
     ):
         ax.set_aspect("equal", adjustable="box")
         ax.tick_params(direction="in")
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="3%", pad=0.2)
-        cbar = fig.colorbar(tpc, cax=cax)
+        cbar = fig.colorbar(tpc, cax=cax, spacing="proportional")
         cbar.set_label(label, fontsize=9)
+
+        # Fewer, clean ticks
+        cbar.locator = MaxNLocator(nbins=3)
+        cbar.formatter = ScalarFormatter(useMathText=True)
+        cbar.update_ticks()
+        cbar.minorticks_off()
+
         cbar.ax.tick_params(labelsize=8, direction="in")
 
     ext = output_path.suffix.lower().lstrip(".")
@@ -424,19 +447,3 @@ def _flatten_mesh(cells, cell_types, points):
             cell_data.extend(blk[i + 1 : i + 1 + n] + off)
             i += n + 1
     return np.array(cell_data), np.hstack(cell_types), np.vstack(points)
-
-
-def _save_plot(matrix: csr_matrix, path: Path, dpi: int) -> None:
-    """Render and save a CSR matrix sparsity plot."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    golden = (1 + 5**0.5) / 2
-    fig, ax = plt.subplots(figsize=(6, 6 / golden))
-
-    ax.spy(matrix, markersize=1)
-    ax.set(title="Matrix sparsity pattern", xlabel="cols (-)", ylabel="rows (-)")
-    ax.tick_params(direction="in", length=4, width=1, labelsize=8)
-
-    fig.tight_layout(pad=0.4)
-    fig.savefig(path, dpi=dpi)
-    plt.close(fig)

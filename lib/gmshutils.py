@@ -51,7 +51,7 @@ def _capture_c_streams_to_logger(
                             for line in data.splitlines():
                                 clean = _GMSH_PREFIX.sub("", line).strip()
                                 if clean:
-                                    log_global(logger, level, f"GMSH log: {clean}")
+                                    log_global(logger, level, "GMSH log: %s", clean)
                     except Exception:
                         # Never fail teardown due to logging
                         pass

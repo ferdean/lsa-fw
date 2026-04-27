@@ -246,9 +246,9 @@ class iPETScMatrix:
         return iPETScMatrix(result)
 
     def __sub__(self, other: object) -> iPETScMatrix:
-        """Perform matrix addition."""
+        """Perform matrix subtraction."""
         if not isinstance(other, iPETScMatrix):
-            raise NotImplementedError(f"Cannot add iPETScMatrix with {type(other)}")
+            raise NotImplementedError(f"Cannot subtract iPETScMatrix with {type(other)}")
         if self.shape != other.shape:
             raise ValueError(
                 f"Incompatible matrix shapes: {self.shape} vs {other.shape}"
@@ -429,7 +429,7 @@ class iPETScMatrix:
     def is_hermitian(self) -> bool:
         """Check whether the matrix is Hermitian.
 
-        For real matrices, it should return the same as `is_numerically_symetric`.
+        For real matrices, it should return the same as `is_numerically_symmetric`.
         """
         return self._mat.isHermitian()
 
@@ -811,8 +811,8 @@ class iPETScVector:
         if self.size != other.size:
             return False
 
-        diff = self.raw.duplicate()
-        diff.axpy(Scalar(-1.0), self.raw, other.raw)  # diff = other - self
+        diff = other.raw.copy()
+        diff.axpy(Scalar(-1.0), self.raw)  # diff = other - self
         return diff.norm() < 1e-12
 
     @property
@@ -1361,7 +1361,7 @@ class iPETScNullSpace:
         try:
             self._raw.remove(vec.raw)
         except Exception as e:
-            log_global(logger, logging.ERROR, f"NullSpace.remove failed: {e}")
+            log_global(logger, logging.ERROR, "NullSpace.remove failed: %s", e)
             raise
 
     def attach_to(self, mat: iPETScMatrix) -> None:
@@ -1379,7 +1379,7 @@ class iPETScNullSpace:
         try:
             self._raw.destroy()
         except Exception as e:
-            log_global(logger, logging.WARNING, f"NullSpace.destroy failed: {e}")
+            log_global(logger, logging.WARNING, "NullSpace.destroy failed: %s", e)
 
 
 class iPETScBlockMatrix:

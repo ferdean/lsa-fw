@@ -223,7 +223,7 @@ def _step_flow(
     raise ValueError("Only 2D or 3D supported.")
 
 
-def _initialize_model(name: str, use_occ: bool = False):
+def _initialize_model(name: str, use_occ: bool = False):  # type: ignore[return]
     gmsh.initialize()
     gmsh.model.add(name)
     return gmsh.model.occ if use_occ else gmsh.model.geo
@@ -254,7 +254,7 @@ def _is_lateral_surface(
     )
 
 
-def _add_step_refinement(cfg: StepFlowGeometryConfig):
+def _add_step_refinement(cfg: StepFlowGeometryConfig) -> None:
     if cfg.refinement_factor is None:
         return
     h_in = cfg.resolution * cfg.refinement_factor

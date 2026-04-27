@@ -76,7 +76,7 @@ def _get_baseflow(
 
 def _export_matrices(A: iPETScMatrix, M: iPETScMatrix, output_path: Path) -> None:
     """Export assembled matrices to PETSc binary format."""
-    log_global(logger, logging.INFO, f"Saving matrices to: {output_path}")
+    log_global(logger, logging.INFO, "Saving matrices to: %s", output_path)
     output_path.mkdir(parents=True, exist_ok=True)
     A.export(output_path / "A.petsc")
     M.export(output_path / "M.petsc")
@@ -114,7 +114,7 @@ def assemble_fem(args: argparse.Namespace) -> None:
     # Optional plots
     if args.plot:
         plot_dir = output_path / "plots"
-        log_global(logger, logging.INFO, f"Saving plots to: {plot_dir}")
+        log_global(logger, logging.INFO, "Saving plots to: %s", plot_dir)
         spy(A, plot_dir / "A.png", spaces=spaces)
         spy(M, plot_dir / "M.png", spaces=spaces)
 

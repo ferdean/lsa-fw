@@ -66,13 +66,13 @@ class ElasticityVariationalForms:
 
 @dataclass(frozen=True)
 class MaterialProperties:
-    """Define a collector for the material properties. Refer to the literature for the derivation of the values."""
+    """Material property fields for isotropic linear elasticity."""
 
     mu: dfem.Function
     lam: dfem.Function
     rho: dfem.Function
     young_modulus: dfem.Function
-    poisson_ration: dfem.Function
+    poisson_ratio: dfem.Function
 
     @staticmethod
     def _get_linear_function_space(mesh: dmesh.Mesh) -> dfem.FunctionSpace:
@@ -117,7 +117,11 @@ class MaterialProperties:
         )
 
         return cls(
-            mu_func, lam_func, density_func, young_modulus_func, poisson_ratio_func
+            mu=mu_func,
+            lam=lam_func,
+            rho=density_func,
+            young_modulus=young_modulus_func,
+            poisson_ratio=poisson_ratio_func,
         )
 
 
@@ -164,7 +168,7 @@ class ElasticityEigenAssembler:
             for marker, t in bcs.neumann:
                 log_rank(
                     logger,
-                    logging.WARN,
+                    logging.WARNING,
                     "EVP contains non-homogeneous Neumann boundary conditions.",
                 )
                 self._stiffness_form -= ElasticityVariationalForms.traction(

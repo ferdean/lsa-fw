@@ -23,4 +23,7 @@
   "python.testing.pytestArgs": [
     "tests"
   ],
+  "cSpell.words": [
+    "nabla"
+  ],
 }

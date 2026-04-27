@@ -36,11 +36,11 @@ class FunctionSpaces:
     """Mixed function space."""
 
     @cached_property
-    def quad_degree(self, offset: int = 1) -> int:
+    def quad_degree(self) -> int:
         """Get quadrature degree."""
         v_deg = self.velocity.ufl_element().degree
         p_deg = self.pressure.ufl_element().degree
-        return max(v_deg, p_deg) + offset
+        return max(v_deg, p_deg) + 1
 
     @cached_property
     def velocity_dofs(self) -> tuple[int, int]:

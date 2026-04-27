@@ -18,6 +18,7 @@ from FEM.operators import BaseAssembler
 from FEM.plot import plot_mixed_function
 from FEM.utils import iPETScMatrix, iPETScVector
 from lib.loggingutils import log_global, log_rank
+from Meshing.plot import PlotMode
 from Solver.utils import KSPType, PreconditionerType, iKSP
 
 logger = logging.getLogger(__name__)
@@ -81,9 +82,7 @@ class LinearSolver:
             logger, logging.INFO, "%s solve time: %.3f s", ksp_type.name, t1 - t0
         )
 
-        # sol.raw.scatter_forward()
-
-        log_global(logger, logging.INFO, f"{ksp_type.name} solve completed.")
+        log_global(logger, logging.INFO, "%s solve completed.", ksp_type.name)
         return sol
 
     def direct_lu_solve(
@@ -162,7 +161,7 @@ class LinearSolver:
         sol.x.scatter_forward()
 
         if show_plot and MPI.COMM_WORLD.rank == 0:
-            plot_mixed_function(sol, scale=plot_scale)
+            plot_mixed_function(sol, PlotMode.INTERACTIVE, scale=plot_scale)
 
         log_global(logger, logging.INFO, "Serial SciPy LU solve completed.")
         return sol
@@ -231,7 +230,7 @@ class LinearSolver:
         restart: int | None = None,
         enable_monitor: bool = True,
     ) -> dfem.Function:
-        log_global(logger, logging.INFO, f"{ksp_type.name} solve started.")
+        log_global(logger, logging.INFO, "%s solve started.", ksp_type.name)
         cache_key = key or f"{ksp_type.name.lower()}_{id(self)}"
 
         # Assemble and cache system matrix, RHS, and solution vector
@@ -314,10 +313,10 @@ class LinearSolver:
         # Scatter and optionally plot
         self.assembler.sol.x.scatter_forward()
         if show_plot and A.comm.rank == 0:
-            plot_mixed_function(self.assembler.sol, scale=plot_scale)
+            plot_mixed_function(self.assembler.sol, PlotMode.INTERACTIVE, scale=plot_scale)
             A.comm.barrier()
 
-        log_global(logger, logging.INFO, f"{ksp_type.name} solve completed.")
+        log_global(logger, logging.INFO, "%s solve completed.", ksp_type.name)
         return self.assembler.sol
 
     def get_residual_history(self, *, key: int | str | None = None) -> list[float]:
@@ -362,4 +361,3 @@ class LinearSolver:
         log_global(logger, logging.INFO, "KSP residual plot saved to %s", output_path)
 
 
-# NOTE: More solver interfaces (BiCGSTAB, etc.) can be added as needed

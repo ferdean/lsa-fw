@@ -162,7 +162,7 @@ def _run_case(nxy: tuple[int, int]) -> tuple[list[float], list[float]]:
         atol=1e-8,
         max_it=1000,
     )
-    solver = EigenSolver(cfg, A, M)
+    solver = EigenSolver(A, M, cfg)
     solver.solver.set_which_eigenpairs(iEpsWhich.SMALLEST_REAL)
     numerical = solver.solve()
 
